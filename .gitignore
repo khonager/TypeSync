@@ -1,0 +1,78 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Visual Studio Code related
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+pubspec.lock
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Firebase configuration (keep template, ignore actual)
+# lib/firebase_options.dart  # Uncomment if you want to track this
+google-services.json
+GoogleService-Info.plist
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Coverage
+coverage/
+*.lcov
+
+# Nix
+result
+result-*
+.direnv/
+
+# Test artifacts
+test_driver/screenshots/
+
+# Temporary files
+*.tmp
+*.temp

@@ -1,0 +1,309 @@
+# TypeSync CI/CD Pipeline
+# 
+# This workflow handles:
+# - Code analysis and testing on all PRs
+# - Building releases on merge to stable/unstable branches
+# - Automatic versioning and tagging
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, stable, unstable]
+  pull_request:
+    branches: [main, stable, unstable]
+
+env:
+  FLUTTER_VERSION: '3.16.0'
+  JAVA_VERSION: '17'
+
+jobs:
+  # ============================================
+  # ANALYZE AND TEST
+  # ============================================
+  analyze:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Check formatting
+        run: dart format --set-exit-if-changed lib test
+      
+      - name: Analyze code
+        run: flutter analyze --fatal-infos
+      
+      - name: Run tests
+        run: flutter test --coverage
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: coverage/lcov.info
+
+  # ============================================
+  # BUILD ANDROID
+  # ============================================
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/stable' || github.ref == 'refs/heads/unstable')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Build APK
+        run: flutter build apk --release
+      
+      - name: Build App Bundle
+        run: flutter build appbundle --release
+      
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+      
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+
+  # ============================================
+  # BUILD LINUX
+  # ============================================
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/stable' || github.ref == 'refs/heads/unstable')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+      
+      - name: Install dependencies
+        run: flutter pub get
+      
+      - name: Build Linux
+        run: flutter build linux --release
+      
+      - name: Create tarball
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czvf ../../../../../typesync-linux-x64.tar.gz .
+      
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bundle
+          path: typesync-linux-x64.tar.gz
+
+  # ============================================
+  # RELEASE - STABLE BRANCH
+  # ============================================
+  release-stable:
+    name: Release Stable
+    runs-on: ubuntu-latest
+    needs: [build-android, build-linux]
+    if: github.ref == 'refs/heads/stable'
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get version from pubspec
+        id: version
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}' | cut -d'+' -f1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Determine next version
+        id: semver
+        run: |
+          # Get the latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          
+          # Parse version components
+          IFS='.' read -ra VERSION_PARTS <<< "$LATEST_VERSION"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Increment patch version
+          PATCH=$((PATCH + 1))
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release/
+      
+      - name: Download Android AAB
+        uses: actions/download-artifact@v4
+        with:
+          name: android-aab
+          path: release/
+      
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-bundle
+          path: release/
+      
+      - name: Rename artifacts
+        run: |
+          mv release/app-release.apk release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
+          mv release/app-release.aab release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
+          mv release/typesync-linux-x64.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.semver.outputs.tag }}
+          name: TypeSync ${{ steps.semver.outputs.new_version }}
+          body: |
+            ## TypeSync ${{ steps.semver.outputs.new_version }}
+            
+            ### Downloads
+            - **Android APK**: TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
+            - **Android App Bundle**: TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
+            - **Linux**: TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+            
+            ### Changes
+            See commit history for full changelog.
+          files: |
+            release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
+            release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
+            release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # RELEASE - UNSTABLE/DEV BRANCH
+  # ============================================
+  release-dev:
+    name: Release Dev
+    runs-on: ubuntu-latest
+    needs: [build-android, build-linux]
+    if: github.ref == 'refs/heads/unstable'
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get commit hash
+        id: commit
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release/
+      
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-bundle
+          path: release/
+      
+      - name: Rename artifacts
+        run: |
+          mv release/app-release.apk release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
+          mv release/typesync-linux-x64.tar.gz release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+      
+      - name: Update dev release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: dev
+          name: TypeSync Dev Build
+          body: |
+            ## TypeSync Development Build
+            
+            ⚠️ **This is an unstable development build. Use at your own risk.**
+            
+            Build: ${{ steps.commit.outputs.short_sha }}
+            Date: ${{ github.event.head_commit.timestamp }}
+            
+            ### Downloads
+            - **Android APK**: TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
+            - **Linux**: TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+          files: |
+            release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
+            release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
