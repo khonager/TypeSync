@@ -4,9 +4,10 @@
 /// and real-time sync. Based on the bottom-right design mockup.
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -37,7 +38,7 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   // Quill editor controller
-  late quill.QuillController _quillController;
+  late QuillController _quillController;
   
   // Focus node for the editor
   final FocusNode _focusNode = FocusNode();
@@ -79,23 +80,26 @@ class _EditorScreenState extends State<EditorScreen> {
         
         // Parse content as Delta if it's JSON, otherwise treat as plain text
         try {
-          final delta = _note!.content.isNotEmpty 
-              ? quill.Document.fromJson(
-                  _note!.content.startsWith('[') 
-                      ? (List<dynamic>.from(
-                          (await _parseJson(_note!.content)) as List<dynamic>
-                        ))
-                      : [{'insert': '${_note!.content}\n'}]
-                )
-              : quill.Document();
-          _quillController = quill.QuillController(
-            document: delta,
-            selection: const TextSelection.collapsed(offset: 0),
-          );
+          if (_note!.content.isNotEmpty && _note!.content.startsWith('[')) {
+            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
+            final document = Document.fromJson(jsonData);
+            _quillController = QuillController(
+              document: document,
+              selection: const TextSelection.collapsed(offset: 0),
+            );
+          } else {
+            // Plain text content
+            final document = Document()..insert(0, _note!.content);
+            _quillController = QuillController(
+              document: document,
+              selection: const TextSelection.collapsed(offset: 0),
+            );
+          }
         } catch (e) {
           // If parsing fails, create empty document with content as plain text
-          _quillController = quill.QuillController(
-            document: quill.Document()..insert(0, _note!.content),
+          final document = Document()..insert(0, _note!.content);
+          _quillController = QuillController(
+            document: document,
             selection: const TextSelection.collapsed(offset: 0),
           );
         }
@@ -107,7 +111,7 @@ class _EditorScreenState extends State<EditorScreen> {
     
     // Create new note if none exists
     if (_note == null) {
-      _quillController = quill.QuillController.basic();
+      _quillController = QuillController.basic();
       _titleController.text = 'No name';
       
       final authService = context.read<AuthService>();
@@ -128,11 +132,6 @@ class _EditorScreenState extends State<EditorScreen> {
     
     // Calculate initial stats
     _updateStats();
-  }
-
-  Future<dynamic> _parseJson(String json) async {
-    // Simple JSON parsing - in production use dart:convert
-    return [];
   }
 
   void _onContentChanged() {
@@ -158,8 +157,8 @@ class _EditorScreenState extends State<EditorScreen> {
     
     final notesProvider = context.read<NotesProvider>();
     
-    // Get content as JSON
-    final content = _quillController.document.toDelta().toJson().toString();
+    // Get content as JSON string
+    final content = jsonEncode(_quillController.document.toDelta().toJson());
     
     await notesProvider.updateNoteContent(
       noteId: _note!.id,
@@ -238,55 +237,12 @@ class _EditorScreenState extends State<EditorScreen> {
           Expanded(
             child: Container(
               color: Theme.of(context).scaffoldBackgroundColor,
-              child: quill.QuillEditor(
+              padding: const EdgeInsets.all(16),
+              child: QuillEditor.basic(
                 controller: _quillController,
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-                configurations: quill.QuillEditorConfigurations(
-                  scrollable: true,
-                  autoFocus: true,
-                  expands: true,
-                  padding: const EdgeInsets.all(16),
+                configurations: const QuillEditorConfigurations(
                   placeholder: 'Start typing...',
-                  customStyles: quill.DefaultStyles(
-                    paragraph: quill.DefaultTextBlockStyle(
-                      Theme.of(context).textTheme.bodyLarge!,
-                      const quill.VerticalSpacing(8, 0),
-                      const quill.VerticalSpacing(0, 0),
-                      null,
-                    ),
-                    h1: quill.DefaultTextBlockStyle(
-                      Theme.of(context).textTheme.headlineLarge!,
-                      const quill.VerticalSpacing(16, 0),
-                      const quill.VerticalSpacing(0, 0),
-                      null,
-                    ),
-                    h2: quill.DefaultTextBlockStyle(
-                      Theme.of(context).textTheme.headlineMedium!,
-                      const quill.VerticalSpacing(12, 0),
-                      const quill.VerticalSpacing(0, 0),
-                      null,
-                    ),
-                    h3: quill.DefaultTextBlockStyle(
-                      Theme.of(context).textTheme.headlineSmall!,
-                      const quill.VerticalSpacing(8, 0),
-                      const quill.VerticalSpacing(0, 0),
-                      null,
-                    ),
-                    code: quill.DefaultTextBlockStyle(
-                      TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        color: Theme.of(context).colorScheme.primary,
-                        fontSize: 14,
-                      ),
-                      const quill.VerticalSpacing(8, 0),
-                      const quill.VerticalSpacing(0, 0),
-                      BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
+                  padding: EdgeInsets.zero,
                 ),
               ),
             ),
@@ -390,4 +346,3 @@ class _EditorScreenState extends State<EditorScreen> {
     // TODO: Implement export functionality
   }
 }
-

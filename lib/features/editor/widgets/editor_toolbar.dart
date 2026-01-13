@@ -3,7 +3,7 @@
 /// Bottom toolbar with formatting options matching the design.
 
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:flutter_quill/flutter_quill.dart';
 
 /// Rich text editing toolbar
 /// 
@@ -12,7 +12,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 /// - Quotes
 /// - Hash/headers
 class EditorToolbar extends StatelessWidget {
-  final quill.QuillController controller;
+  final QuillController controller;
   final VoidCallback onInsertPdf;
 
   const EditorToolbar({
@@ -44,9 +44,7 @@ class EditorToolbar extends StatelessWidget {
               icon: Icons.chevron_left,
               onTap: () {
                 // Navigate to previous position or undo
-                if (controller.hasUndo) {
-                  controller.undo();
-                }
+                controller.undo();
               },
             ),
             
@@ -54,9 +52,7 @@ class EditorToolbar extends StatelessWidget {
             _ToolbarButton(
               icon: Icons.chevron_right,
               onTap: () {
-                if (controller.hasRedo) {
-                  controller.redo();
-                }
+                controller.redo();
               },
             ),
             
@@ -65,22 +61,10 @@ class EditorToolbar extends StatelessWidget {
               icon: Icons.format_quote,
               label: '"',
               onTap: () {
-                // Toggle inline code style
+                // Insert quote character
                 final selection = controller.selection;
                 if (selection.isCollapsed) {
                   controller.document.insert(selection.start, '"');
-                } else {
-                  // Wrap selection in quotes
-                  final text = controller.document.getPlainText(
-                    selection.start,
-                    selection.end - selection.start,
-                  );
-                  controller.replaceText(
-                    selection.start,
-                    selection.end - selection.start,
-                    '"$text"',
-                    null,
-                  );
                 }
               },
             ),
@@ -91,7 +75,7 @@ class EditorToolbar extends StatelessWidget {
               label: '""',
               onTap: () {
                 // Toggle block quote
-                controller.formatSelection(quill.Attribute.blockQuote);
+                controller.formatSelection(Attribute.blockQuote);
               },
             ),
             
@@ -120,7 +104,7 @@ class EditorToolbar extends StatelessWidget {
               title: const Text('Normal text'),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.header);
+                controller.formatSelection(Attribute.header);
               },
             ),
             ListTile(
@@ -130,7 +114,7 @@ class EditorToolbar extends StatelessWidget {
               ),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.h1);
+                controller.formatSelection(Attribute.h1);
               },
             ),
             ListTile(
@@ -140,7 +124,7 @@ class EditorToolbar extends StatelessWidget {
               ),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.h2);
+                controller.formatSelection(Attribute.h2);
               },
             ),
             ListTile(
@@ -150,7 +134,7 @@ class EditorToolbar extends StatelessWidget {
               ),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.h3);
+                controller.formatSelection(Attribute.h3);
               },
             ),
             ListTile(
@@ -158,7 +142,7 @@ class EditorToolbar extends StatelessWidget {
               title: const Text('Bullet list'),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.ul);
+                controller.formatSelection(Attribute.ul);
               },
             ),
             ListTile(
@@ -166,7 +150,7 @@ class EditorToolbar extends StatelessWidget {
               title: const Text('Numbered list'),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.ol);
+                controller.formatSelection(Attribute.ol);
               },
             ),
             ListTile(
@@ -174,7 +158,7 @@ class EditorToolbar extends StatelessWidget {
               title: const Text('Code block'),
               onTap: () {
                 Navigator.pop(context);
-                controller.formatSelection(quill.Attribute.codeBlock);
+                controller.formatSelection(Attribute.codeBlock);
               },
             ),
           ],
@@ -216,4 +200,3 @@ class _ToolbarButton extends StatelessWidget {
     );
   }
 }
-
