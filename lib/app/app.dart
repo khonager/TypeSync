@@ -9,8 +9,6 @@ import 'package:provider/provider.dart';
 import '../core/services/theme_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/routes/app_router.dart';
-import '../features/home/screens/home_screen.dart';
-import '../features/auth/screens/login_screen.dart';
 import '../core/services/auth_service.dart';
 
 /// Main app content widget that responds to theme changes
@@ -39,13 +37,13 @@ class TypeSyncAppContent extends StatelessWidget {
       routes: AppRouter.routes,
       
       // Initial route depends on authentication status
-      home: authService.isAuthenticated 
-          ? const HomeScreen() 
-          : const LoginScreen(),
+      initialRoute: authService.isAuthenticated 
+          ? AppRouter.home 
+          : AppRouter.login,
       
-      // Handle unknown routes gracefully
+      // Handle unknown routes gracefully - redirect to home
       onUnknownRoute: (settings) => MaterialPageRoute(
-        builder: (_) => const HomeScreen(),
+        builder: (context) => AppRouter.routes[AppRouter.home]!(context),
       ),
       
       // Global error handling for navigation

@@ -29,9 +29,14 @@ void main() async {
   await Hive.initFlutter();
 
   // Initialize Firebase for cloud sync and authentication
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Wrapped in try-catch to handle hot restart where Firebase is already initialized
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // Firebase already initialized, ignore
+  }
 
   // Set preferred orientations for mobile devices
   await SystemChrome.setPreferredOrientations([
