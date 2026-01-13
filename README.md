@@ -42,7 +42,7 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
 ### Prerequisites
 
 - **Nix** (recommended for development)
-- **Flutter SDK** (3.16.0 or later)
+- **Flutter SDK** (3.22.0 or later)
 - **Firebase CLI** (for deployment)
 
 ### Development Setup with Nix (Recommended)
