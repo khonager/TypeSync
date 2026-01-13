@@ -1,8 +1,12 @@
 #
-# Generated file. Do not edit.
+# Generated file, do not edit.
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  printing
+  screen_retriever_linux
+  url_launcher_linux
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
@@ -21,4 +25,3 @@ foreach(ffi_plugin ${FLUTTER_FFI_PLUGIN_LIST})
   add_subdirectory(flutter/ephemeral/.plugin_symlinks/${ffi_plugin}/linux plugins/${ffi_plugin})
   list(APPEND PLUGIN_BUNDLED_LIBRARIES ${${ffi_plugin}_bundled_libraries})
 endforeach(ffi_plugin)
-

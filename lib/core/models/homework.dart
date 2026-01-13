@@ -3,79 +3,29 @@
 /// Represents a homework task in the todo list.
 
 import 'package:equatable/equatable.dart';
-import 'package:hive/hive.dart';
-
-part 'homework.g.dart';
 
 /// Priority level for homework tasks
-@HiveType(typeId: 5)
 enum HomeworkPriority {
-  @HiveField(0)
   low,
-  
-  @HiveField(1)
   medium,
-  
-  @HiveField(2)
   high,
-  
-  @HiveField(3)
   urgent,
 }
 
 /// Homework task model
-@HiveType(typeId: 4)
 class Homework extends Equatable {
-  /// Unique identifier
-  @HiveField(0)
   final String id;
-  
-  /// Task title
-  @HiveField(1)
   final String title;
-  
-  /// Task description
-  @HiveField(2)
   final String? description;
-  
-  /// Subject/class name
-  @HiveField(3)
   final String? subject;
-  
-  /// Due date
-  @HiveField(4)
   final DateTime? dueDate;
-  
-  /// Priority level
-  @HiveField(5)
   final HomeworkPriority priority;
-  
-  /// Completion status
-  @HiveField(6)
   final bool isCompleted;
-  
-  /// Related note ID (if linked to a note)
-  @HiveField(7)
   final String? noteId;
-  
-  /// User ID
-  @HiveField(8)
   final String userId;
-  
-  /// Creation timestamp
-  @HiveField(9)
   final DateTime createdAt;
-  
-  /// Last update timestamp
-  @HiveField(10)
   final DateTime updatedAt;
-  
-  /// Sync status
-  @HiveField(11)
   final bool isDirty;
-  
-  /// Deleted status
-  @HiveField(12)
   final bool isDeleted;
 
   const Homework({
@@ -94,39 +44,9 @@ class Homework extends Equatable {
     this.isDeleted = false,
   });
 
-  factory Homework.create({
-    required String id,
-    required String userId,
-    required String title,
-    String? description,
-    String? subject,
-    DateTime? dueDate,
-    HomeworkPriority priority = HomeworkPriority.medium,
-  }) {
-    final now = DateTime.now();
-    return Homework(
-      id: id,
-      title: title,
-      description: description,
-      subject: subject,
-      dueDate: dueDate,
-      priority: priority,
-      userId: userId,
-      createdAt: now,
-      updatedAt: now,
-    );
-  }
-
-  /// Checks if homework is overdue
   bool get isOverdue {
     if (dueDate == null || isCompleted) return false;
     return DateTime.now().isAfter(dueDate!);
-  }
-
-  /// Gets days until due date
-  int? get daysUntilDue {
-    if (dueDate == null) return null;
-    return dueDate!.difference(DateTime.now()).inDays;
   }
 
   Homework copyWith({
@@ -200,4 +120,3 @@ class Homework extends Equatable {
     isCompleted, noteId, userId, createdAt, updatedAt, isDirty, isDeleted,
   ];
 }
-

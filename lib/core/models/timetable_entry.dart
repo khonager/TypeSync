@@ -3,32 +3,15 @@
 /// Represents a recurring class/subject in the weekly timetable.
 
 import 'package:equatable/equatable.dart';
-import 'package:hive/hive.dart';
-
-part 'timetable_entry.g.dart';
 
 /// Day of the week
-@HiveType(typeId: 9)
 enum Weekday {
-  @HiveField(0)
   monday,
-  
-  @HiveField(1)
   tuesday,
-  
-  @HiveField(2)
   wednesday,
-  
-  @HiveField(3)
   thursday,
-  
-  @HiveField(4)
   friday,
-  
-  @HiveField(5)
   saturday,
-  
-  @HiveField(6)
   sunday,
 }
 
@@ -60,56 +43,19 @@ extension WeekdayExtension on Weekday {
 }
 
 /// Timetable entry for weekly schedule
-@HiveType(typeId: 8)
 class TimetableEntry extends Equatable {
-  /// Unique identifier
-  @HiveField(0)
   final String id;
-  
-  /// Subject/class name
-  @HiveField(1)
   final String subject;
-  
-  /// Teacher name
-  @HiveField(2)
   final String? teacher;
-  
-  /// Room/location
-  @HiveField(3)
   final String? room;
-  
-  /// Day of the week
-  @HiveField(4)
   final Weekday weekday;
-  
-  /// Start time (hours and minutes)
-  @HiveField(5)
   final int startHour;
-  
-  @HiveField(6)
   final int startMinute;
-  
-  /// End time (hours and minutes)
-  @HiveField(7)
   final int endHour;
-  
-  @HiveField(8)
   final int endMinute;
-  
-  /// Color as hex string
-  @HiveField(9)
   final String color;
-  
-  /// User ID
-  @HiveField(10)
   final String userId;
-  
-  /// Sync status
-  @HiveField(11)
   final bool isDirty;
-  
-  /// Deleted status
-  @HiveField(12)
   final bool isDeleted;
 
   const TimetableEntry({
@@ -128,61 +74,11 @@ class TimetableEntry extends Equatable {
     this.isDeleted = false,
   });
 
-  factory TimetableEntry.create({
-    required String id,
-    required String userId,
-    required String subject,
-    required Weekday weekday,
-    required int startHour,
-    required int startMinute,
-    required int endHour,
-    required int endMinute,
-    String? teacher,
-    String? room,
-    String color = '#64D2FF',
-  }) {
-    return TimetableEntry(
-      id: id,
-      subject: subject,
-      teacher: teacher,
-      room: room,
-      weekday: weekday,
-      startHour: startHour,
-      startMinute: startMinute,
-      endHour: endHour,
-      endMinute: endMinute,
-      color: color,
-      userId: userId,
-    );
-  }
-
-  /// Gets formatted start time string (e.g., "09:00")
   String get startTimeFormatted => 
       '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
   
-  /// Gets formatted end time string
   String get endTimeFormatted => 
       '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}';
-  
-  /// Gets duration in minutes
-  int get durationMinutes {
-    final startTotal = startHour * 60 + startMinute;
-    final endTotal = endHour * 60 + endMinute;
-    return endTotal - startTotal;
-  }
-
-  /// Checks if this entry is currently happening
-  bool get isNow {
-    final now = DateTime.now();
-    final currentWeekday = Weekday.values[now.weekday - 1];
-    if (currentWeekday != weekday) return false;
-    
-    final currentMinutes = now.hour * 60 + now.minute;
-    final startMinutes = startHour * 60 + startMinute;
-    final endMinutes = endHour * 60 + endMinute;
-    
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  }
 
   TimetableEntry copyWith({
     String? id,
@@ -253,4 +149,3 @@ class TimetableEntry extends Equatable {
     endHour, endMinute, color, userId, isDirty, isDeleted,
   ];
 }
-

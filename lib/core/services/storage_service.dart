@@ -297,3 +297,5 @@ class SubscriptionInfo {
       : '€${priceEuros.toStringAsFixed(2)}/month';
 }
 
+
+

@@ -238,12 +238,10 @@ class _EditorScreenState extends State<EditorScreen> {
             child: Container(
               color: Theme.of(context).scaffoldBackgroundColor,
               padding: const EdgeInsets.all(16),
-              child: QuillEditor.basic(
+              child: QuillEditor(
                 controller: _quillController,
-                configurations: const QuillEditorConfigurations(
-                  placeholder: 'Start typing...',
-                  padding: EdgeInsets.zero,
-                ),
+                focusNode: _focusNode,
+                scrollController: _scrollController,
               ),
             ),
           ),

@@ -341,3 +341,5 @@ class FolderAdapter extends TypeAdapter<Folder> {
   }
 }
 
+
+

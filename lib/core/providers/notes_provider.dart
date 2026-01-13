@@ -401,3 +401,5 @@ class NoteTypeAdapter extends TypeAdapter<NoteType> {
   }
 }
 
+
+

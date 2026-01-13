@@ -102,3 +102,5 @@ class _SyncingAnimationState extends State<_SyncingAnimation>
   }
 }
 
+
+

@@ -4,95 +4,67 @@
 /// metadata, and sync information for each note.
 
 import 'package:equatable/equatable.dart';
-import 'package:hive/hive.dart';
 
-part 'note.g.dart';
-
-/// Hive type adapter for NoteType enum
-@HiveType(typeId: 1)
+/// Note type enum
 enum NoteType {
-  @HiveField(0)
   text,
-  
-  @HiveField(1)
   markdown,
-  
-  @HiveField(2)
   pdf,
 }
 
 /// Note model representing a single document
 /// 
 /// Stores the note content, metadata, and synchronization state.
-/// Uses Hive for local persistence and Equatable for value comparison.
-@HiveType(typeId: 0)
 class Note extends Equatable {
   /// Unique identifier for the note
-  @HiveField(0)
   final String id;
   
   /// Display title of the note
-  @HiveField(1)
   final String title;
   
   /// Raw content of the note (JSON for rich text, markdown string, etc.)
-  @HiveField(2)
   final String content;
   
   /// Type of note (text, markdown, pdf)
-  @HiveField(3)
   final NoteType type;
   
   /// Parent folder ID (null if in root)
-  @HiveField(4)
   final String? folderId;
   
   /// List of tag IDs associated with this note
-  @HiveField(5)
   final List<String> tags;
   
   /// Background color as hex string (e.g., '#1C1C1E')
-  @HiveField(6)
   final String? backgroundColor;
   
   /// Creation timestamp
-  @HiveField(7)
   final DateTime createdAt;
   
   /// Last modification timestamp
-  @HiveField(8)
   final DateTime updatedAt;
   
   /// Last sync timestamp with cloud
-  @HiveField(9)
   final DateTime? syncedAt;
   
   /// Whether note has unsynced changes
-  @HiveField(10)
   final bool isDirty;
   
   /// Whether note is marked as favorite
-  @HiveField(11)
   final bool isFavorite;
   
   /// Whether note is in trash
-  @HiveField(12)
   final bool isDeleted;
   
   /// Character count for the note content
-  @HiveField(13)
   final int characterCount;
   
   /// Line count for the note content
-  @HiveField(14)
   final int lineCount;
   
   /// User ID who owns this note
-  @HiveField(15)
   final String userId;
   
   /// PDF file path if type is pdf
-  @HiveField(16)
   final String? pdfPath;
 
   const Note({

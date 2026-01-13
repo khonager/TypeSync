@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/models/folder.dart';
+import '../../../core/models/note.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
@@ -76,10 +78,10 @@ class _HomeScreenState extends State<HomeScreen> {
         : null;
     
     // Get folders and notes for current view
-    final folders = _currentFolderId == null
+    final folders = (_currentFolderId == null
         ? foldersProvider.rootFolders
-        : foldersProvider.getSubfolders(_currentFolderId!);
-    final notes = notesProvider.getNotesInFolder(_currentFolderId);
+        : foldersProvider.getSubfolders(_currentFolderId!)).cast<Folder>();
+    final notes = notesProvider.getNotesInFolder(_currentFolderId).cast<Note>();
 
     return Scaffold(
       // Custom app bar matching the design
@@ -129,8 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBody(
-    List folders,
-    List notes,
+    List<Folder> folders,
+    List<Note> notes,
     FoldersProvider foldersProvider,
     NotesProvider notesProvider,
   ) {

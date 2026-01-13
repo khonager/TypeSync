@@ -3,35 +3,14 @@
 /// Represents a tag that can be attached to notes for organization.
 
 import 'package:equatable/equatable.dart';
-import 'package:hive/hive.dart';
-
-part 'tag.g.dart';
 
 /// Tag model for categorizing notes
-@HiveType(typeId: 3)
 class Tag extends Equatable {
-  /// Unique identifier
-  @HiveField(0)
   final String id;
-  
-  /// Tag name
-  @HiveField(1)
   final String name;
-  
-  /// Color as hex string
-  @HiveField(2)
   final String color;
-  
-  /// User ID
-  @HiveField(3)
   final String userId;
-  
-  /// Creation timestamp
-  @HiveField(4)
   final DateTime createdAt;
-  
-  /// Sync status
-  @HiveField(5)
   final bool isDirty;
 
   const Tag({
@@ -96,4 +75,3 @@ class Tag extends Equatable {
   @override
   List<Object?> get props => [id, name, color, userId, createdAt, isDirty];
 }
-

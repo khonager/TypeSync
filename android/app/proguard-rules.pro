@@ -15,3 +15,5 @@
 # Keep Hive models
 -keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
 
+
+

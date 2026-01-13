@@ -16,102 +16,109 @@
         pkgs = import nixpkgs {
           inherit system;
           config = {
-            allowUnfree = true;
             android_sdk.accept_license = true;
+            allowUnfree = true;
           };
         };
 
-        # Android SDK configuration
-        androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
-          build-tools-34-0-0
-          cmdline-tools-latest
-          emulator
-          platform-tools
-          platforms-android-34
-          sources-android-34
-          ndk-26-1-10909125
-        ]);
+        isLinux = pkgs.stdenv.isLinux;
+        isDarwin = pkgs.stdenv.isDarwin;
 
-        # Build inputs for Flutter development
-        buildInputs = with pkgs; [
-          # Flutter and Dart
-          flutter
-          dart
+        # Android SDK configuration - include cmake and all needed components
+        androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs;
+          [
+            cmdline-tools-latest
+            build-tools-36-0-0
+            build-tools-35-0-0
+            build-tools-34-0-0
+            platform-tools
 
-          # Android development
-          androidSdk
-          jdk17
+            # Platforms
+            platforms-android-36
+            platforms-android-35
+            platforms-android-34
+            platforms-android-33
+            platforms-android-31
 
-          # Linux desktop development dependencies
-          gtk3
-          glib
-          pcre2
-          libselinux
-          libsepol
-          util-linux
-          libepoxy
-          xorg.libX11
-          xorg.libXcursor
-          xorg.libXi
-          xorg.libXrandr
-          libGL
-          pkg-config
-          cmake
-          ninja
-          clang
+            # Sources
+            sources-android-34
 
-          # Additional tools
-          git
-          curl
-          unzip
-          which
-          nodejs_22  # For npm/firebase-tools if needed
-        ];
+            # Native tools - include cmake!
+            ndk-28-2-13676358
+            cmake-3-22-1
+          ] ++ pkgs.lib.optionals isLinux [
+            emulator
+          ]
+        );
 
-        # Native build inputs
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-        ];
+        # Linux-specific: Use FHS environment for binary compatibility
+        linuxDevShell = pkgs.buildFHSEnv {
+          name = "typesync-dev-env";
+          targetPkgs = pkgs: (with pkgs; [
+            androidSdk
+            flutter
+            dart
+            jdk17
 
-        # Library path for runtime
-        libPath = pkgs.lib.makeLibraryPath (with pkgs; [
-          libGL
-          xorg.libX11
-          xorg.libXcursor
-          xorg.libXi
-          xorg.libXrandr
-          gtk3
-          glib
-          libepoxy
-        ]);
+            # Common libraries needed by unpatched binaries (like aapt2)
+            glibc
+            zlib
+            ncurses5
+            stdenv.cc.cc.lib
+            openssl
+            expat
 
-      in
-      {
-        devShells.default = pkgs.mkShell {
-          inherit buildInputs nativeBuildInputs;
+            # Linux desktop development dependencies
+            gtk3
+            glib
+            pcre2
+            libselinux
+            libsepol
+            util-linux
+            libepoxy
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXi
+            xorg.libXrandr
+            libGL
+            pkg-config
+            cmake
+            ninja
+            clang
 
-          # Environment variables for Flutter development
-          shellHook = ''
-            # Set up Android SDK
+            # Utilities
+            git
+            curl
+            unzip
+            which
+            google-chrome
+            mesa-demos
+            nodejs_22
+            github-cli
+            nspr
+            nss
+          ]);
+
+          runScript = "bash";
+
+          profile = ''
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
-            export ANDROID_SDK_ROOT="$ANDROID_HOME"
-            export PATH="$ANDROID_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
-
-            # Set Java home
+            export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
-
-            # Set up library path for Linux desktop builds
-            export LD_LIBRARY_PATH="${libPath}:$LD_LIBRARY_PATH"
-
-            # Gradle configuration
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.vulkan-loader pkgs.libGL pkgs.xorg.libX11 pkgs.xorg.libXcursor pkgs.xorg.libXi pkgs.xorg.libXrandr pkgs.gtk3 pkgs.glib pkgs.libepoxy ]}"
+            export CHROME_EXECUTABLE="${pkgs.google-chrome}/bin/google-chrome-stable"
             export GRADLE_USER_HOME="$HOME/.gradle"
 
-            # Print welcome message
+            # Update android/local.properties to use the Nix SDK
+            if [ -d "android" ]; then
+              echo "sdk.dir=${androidSdk}/share/android-sdk" > android/local.properties
+              echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
+            fi
+
             echo "╔═══════════════════════════════════════════════════════════╗"
             echo "║           TypeSync Development Environment                ║"
             echo "╠═══════════════════════════════════════════════════════════╣"
-            echo "║  Flutter: $(flutter --version | head -1 | cut -d' ' -f2)                                       ║"
-            echo "║  Dart: $(dart --version 2>&1 | cut -d' ' -f4)                                          ║"
+            echo "║  Flutter: $(flutter --version 2>/dev/null | head -1 | cut -d' ' -f2 || echo 'loading...')                                       ║"
             echo "║  Android SDK: $ANDROID_HOME                               ║"
             echo "╠═══════════════════════════════════════════════════════════╣"
             echo "║  Commands:                                                ║"
@@ -120,16 +127,54 @@
             echo "║    flutter run -d android  - Run on Android              ║"
             echo "║    flutter build apk       - Build Android APK           ║"
             echo "║    flutter build linux     - Build Linux app             ║"
-            echo "║                                                           ║"
-            echo "║  For Firebase CLI: npm install -g firebase-tools         ║"
             echo "╚═══════════════════════════════════════════════════════════╝"
-            
-            # Run flutter doctor to check setup
-            echo ""
-            echo "Running flutter doctor..."
-            flutter doctor
           '';
         };
+
+        # macOS-specific: Standard devShell (no FHS needed, binaries are native)
+        darwinDevShell = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            androidSdk
+            flutter
+            dart
+            jdk17
+            cocoapods  # Required for iOS development on macOS
+
+            # Additional tools
+            git
+            curl
+            unzip
+            which
+            nodejs_22
+          ];
+
+          shellHook = ''
+            export ANDROID_HOME="${androidSdk}/share/android-sdk"
+            export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
+            export JAVA_HOME="${pkgs.jdk17}"
+
+            # macOS-specific: Use system Chrome or installed browser
+            if [ -e "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+              export CHROME_EXECUTABLE="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            elif [ -e "/Applications/Chromium.app/Contents/MacOS/Chromium" ]; then
+              export CHROME_EXECUTABLE="/Applications/Chromium.app/Contents/MacOS/Chromium"
+            fi
+
+            # Update android/local.properties
+            if [ -d "android" ]; then
+              echo "sdk.dir=${androidSdk}/share/android-sdk" > android/local.properties
+              echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
+            fi
+
+            echo "TypeSync development environment ready!"
+            echo "  ANDROID_HOME: $ANDROID_HOME"
+            echo "  JAVA_HOME: $JAVA_HOME"
+          '';
+        };
+
+      in
+      {
+        devShells.default = if isLinux then linuxDevShell.env else darwinDevShell;
 
         # Package for building the app
         packages.default = pkgs.flutter.buildFlutterApplication {
