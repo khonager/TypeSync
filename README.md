@@ -68,7 +68,7 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    - Dart SDK
    - Android SDK with required components
    - Linux desktop build dependencies
-   - Firebase CLI
+   - Node.js (for firebase-tools)
 
 4. **Install dependencies**:
    ```bash
@@ -106,7 +106,12 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
 
 ### Firebase Setup
 
-1. **Create a Firebase project**:
+1. **Install Firebase CLI** (if not already installed):
+   ```bash
+   npm install -g firebase-tools
+   ```
+
+2. **Create a Firebase project**:
    - Go to [Firebase Console](https://console.firebase.google.com)
    - Create a new project
    - Enable Authentication (Email/Password)

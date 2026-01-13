@@ -65,10 +65,7 @@
           curl
           unzip
           which
-          
-          # Firebase CLI (for deployment)
-          firebase-tools
-          nodePackages.npm
+          nodejs_22  # For npm/firebase-tools if needed
         ];
 
         # Native build inputs
@@ -106,9 +103,6 @@
             # Set up library path for Linux desktop builds
             export LD_LIBRARY_PATH="${libPath}:$LD_LIBRARY_PATH"
 
-            # Flutter configuration
-            export CHROME_EXECUTABLE="${pkgs.chromium}/bin/chromium"
-
             # Gradle configuration
             export GRADLE_USER_HOME="$HOME/.gradle"
 
@@ -121,11 +115,13 @@
             echo "║  Android SDK: $ANDROID_HOME                               ║"
             echo "╠═══════════════════════════════════════════════════════════╣"
             echo "║  Commands:                                                ║"
-            echo "║    flutter pub get    - Install dependencies             ║"
+            echo "║    flutter pub get         - Install dependencies        ║"
             echo "║    flutter run -d linux    - Run on Linux                ║"
             echo "║    flutter run -d android  - Run on Android              ║"
             echo "║    flutter build apk       - Build Android APK           ║"
             echo "║    flutter build linux     - Build Linux app             ║"
+            echo "║                                                           ║"
+            echo "║  For Firebase CLI: npm install -g firebase-tools         ║"
             echo "╚═══════════════════════════════════════════════════════════╝"
             
             # Run flutter doctor to check setup
