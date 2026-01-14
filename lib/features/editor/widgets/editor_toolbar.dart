@@ -53,8 +53,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     return Positioned(
-      left: _position.dx.clamp(0.0, screenSize.width - 200),
-      bottom: _position.dy.clamp(0.0, screenSize.height - 300),
+      left: _position.dx.clamp(0.0, screenSize.width - 250),
+      bottom: _position.dy.clamp(16.0, screenSize.height - 400),
       child: GestureDetector(
         onPanUpdate: (details) {
           setState(() {

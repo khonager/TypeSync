@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -399,12 +400,68 @@ class _EditorScreenState extends State<EditorScreen> {
       try {
         final filePath = file.path;
         final fileName = file.name;
-        // TODO: Handle file import into the note (PDF, images, etc.)
-        // For now, show a message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('File dropped: $fileName')),
-          );
+        final fileExtension = fileName.split('.').last.toLowerCase();
+        
+        // Read file content
+        final fileData = File(filePath);
+        if (!await fileData.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('File not found: $fileName')),
+            );
+          }
+          continue;
+        }
+        
+        // Handle different file types
+        if (fileExtension == 'txt' || fileExtension == 'md' || fileExtension == 'markdown') {
+          // Text files - insert content into current note
+          final content = await fileData.readAsString();
+          final selection = _quillController.selection;
+          final offset = selection.isCollapsed ? selection.start : selection.start;
+          
+          // Insert file content
+          _quillController.document.insert(offset, '\n\n--- Imported from $fileName ---\n\n');
+          _quillController.document.insert(offset + 35 + fileName.length, content);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Imported $fileName into note')),
+            );
+          }
+        } else if (fileExtension == 'pdf') {
+          // PDF files - insert reference
+          final selection = _quillController.selection;
+          final offset = selection.isCollapsed ? selection.start : selection.start;
+          _quillController.document.insert(offset, '\n\n[PDF: $fileName]\n\n');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('PDF reference added: $fileName')),
+            );
+          }
+        } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
+          // Image files - insert reference
+          final selection = _quillController.selection;
+          final offset = selection.isCollapsed ? selection.start : selection.start;
+          _quillController.document.insert(offset, '\n\n[Image: $fileName]\n\n');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Image reference added: $fileName')),
+            );
+          }
+        } else {
+          // Other files - insert reference
+          final selection = _quillController.selection;
+          final offset = selection.isCollapsed ? selection.start : selection.start;
+          _quillController.document.insert(offset, '\n\n[File: $fileName]\n\n');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('File reference added: $fileName')),
+            );
+          }
         }
       } catch (e) {
         if (mounted) {

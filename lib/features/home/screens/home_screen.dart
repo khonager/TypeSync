@@ -3,6 +3,7 @@
 /// Main screen showing folders and files in a grid view.
 /// Based on the design mockup with dark theme.
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
