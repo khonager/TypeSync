@@ -50,6 +50,7 @@ class FolderGridItem extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final Function(String noteId, String folderId)? onNoteDropped;
+  final Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGridItem({
     super.key,
@@ -57,6 +58,7 @@ class FolderGridItem extends StatefulWidget {
     required this.onTap,
     required this.onLongPress,
     this.onNoteDropped,
+    this.onFolderDropped,
   });
 
   @override
@@ -73,80 +75,113 @@ class _FolderGridItemState extends State<FolderGridItem> {
         ? Color(int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.folderDefault;
 
-    return DragTarget<String>(
-      onWillAccept: (data) => true,
-      onAccept: (noteId) {
-        widget.onNoteDropped?.call(noteId, widget.folder.id);
-        setState(() {
-          _isDragOver = false;
-        });
-      },
-      onLeave: (data) {
-        setState(() {
-          _isDragOver = false;
-        });
-      },
-      onMove: (details) {
-        setState(() {
-          _isDragOver = true;
-        });
-      },
-      builder: (context, candidateData, rejectedData) {
-        return GestureDetector(
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Folder icon container
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _isDragOver 
-                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
-                        : bgColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: _isDragOver
-                        ? Border.all(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 2,
-                          )
-                        : null,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      _isDragOver ? Icons.folder_open : Icons.folder,
-                      size: 48,
-                      color: Colors.white54,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Folder name
-              Text(
-                widget.folder.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-              // Subtitle if present
-              if (widget.folder.subtitle != null && widget.folder.subtitle!.isNotEmpty)
-                Text(
-                  widget.folder.subtitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                    fontSize: 10,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-            ],
+    return Draggable<String>(
+      data: 'folder:${widget.folder.id}',
+      feedback: Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
           ),
-        );
-      },
+          child: const Icon(Icons.folder, size: 48, color: Colors.white54),
+        ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: _buildFolderContent(bgColor),
+      ),
+      child: DragTarget<String>(
+        onWillAccept: (data) => data != null && data != 'folder:${widget.folder.id}',
+        onAccept: (data) {
+          if (data.startsWith('note:')) {
+            final noteId = data.substring(5);
+            widget.onNoteDropped?.call(noteId, widget.folder.id);
+          } else if (data.startsWith('folder:')) {
+            final folderId = data.substring(7);
+            widget.onFolderDropped?.call(folderId, widget.folder.id);
+          }
+          setState(() {
+            _isDragOver = false;
+          });
+        },
+        onLeave: (data) {
+          setState(() {
+            _isDragOver = false;
+          });
+        },
+        onMove: (details) {
+          setState(() {
+            _isDragOver = true;
+          });
+        },
+        builder: (context, candidateData, rejectedData) {
+          return _buildFolderContent(
+            _isDragOver 
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                : bgColor,
+            showBorder: _isDragOver,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFolderContent(Color bgColor, {bool showBorder = false}) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Folder icon container
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(12),
+                border: showBorder
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      )
+                    : null,
+              ),
+              child: Center(
+                child: Icon(
+                  showBorder ? Icons.folder_open : Icons.folder,
+                  size: 48,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Folder name
+          Text(
+            widget.folder.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+          // Subtitle if present
+          if (widget.folder.subtitle != null && widget.folder.subtitle!.isNotEmpty)
+            Text(
+              widget.folder.subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey,
+                fontSize: 10,
+              ),
+              textAlign: TextAlign.center,
+            ),
+        ],
+      ),
     );
   }
 }

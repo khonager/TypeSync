@@ -219,6 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onFolderTap: _navigateToFolder,
                       onFolderLongPress: _showFolderOptions,
                       onNoteDropped: _handleNoteDroppedOnFolder,
+                      onFolderDropped: _handleFolderDroppedOnFolder,
                     )
                   : FolderList(
                       folders: folders,
@@ -673,6 +674,14 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('Set background color'),
+              onTap: () {
+                Navigator.pop(context);
+                _showNoteColorPicker(noteId);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.drive_file_move_outline),
               title: const Text('Move to folder'),
               onTap: () {
@@ -694,6 +703,89 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showNoteColorPicker(String noteId) {
+    final note = context.read<NotesProvider>().getNoteById(noteId);
+    final currentColor = note?.backgroundColor;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Background Color'),
+        content: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ColorOption(
+              color: Colors.transparent,
+              onTap: () => _setNoteBackgroundColor(noteId, null),
+              isSelected: currentColor == null,
+              label: 'None',
+            ),
+            _ColorOption(
+              color: Colors.red,
+              onTap: () => _setNoteBackgroundColor(noteId, '#FF0000'),
+              isSelected: currentColor == '#FF0000',
+            ),
+            _ColorOption(
+              color: Colors.blue,
+              onTap: () => _setNoteBackgroundColor(noteId, '#0000FF'),
+              isSelected: currentColor == '#0000FF',
+            ),
+            _ColorOption(
+              color: Colors.green,
+              onTap: () => _setNoteBackgroundColor(noteId, '#00FF00'),
+              isSelected: currentColor == '#00FF00',
+            ),
+            _ColorOption(
+              color: Colors.yellow,
+              onTap: () => _setNoteBackgroundColor(noteId, '#FFFF00'),
+              isSelected: currentColor == '#FFFF00',
+            ),
+            _ColorOption(
+              color: Colors.orange,
+              onTap: () => _setNoteBackgroundColor(noteId, '#FFA500'),
+              isSelected: currentColor == '#FFA500',
+            ),
+            _ColorOption(
+              color: Colors.purple,
+              onTap: () => _setNoteBackgroundColor(noteId, '#800080'),
+              isSelected: currentColor == '#800080',
+            ),
+            _ColorOption(
+              color: Colors.pink,
+              onTap: () => _setNoteBackgroundColor(noteId, '#FFC0CB'),
+              isSelected: currentColor == '#FFC0CB',
+            ),
+            _ColorOption(
+              color: Colors.cyan,
+              onTap: () => _setNoteBackgroundColor(noteId, '#00FFFF'),
+              isSelected: currentColor == '#00FFFF',
+            ),
+            _ColorOption(
+              color: Colors.lime,
+              onTap: () => _setNoteBackgroundColor(noteId, '#00FF00'),
+              isSelected: currentColor == '#00FF00',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setNoteBackgroundColor(String noteId, String? color) {
+    Navigator.pop(context);
+    context.read<NotesProvider>().setBackgroundColor(noteId, color);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(color == null 
+              ? 'Background color removed' 
+              : 'Background color set'),
+        ),
+      );
+    }
+  }
+
   void _handleNoteDroppedOnFolder(String noteId, String folderId) {
     context.read<NotesProvider>().moveToFolder(noteId, folderId);
     if (mounted) {
@@ -701,6 +793,75 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('Note moved to folder')),
       );
     }
+  }
+
+  void _handleFolderDroppedOnFolder(String folderId, String? newParentId) {
+    context.read<FoldersProvider>().moveFolder(folderId, newParentId);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newParentId == null 
+              ? 'Folder moved to root' 
+              : 'Folder moved'),
+        ),
+      );
+    }
+  }
+}
+
+/// Color option widget for note background color picker
+class _ColorOption extends StatelessWidget {
+  final Color color;
+  final VoidCallback onTap;
+  final bool isSelected;
+  final String? label;
+
+  const _ColorOption({
+    required this.color,
+    required this.onTap,
+    this.isSelected = false,
+    this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+            child: color == Colors.transparent
+                ? const Icon(Icons.clear, size: 20)
+                : null,
+          ),
+          if (label != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              label!,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
