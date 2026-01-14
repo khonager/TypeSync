@@ -14,9 +14,20 @@ import '../models/user.dart';
 /// Provides methods for sign in, sign up, sign out, and
 /// password recovery. Maintains current user state.
 class AuthService extends ChangeNotifier {
-  // Firebase Auth instance
-  final firebase.FirebaseAuth _auth = firebase.FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Firebase Auth instance (lazy initialization)
+  firebase.FirebaseAuth? _auth;
+  FirebaseFirestore? _firestore;
+  
+  // Lazy getters for Firebase instances
+  firebase.FirebaseAuth get _firebaseAuth {
+    _auth ??= firebase.FirebaseAuth.instance;
+    return _auth!;
+  }
+  
+  FirebaseFirestore get _firebaseFirestore {
+    _firestore ??= FirebaseFirestore.instance;
+    return _firestore!;
+  }
   
   // Current user data
   User? _currentUser;
@@ -48,15 +59,20 @@ class AuthService extends ChangeNotifier {
   bool get hasError => _hasError;
   
   /// Firebase user ID (for sync operations)
-  String? get userId => _auth.currentUser?.uid;
+  String? get userId => _auth?.currentUser?.uid;
 
   // ===========================================
   // CONSTRUCTOR
   // ===========================================
   
   AuthService() {
-    // Listen to auth state changes
-    _auth.authStateChanges().listen(_onAuthStateChanged);
+    // Only listen to auth state changes if Firebase is initialized
+    try {
+      _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+    } catch (e) {
+      // Firebase not initialized (e.g., on Linux without proper config)
+      debugPrint('Firebase Auth not available: $e');
+    }
   }
 
   // ===========================================
@@ -76,7 +92,7 @@ class AuthService extends ChangeNotifier {
     
     try {
       // Attempt Firebase sign in
-      final credential = await _auth.signInWithEmailAndPassword(
+      final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
@@ -113,7 +129,7 @@ class AuthService extends ChangeNotifier {
     
     try {
       // Create Firebase Auth account
-      final credential = await _auth.createUserWithEmailAndPassword(
+      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
@@ -134,7 +150,7 @@ class AuthService extends ChangeNotifier {
           emailVerified: credential.user!.emailVerified,
         );
         
-        await _firestore
+        await _firebaseFirestore
             .collection('users')
             .doc(credential.user!.uid)
             .set(user.toJson());
@@ -164,7 +180,7 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     
     try {
-      await _auth.signOut();
+      await _firebaseAuth.signOut();
       _currentUser = null;
       notifyListeners();
     } catch (e) {
@@ -180,7 +196,7 @@ class AuthService extends ChangeNotifier {
     _clearError();
     
     try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
+      await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
       _setLoading(false);
       return true;
     } on firebase.FirebaseAuthException catch (e) {
@@ -197,7 +213,7 @@ class AuthService extends ChangeNotifier {
   /// Resend email verification
   Future<bool> resendVerificationEmail() async {
     try {
-      await _auth.currentUser?.sendEmailVerification();
+      await _firebaseAuth.currentUser?.sendEmailVerification();
       return true;
     } catch (e) {
       _setError('Failed to send verification email.');
@@ -218,10 +234,10 @@ class AuthService extends ChangeNotifier {
     try {
       // Update Firebase Auth profile
       if (displayName != null) {
-        await _auth.currentUser?.updateDisplayName(displayName);
+        await _firebaseAuth.currentUser?.updateDisplayName(displayName);
       }
       if (photoUrl != null) {
-        await _auth.currentUser?.updatePhotoURL(photoUrl);
+        await _firebaseAuth.currentUser?.updatePhotoURL(photoUrl);
       }
       
       // Update Firestore document
@@ -229,7 +245,7 @@ class AuthService extends ChangeNotifier {
       if (displayName != null) updates['displayName'] = displayName;
       if (photoUrl != null) updates['photoUrl'] = photoUrl;
       
-      await _firestore
+      await _firebaseFirestore
           .collection('users')
           .doc(_currentUser!.id)
           .update(updates);
@@ -267,18 +283,18 @@ class AuthService extends ChangeNotifier {
   /// Load user data from Firestore
   Future<void> _loadUserData(String uid) async {
     try {
-      final doc = await _firestore.collection('users').doc(uid).get();
+      final doc = await _firebaseFirestore.collection('users').doc(uid).get();
       
       if (doc.exists) {
         _currentUser = User.fromJson(doc.data()!);
         
         // Update last sign in
-        await _firestore.collection('users').doc(uid).update({
+        await _firebaseFirestore.collection('users').doc(uid).update({
           'lastSignIn': DateTime.now().toIso8601String(),
         });
       } else {
         // Create user document if it doesn't exist (e.g., after auth migration)
-        final firebaseUser = _auth.currentUser!;
+        final firebaseUser = _firebaseAuth.currentUser!;
         final user = User(
           id: uid,
           email: firebaseUser.email!,
@@ -289,7 +305,7 @@ class AuthService extends ChangeNotifier {
           emailVerified: firebaseUser.emailVerified,
         );
         
-        await _firestore.collection('users').doc(uid).set(user.toJson());
+        await _firebaseFirestore.collection('users').doc(uid).set(user.toJson());
         _currentUser = user;
       }
       

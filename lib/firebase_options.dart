@@ -51,54 +51,57 @@ class DefaultFirebaseOptions {
   // 5. Run: flutterfire configure (recommended)
   
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:web:default',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    authDomain: 'typesynced.firebaseapp.com',
+    storageBucket: 'typesynced.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: 'YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:android:5c90b9333e07c88ebd3509',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    storageBucket: 'typesynced.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:ios:default',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    storageBucket: 'typesynced.firebasestorage.app',
     iosBundleId: 'com.typesync.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_MACOS_API_KEY',
-    appId: 'YOUR_MACOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:macos:default',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    storageBucket: 'typesynced.firebasestorage.app',
     iosBundleId: 'com.typesync.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'YOUR_WINDOWS_API_KEY',
-    appId: 'YOUR_WINDOWS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:windows:default',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    storageBucket: 'typesynced.firebasestorage.app',
   );
 
+  // Linux uses web configuration since Linux app isn't registered in Firebase
+  // Desktop platforms can typically use web app configuration
   static const FirebaseOptions linux = FirebaseOptions(
-    apiKey: 'YOUR_LINUX_API_KEY',
-    appId: 'YOUR_LINUX_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
+    appId: '1:461465199276:web:default',
+    messagingSenderId: '461465199276',
+    projectId: 'typesynced',
+    authDomain: 'typesynced.firebaseapp.com',
+    storageBucket: 'typesynced.firebasestorage.app',
   );
 }
 

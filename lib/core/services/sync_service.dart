@@ -26,7 +26,18 @@ enum SyncStatus {
 /// Implements an offline-first approach where changes are saved
 /// locally first, then synced to Firebase when online.
 class SyncService extends ChangeNotifier {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Lazy Firebase Firestore instance
+  FirebaseFirestore? _firestore;
+  FirebaseFirestore get _firebaseFirestore {
+    try {
+      _firestore ??= FirebaseFirestore.instance;
+      return _firestore!;
+    } catch (e) {
+      debugPrint('Firebase Firestore not available: $e');
+      rethrow;
+    }
+  }
+  
   final Connectivity _connectivity = Connectivity();
   
   // Sync state
@@ -101,43 +112,49 @@ class SyncService extends ChangeNotifier {
   void startListening(String userId) {
     _stopListening();
     
-    // Listen to notes collection
-    _notesSubscription = _firestore
-        .collection('notes')
-        .where('userId', isEqualTo: userId)
-        .where('isDeleted', isEqualTo: false)
-        .snapshots()
-        .listen(
-          (snapshot) {
-            final notes = snapshot.docs
-                .map((doc) => Note.fromJson(doc.data()))
-                .toList();
-            onNotesUpdated?.call(notes);
-            _lastSyncTime = DateTime.now();
-            notifyListeners();
-          },
-          onError: (error) {
-            _setError('Failed to sync notes: $error');
-          },
-        );
-    
-    // Listen to folders collection
-    _foldersSubscription = _firestore
-        .collection('folders')
-        .where('userId', isEqualTo: userId)
-        .where('isDeleted', isEqualTo: false)
-        .snapshots()
-        .listen(
-          (snapshot) {
-            final folders = snapshot.docs
-                .map((doc) => Folder.fromJson(doc.data()))
-                .toList();
-            onFoldersUpdated?.call(folders);
-          },
-          onError: (error) {
-            _setError('Failed to sync folders: $error');
-          },
-        );
+    try {
+      // Listen to notes collection
+      _notesSubscription = _firebaseFirestore
+          .collection('notes')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+            (snapshot) {
+              final notes = snapshot.docs
+                  .map((doc) => Note.fromJson(doc.data()))
+                  .toList();
+              onNotesUpdated?.call(notes);
+              _lastSyncTime = DateTime.now();
+              notifyListeners();
+            },
+            onError: (error) {
+              _setError('Failed to sync notes: $error');
+            },
+          );
+      
+      // Listen to folders collection
+      _foldersSubscription = _firebaseFirestore
+          .collection('folders')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+            (snapshot) {
+              final folders = snapshot.docs
+                  .map((doc) => Folder.fromJson(doc.data()))
+                  .toList();
+              onFoldersUpdated?.call(folders);
+            },
+            onError: (error) {
+              _setError('Failed to sync folders: $error');
+            },
+          );
+    } catch (e) {
+      // Firebase not initialized or unavailable
+      debugPrint('Cannot start listening: Firebase not available - $e');
+      _setError('Sync unavailable: Firebase not initialized');
+    }
   }
 
   /// Stop listening to real-time updates
@@ -161,7 +178,7 @@ class SyncService extends ChangeNotifier {
     try {
       _setStatus(SyncStatus.syncing);
       
-      await _firestore
+      await _firebaseFirestore
           .collection('notes')
           .doc(note.id)
           .set(note.toJson(), SetOptions(merge: true));
@@ -184,7 +201,7 @@ class SyncService extends ChangeNotifier {
     try {
       _setStatus(SyncStatus.syncing);
       
-      await _firestore
+      await _firebaseFirestore
           .collection('folders')
           .doc(folder.id)
           .set(folder.toJson(), SetOptions(merge: true));
@@ -203,7 +220,7 @@ class SyncService extends ChangeNotifier {
     if (!_isOnline) return false;
     
     try {
-      await _firestore
+      await _firebaseFirestore
           .collection('notes')
           .doc(noteId)
           .update({'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
@@ -219,7 +236,7 @@ class SyncService extends ChangeNotifier {
     if (!_isOnline) return false;
     
     try {
-      await _firestore
+      await _firebaseFirestore
           .collection('folders')
           .doc(folderId)
           .update({'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
@@ -243,10 +260,10 @@ class SyncService extends ChangeNotifier {
     
     try {
       // Use batched writes for efficiency
-      final batch = _firestore.batch();
+      final batch = _firebaseFirestore.batch();
       
       for (final note in dirtyNotes) {
-        final ref = _firestore.collection('notes').doc(note.id);
+        final ref = _firebaseFirestore.collection('notes').doc(note.id);
         batch.set(ref, note.copyWith(
           isDirty: false,
           syncedAt: DateTime.now(),
@@ -254,7 +271,7 @@ class SyncService extends ChangeNotifier {
       }
       
       for (final folder in dirtyFolders) {
-        final ref = _firestore.collection('folders').doc(folder.id);
+        final ref = _firebaseFirestore.collection('folders').doc(folder.id);
         batch.set(ref, folder.copyWith(
           isDirty: false,
           syncedAt: DateTime.now(),

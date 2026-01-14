@@ -29,13 +29,18 @@ void main() async {
   await Hive.initFlutter();
 
   // Initialize Firebase for cloud sync and authentication
-  // Wrapped in try-catch to handle hot restart where Firebase is already initialized
+  // Check if Firebase is already initialized (e.g., during hot restart)
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
   } catch (e) {
-    // Firebase already initialized, ignore
+    // Log the error for debugging, but don't crash the app
+    // This allows the app to run even if Firebase isn't configured
+    debugPrint('Firebase initialization error: $e');
+    // On Linux, Firebase might not be fully supported, so we continue anyway
   }
 
   // Set preferred orientations for mobile devices

@@ -15,8 +15,29 @@ import '../models/user.dart';
 /// Tracks storage usage against subscription limits and handles
 /// file upload/download operations to Firebase Storage.
 class StorageService extends ChangeNotifier {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Lazy Firebase instances
+  FirebaseStorage? _storage;
+  FirebaseFirestore? _firestore;
+  
+  FirebaseStorage get _firebaseStorage {
+    try {
+      _storage ??= FirebaseStorage.instance;
+      return _storage!;
+    } catch (e) {
+      debugPrint('Firebase Storage not available: $e');
+      rethrow;
+    }
+  }
+  
+  FirebaseFirestore get _firebaseFirestore {
+    try {
+      _firestore ??= FirebaseFirestore.instance;
+      return _firestore!;
+    } catch (e) {
+      debugPrint('Firebase Firestore not available: $e');
+      rethrow;
+    }
+  }
   
   // Current user subscription info
   SubscriptionTier _currentTier = SubscriptionTier.free;
@@ -86,7 +107,7 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
+      final doc = await _firebaseFirestore.collection('users').doc(userId).get();
       
       if (doc.exists) {
         final data = doc.data()!;
@@ -126,7 +147,7 @@ class StorageService extends ChangeNotifier {
     
     try {
       // Upload to Firebase Storage
-      final ref = _storage.ref().child('users/$userId/$destinationPath');
+      final ref = _firebaseStorage.ref().child('users/$userId/$destinationPath');
       final uploadTask = ref.putFile(file);
       
       // Wait for upload to complete
@@ -135,7 +156,7 @@ class StorageService extends ChangeNotifier {
       
       // Update storage usage in Firestore
       _storageUsedBytes += fileSize;
-      await _firestore.collection('users').doc(userId).update({
+      await _firebaseFirestore.collection('users').doc(userId).update({
         'storageUsedBytes': _storageUsedBytes,
       });
       
@@ -158,7 +179,7 @@ class StorageService extends ChangeNotifier {
     required String filePath,
   }) async {
     try {
-      final ref = _storage.ref().child('users/$userId/$filePath');
+      final ref = _firebaseStorage.ref().child('users/$userId/$filePath');
       
       // Get file size before deleting
       final metadata = await ref.getMetadata();
@@ -168,7 +189,7 @@ class StorageService extends ChangeNotifier {
       
       // Update storage usage
       _storageUsedBytes = (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
-      await _firestore.collection('users').doc(userId).update({
+      await _firebaseFirestore.collection('users').doc(userId).update({
         'storageUsedBytes': _storageUsedBytes,
       });
       
@@ -188,7 +209,7 @@ class StorageService extends ChangeNotifier {
     required String localPath,
   }) async {
     try {
-      final ref = _storage.ref().child('users/$userId/$remotePath');
+      final ref = _firebaseStorage.ref().child('users/$userId/$remotePath');
       final file = File(localPath);
       
       await ref.writeToFile(file);
@@ -212,7 +233,7 @@ class StorageService extends ChangeNotifier {
       // TODO: Integrate with payment provider
       // For now, just update the tier in Firestore
       
-      await _firestore.collection('users').doc(userId).update({
+      await _firebaseFirestore.collection('users').doc(userId).update({
         'subscriptionTier': newTier.index,
         'subscriptionExpiresAt': DateTime.now()
             .add(const Duration(days: 30))
@@ -239,7 +260,7 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      final ref = _storage.ref().child('users/$userId');
+      final ref = _firebaseStorage.ref().child('users/$userId');
       final result = await ref.listAll();
       
       int totalSize = 0;
@@ -249,7 +270,7 @@ class StorageService extends ChangeNotifier {
       }
       
       _storageUsedBytes = totalSize;
-      await _firestore.collection('users').doc(userId).update({
+      await _firebaseFirestore.collection('users').doc(userId).update({
         'storageUsedBytes': totalSize,
       });
       
