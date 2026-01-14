@@ -1,8 +1,8 @@
 /// Firebase Configuration Options
-/// 
+///
 /// This file should be generated using the FlutterFire CLI.
 /// Run: flutterfire configure
-/// 
+///
 /// IMPORTANT: Replace these placeholder values with your actual
 /// Firebase project configuration before running the app.
 
@@ -11,7 +11,7 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
-/// 
+///
 /// To regenerate this file, run:
 /// ```bash
 /// flutterfire configure
@@ -42,14 +42,14 @@ class DefaultFirebaseOptions {
   // ============================================
   // PLACEHOLDER VALUES - REPLACE WITH YOUR OWN
   // ============================================
-  // 
+  //
   // To get these values:
   // 1. Go to https://console.firebase.google.com
   // 2. Create a new project or select existing one
   // 3. Add Android and Web apps
   // 4. Download the configuration files or copy values
   // 5. Run: flutterfire configure (recommended)
-  
+
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
     appId: '1:461465199276:web:default',
@@ -104,6 +104,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'typesynced.firebasestorage.app',
   );
 }
-
-
 

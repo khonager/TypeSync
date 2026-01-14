@@ -1,5 +1,5 @@
 /// TypeSync - A cross-platform note-taking application
-/// 
+///
 /// Main entry point for the application. Initializes Firebase,
 /// sets up providers, and configures the app theme.
 
@@ -47,7 +47,8 @@ void main() async {
     // The app can run in offline mode without Firebase
     // Only log in debug mode to reduce console noise
     if (kDebugMode) {
-      debugPrint('Firebase initialization skipped: ${e.toString().split(':').first}');
+      debugPrint(
+          'Firebase initialization skipped: ${e.toString().split(':').first}');
     }
   }
 
@@ -64,7 +65,7 @@ void main() async {
 }
 
 /// Root widget that sets up all providers for the application
-/// 
+///
 /// Uses MultiProvider to inject services and state management
 /// throughout the widget tree.
 class TypeSyncApp extends StatelessWidget {
@@ -76,37 +77,37 @@ class TypeSyncApp extends StatelessWidget {
       providers: [
         // Theme service for managing app appearance (dark mode, colors, etc.)
         ChangeNotifierProvider(create: (_) => ThemeService()),
-        
+
         // Authentication service for user login/registration
         ChangeNotifierProvider(create: (_) => AuthService()),
-        
+
         // Storage service for managing cloud storage limits and subscriptions
         ChangeNotifierProvider(create: (_) => StorageService()),
-        
+
         // Sync service for real-time file synchronization
         ChangeNotifierProvider(create: (_) => SyncService()),
-        
+
         // Local folder sync service for syncing with local folders
         ChangeNotifierProvider(create: (_) => LocalFolderSyncService()),
-        
+
         // User provider for managing user profile and preferences
         ChangeNotifierProvider(create: (_) => UserProvider()),
-        
+
         // Notes provider for managing note documents
         ChangeNotifierProvider(create: (_) => NotesProvider()),
-        
+
         // Folders provider for managing folder structure
         ChangeNotifierProvider(create: (_) => FoldersProvider()),
-        
+
         // Timetable provider for managing class schedule
         ChangeNotifierProvider(create: (_) => TimetableProvider()),
-        
+
         // Homework provider for managing homework tasks
         ChangeNotifierProvider(create: (_) => HomeworkProvider()),
-        
+
         // Calendar provider for managing calendar events
         ChangeNotifierProvider(create: (_) => CalendarProvider()),
-        
+
         // Sync provider for tracking sync status across devices
         ChangeNotifierProvider(create: (_) => SyncProvider()),
       ],

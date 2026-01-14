@@ -1,5 +1,5 @@
 /// Model Unit Tests
-/// 
+///
 /// Tests for data models to ensure correct serialization and behavior.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,8 +10,10 @@ void main() {
     test('storage limit returns correct values for each tier', () {
       expect(SubscriptionTier.free.storageLimitBytes, 1 * 1024 * 1024 * 1024);
       expect(SubscriptionTier.basic.storageLimitBytes, 5 * 1024 * 1024 * 1024);
-      expect(SubscriptionTier.standard.storageLimitBytes, 50 * 1024 * 1024 * 1024);
-      expect(SubscriptionTier.premium.storageLimitBytes, 200 * 1024 * 1024 * 1024);
+      expect(
+          SubscriptionTier.standard.storageLimitBytes, 50 * 1024 * 1024 * 1024);
+      expect(
+          SubscriptionTier.premium.storageLimitBytes, 200 * 1024 * 1024 * 1024);
     });
 
     test('price returns correct values for each tier', () {
@@ -64,6 +66,4 @@ void main() {
     });
   });
 }
-
-
 

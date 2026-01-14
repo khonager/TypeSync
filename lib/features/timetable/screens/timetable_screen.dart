@@ -1,5 +1,5 @@
 /// Timetable Screen
-/// 
+///
 /// Weekly class timetable view.
 
 import 'package:flutter/material.dart';
@@ -19,7 +19,7 @@ class TimetableScreen extends StatefulWidget {
 
 class _TimetableScreenState extends State<TimetableScreen> {
   Weekday _selectedDay = Weekday.values[DateTime.now().weekday - 1];
-  
+
   final TextEditingController _subjectController = TextEditingController();
   final TextEditingController _teacherController = TextEditingController();
   final TextEditingController _roomController = TextEditingController();
@@ -41,7 +41,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
-    
+
     if (userId != null) {
       await context.read<TimetableProvider>().initialize(userId);
     }
@@ -77,7 +77,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 children: Weekday.values.map((day) {
                   final isSelected = day == _selectedDay;
                   final isToday = day.index == DateTime.now().weekday - 1;
-                  
+
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
@@ -104,9 +104,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ),
             ),
           ),
-          
+
           const Divider(),
-          
+
           // Timetable content
           Expanded(
             child: _buildTimetableContent(),
@@ -123,13 +123,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Widget _buildTimetableContent() {
     final timetableProvider = context.watch<TimetableProvider>();
     final entries = timetableProvider.getEntriesForDay(_selectedDay);
-    
+
     if (timetableProvider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
-    
+
     if (entries.isEmpty) {
       return Center(
         child: Column(
@@ -154,14 +154,14 @@ class _TimetableScreenState extends State<TimetableScreen> {
         ),
       );
     }
-    
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
         final color = Color(int.parse(entry.color.replaceFirst('#', '0xFF')));
-        
+
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           color: color.withOpacity(0.2),
@@ -207,7 +207,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       },
     );
   }
-  
+
   Future<void> _deleteEntry(String entryId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -226,7 +226,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
         ],
       ),
     );
-    
+
     if (confirmed == true) {
       await context.read<TimetableProvider>().deleteEntry(entryId);
     }
@@ -241,7 +241,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     _endHour = 10;
     _endMinute = 0;
     _selectedWeekday = _selectedDay;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -338,7 +338,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,
-                            child: Text(':$minute${minute.toString().padLeft(2, '0')}'),
+                            child: Text(
+                                ':$minute${minute.toString().padLeft(2, '0')}'),
                           );
                         }).toList(),
                         onChanged: (value) {
@@ -386,7 +387,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,
-                            child: Text(':$minute${minute.toString().padLeft(2, '0')}'),
+                            child: Text(
+                                ':$minute${minute.toString().padLeft(2, '0')}'),
                           );
                         }).toList(),
                         onChanged: (value) {
@@ -409,27 +411,27 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       );
                       return;
                     }
-                    
+
                     final authService = context.read<AuthService>();
                     final userId = authService.userId;
                     if (userId == null) return;
-                    
+
                     await context.read<TimetableProvider>().createEntry(
-                      userId: userId,
-                      subject: _subjectController.text,
-                      teacher: _teacherController.text.isEmpty 
-                          ? null 
-                          : _teacherController.text,
-                      room: _roomController.text.isEmpty 
-                          ? null 
-                          : _roomController.text,
-                      weekday: _selectedWeekday,
-                      startHour: _startHour,
-                      startMinute: _startMinute,
-                      endHour: _endHour,
-                      endMinute: _endMinute,
-                    );
-                    
+                          userId: userId,
+                          subject: _subjectController.text,
+                          teacher: _teacherController.text.isEmpty
+                              ? null
+                              : _teacherController.text,
+                          room: _roomController.text.isEmpty
+                              ? null
+                              : _roomController.text,
+                          weekday: _selectedWeekday,
+                          startHour: _startHour,
+                          startMinute: _startMinute,
+                          endHour: _endHour,
+                          endMinute: _endMinute,
+                        );
+
                     if (mounted) {
                       Navigator.pop(context);
                     }
@@ -444,6 +446,4 @@ class _TimetableScreenState extends State<TimetableScreen> {
     );
   }
 }
-
-
 
