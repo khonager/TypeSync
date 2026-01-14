@@ -52,13 +52,17 @@ class _EditorToolbarState extends State<EditorToolbar> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    final appBarHeight = AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
+    
     // Get toolbar size to calculate proper bounds
     final toolbarWidth = _isExpanded ? 250.0 : 50.0;
     final toolbarHeight = _isExpanded ? 400.0 : 50.0;
     
-    // Ensure position is within bounds - allow movement to edges
+    // Ensure position is within bounds - allow movement to edges but not through app bar
     final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
-    final bottom = _position.dy.clamp(0.0, screenSize.height - toolbarHeight);
+    // Bottom constraint: can't go above app bar, so max bottom is screenHeight - appBarHeight - toolbarHeight
+    final maxBottom = screenSize.height - appBarHeight - toolbarHeight;
+    final bottom = _position.dy.clamp(0.0, maxBottom);
     
     return Positioned(
       left: left,
@@ -72,8 +76,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
             setState(() {
               final currentWidth = _isExpanded ? 250.0 : 50.0;
               final currentHeight = _isExpanded ? 400.0 : 50.0;
+              final appBarHeight = AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
+              final maxBottom = screenSize.height - appBarHeight - currentHeight;
+              
               final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - currentWidth);
-              final newDy = (_position.dy - details.delta.dy).clamp(0.0, screenSize.height - currentHeight);
+              final newDy = (_position.dy - details.delta.dy).clamp(0.0, maxBottom);
               _position = Offset(newDx, newDy);
             });
           },
