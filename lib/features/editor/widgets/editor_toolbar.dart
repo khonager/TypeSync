@@ -354,18 +354,16 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   void _setTextColor(String colorHex) {
     Navigator.pop(context);
-    // Convert hex string to Color object
-    final color = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
-    // Use Quill's built-in color attribute with Color object
-    widget.controller.formatSelection(Attribute.color(color));
+    // ColorAttribute constructor takes a String value (hex color)
+    // Use the constructor directly to create an attribute with the color value
+    widget.controller.formatSelection(ColorAttribute(colorHex));
   }
 
   void _setMarkerColor(String colorHex) {
     Navigator.pop(context);
-    // Convert hex string to Color object
-    final color = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
-    // Use Quill's built-in background attribute for marker/highlight effect
-    widget.controller.formatSelection(Attribute.background(color));
+    // BackgroundAttribute constructor takes a String value (hex color)
+    // Use the constructor directly to create an attribute with the color value
+    widget.controller.formatSelection(BackgroundAttribute(colorHex));
   }
 }
 
