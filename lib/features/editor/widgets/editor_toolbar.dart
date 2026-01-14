@@ -52,9 +52,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    // Ensure position is within bounds
-    final left = _position.dx.clamp(0.0, screenSize.width - 250);
-    final bottom = _position.dy.clamp(16.0, screenSize.height - 400);
+    // Get toolbar size to calculate proper bounds
+    final toolbarWidth = _isExpanded ? 250.0 : 50.0;
+    final toolbarHeight = _isExpanded ? 400.0 : 50.0;
+    
+    // Ensure position is within bounds - allow movement to edges
+    final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
+    final bottom = _position.dy.clamp(0.0, screenSize.height - toolbarHeight);
     
     return Positioned(
       left: left,
@@ -66,15 +70,18 @@ class _EditorToolbarState extends State<EditorToolbar> {
         child: GestureDetector(
           onPanUpdate: (details) {
             setState(() {
-              final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - 250);
-              final newDy = (_position.dy - details.delta.dy).clamp(16.0, screenSize.height - 400);
+              final currentWidth = _isExpanded ? 250.0 : 50.0;
+              final currentHeight = _isExpanded ? 400.0 : 50.0;
+              final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - currentWidth);
+              final newDy = (_position.dy - details.delta.dy).clamp(0.0, screenSize.height - currentHeight);
               _position = Offset(newDx, newDy);
             });
           },
           child: Container(
-            constraints: const BoxConstraints(
-              maxWidth: 250,
+            constraints: BoxConstraints(
+              maxWidth: toolbarWidth,
               minWidth: 50,
+              maxHeight: toolbarHeight,
             ),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
@@ -105,7 +112,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
       child: Container(
         padding: const EdgeInsets.all(12),
         child: Icon(
-          Icons.format_bold,
+          Icons.edit,
           size: 20,
           color: Theme.of(context).iconTheme.color,
         ),
