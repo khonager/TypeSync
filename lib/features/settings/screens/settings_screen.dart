@@ -248,10 +248,16 @@ class SettingsScreen extends StatelessWidget {
               ],
               ElevatedButton.icon(
                 onPressed: () async {
-                  final success = await syncService.chooseSyncFolder();
+                  final success = await syncService.chooseSyncFolder(context: context);
                   if (success && dialogContext.mounted) {
                     Navigator.pop(dialogContext);
                     _showLocalFolderSync(context); // Refresh
+                  } else if (!success && dialogContext.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(syncService.errorMessage ?? 'Failed to choose folder'),
+                      ),
+                    );
                   }
                 },
                 icon: const Icon(Icons.folder_open),

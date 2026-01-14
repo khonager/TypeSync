@@ -20,6 +20,7 @@ import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/utils/color_utils.dart';
+import '../../../core/utils/file_picker_helper.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
@@ -385,15 +386,15 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _insertPdf() async {
     try {
-      final filePicker = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
+      final filePath = await FilePickerHelper.pickFile(
+        context: context,
+        dialogTitle: 'Select PDF file',
         allowedExtensions: ['pdf'],
-        allowMultiple: false,
       );
       
-      if (filePicker != null && filePicker.files.single.path != null) {
-        final filePath = filePicker.files.single.path!;
-        final fileName = filePicker.files.single.name;
+      if (filePath != null) {
+        final file = File(filePath);
+        final fileName = file.path.split('/').last;
         
         // Copy PDF to app storage
         final authService = context.read<AuthService>();
@@ -551,12 +552,12 @@ class _EditorScreenState extends State<EditorScreen> {
           return;
         }
         
-        // Use file picker to choose export location
-        final savePath = await FilePicker.platform.saveFile(
+        // Use file picker to choose export location (with Linux fallback)
+        final savePath = await FilePickerHelper.saveFile(
+          context: context,
           dialogTitle: 'Export PDF',
           fileName: '$fileName.pdf',
-          type: FileType.custom,
-          allowedExtensions: ['pdf'],
+          fileExtension: 'pdf',
         );
         
         if (savePath != null) {
@@ -585,12 +586,12 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       }
       
-      // Use file picker to choose export location
-      final savePath = await FilePicker.platform.saveFile(
+      // Use file picker to choose export location (with Linux fallback)
+      final savePath = await FilePickerHelper.saveFile(
+        context: context,
         dialogTitle: 'Export Note',
         fileName: '$fileName$extension',
-        type: FileType.custom,
-        allowedExtensions: [extension.substring(1)],
+        fileExtension: extension.substring(1),
       );
       
       if (savePath != null) {

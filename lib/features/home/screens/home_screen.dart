@@ -22,6 +22,7 @@ import '../../../core/services/sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
+import '../../../core/utils/file_picker_helper.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -701,8 +702,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (folder == null) return;
     
     try {
-      // Use file picker to choose export directory
-      final directory = await FilePicker.platform.getDirectoryPath(
+      // Use file picker to choose export directory (with Linux fallback)
+      final directory = await FilePickerHelper.pickDirectory(
+        context: context,
         dialogTitle: 'Export folder to',
       );
       
@@ -909,13 +911,13 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
         
-        // Use file picker to choose export location
-        final savePath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Export PDF',
-          fileName: '$fileName.pdf',
-          type: FileType.custom,
-          allowedExtensions: ['pdf'],
-        );
+      // Use file picker to choose export location (with Linux fallback)
+      final savePath = await FilePickerHelper.saveFile(
+        context: context,
+        dialogTitle: 'Export PDF',
+        fileName: '$fileName.pdf',
+        fileExtension: 'pdf',
+      );
         
         if (savePath != null) {
           await pdfFile.copy(savePath);
@@ -943,12 +945,12 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
       
-      // Use file picker to choose export location
-      final savePath = await FilePicker.platform.saveFile(
+      // Use file picker to choose export location (with Linux fallback)
+      final savePath = await FilePickerHelper.saveFile(
+        context: context,
         dialogTitle: 'Export Note',
         fileName: '$fileName$extension',
-        type: FileType.custom,
-        allowedExtensions: [extension.substring(1)],
+        fileExtension: extension.substring(1),
       );
       
       if (savePath != null) {
