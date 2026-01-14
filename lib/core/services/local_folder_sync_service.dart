@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:file_picker/file_picker.dart';
 
 import '../utils/file_picker_helper.dart';
 
@@ -90,23 +89,14 @@ class LocalFolderSyncService extends ChangeNotifier {
 
   /// Choose sync folder using file picker
   /// 
-  /// [context] is required for fallback dialog on Linux
-  Future<bool> chooseSyncFolder({BuildContext? context}) async {
+  /// [context] is required for the file browser dialog
+  Future<bool> chooseSyncFolder({required BuildContext context}) async {
     try {
-      String? directory;
-      
-      if (context != null) {
-        // Use helper with fallback
-        directory = await FilePickerHelper.pickDirectory(
-          context: context,
-          dialogTitle: 'Choose folder to sync with',
-        );
-      } else {
-        // Try standard picker
-        directory = await FilePicker.platform.getDirectoryPath(
-          dialogTitle: 'Choose folder to sync with',
-        );
-      }
+      // Use helper with file browser fallback
+      final directory = await FilePickerHelper.pickDirectory(
+        context: context,
+        dialogTitle: 'Choose folder to sync with',
+      );
       
       if (directory != null) {
         return await setSyncFolder(directory);

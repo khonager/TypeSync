@@ -479,14 +479,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _addDocumentFromStorage() async {
     try {
-      final filePicker = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
+      final filePath = await FilePickerHelper.pickFile(
+        context: context,
+        dialogTitle: 'Select Document',
       );
       
-      if (filePicker != null && filePicker.files.single.path != null) {
-        final filePath = filePicker.files.single.path!;
-        final fileName = filePicker.files.single.name;
+      if (filePath != null) {
+        final file = File(filePath);
+        final fileName = file.path.split(Platform.pathSeparator).last;
         await _importFile(filePath, fileName);
       }
     } catch (e) {
