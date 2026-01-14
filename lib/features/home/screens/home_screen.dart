@@ -508,17 +508,65 @@ class _HomeScreenState extends State<HomeScreen> {
     final userId = authService.userId;
     if (userId == null) return;
     
-    final notesProvider = context.read<NotesProvider>();
-    final note = await notesProvider.createNote(
-      userId: userId,
-      folderId: _currentFolderId,
-      title: fileName,
-    );
-    
-    if (note != null && mounted) {
-      // TODO: Handle file import (PDF, images, etc.)
-      // For now, just open the note
-      AppRouter.openEditor(context, noteId: note.id, folderId: _currentFolderId);
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File not found: $fileName')),
+          );
+        }
+        return;
+      }
+      
+      final fileExtension = fileName.split('.').last.toLowerCase();
+      String content = '';
+      String noteType = 'text';
+      
+      // Read file content based on type
+      if (fileExtension == 'txt' || fileExtension == 'md' || fileExtension == 'markdown') {
+        // Text files - read content
+        content = await file.readAsString();
+        noteType = fileExtension == 'md' || fileExtension == 'markdown' ? 'markdown' : 'text';
+      } else if (fileExtension == 'pdf') {
+        // PDF files - create note with PDF reference
+        content = '[PDF file: $fileName]';
+        noteType = 'pdf';
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
+        // Image files - create note with image reference
+        content = '[Image file: $fileName]';
+        noteType = 'text';
+      } else {
+        // Other files - create note with file reference
+        content = '[File: $fileName]';
+        noteType = 'text';
+      }
+      
+      final notesProvider = context.read<NotesProvider>();
+      final note = await notesProvider.createNote(
+        userId: userId,
+        folderId: _currentFolderId,
+        title: fileName,
+        content: content,
+        type: noteType == 'pdf' 
+            ? NoteType.pdf 
+            : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
+      );
+      
+      if (note != null && mounted) {
+        // Open the note with the imported content
+        AppRouter.openEditor(context, noteId: note.id, folderId: _currentFolderId);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported $fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import file: $e')),
+        );
+      }
     }
   }
 

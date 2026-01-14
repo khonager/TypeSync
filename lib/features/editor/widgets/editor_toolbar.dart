@@ -28,7 +28,7 @@ class EditorToolbar extends StatefulWidget {
 }
 
 class _EditorToolbarState extends State<EditorToolbar> {
-  Offset _position = const Offset(16, 80); // Bottom left by default
+  Offset _position = const Offset(16, 100); // Bottom left by default (100px from bottom)
   bool _isExpanded = false;
 
   @override
@@ -55,42 +55,45 @@ class _EditorToolbarState extends State<EditorToolbar> {
     return Positioned(
       left: _position.dx.clamp(0.0, screenSize.width - 250),
       bottom: _position.dy.clamp(16.0, screenSize.height - 400),
-      child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            _position = Offset(
-              (_position.dx + details.delta.dx).clamp(0.0, MediaQuery.of(context).size.width - 200),
-              (_position.dy - details.delta.dy).clamp(0.0, MediaQuery.of(context).size.height - 300),
-            );
-          });
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      child: Material(
+        color: Colors.transparent,
+        child: GestureDetector(
+          onPanUpdate: (details) {
+            setState(() {
+              final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - 250);
+              final newDy = (_position.dy - details.delta.dy).clamp(16.0, screenSize.height - 400);
+              _position = Offset(newDx, newDy);
+            });
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: _isExpanded ? _buildExpandedToolbar() : _buildCollapsedToolbar(),
           ),
-          child: _isExpanded ? _buildExpandedToolbar() : _buildCollapsedToolbar(),
         ),
       ),
     );
   }
 
   Widget _buildCollapsedToolbar() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => setState(() => _isExpanded = true),
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          child: const Icon(Icons.format_bold, size: 20),
+    return InkWell(
+      onTap: () => setState(() => _isExpanded = true),
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        child: Icon(
+          Icons.format_bold,
+          size: 20,
+          color: Theme.of(context).iconTheme.color,
         ),
       ),
     );
