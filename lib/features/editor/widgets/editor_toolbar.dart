@@ -106,8 +106,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
     // - maxBottom: when toolbar top edge is at the top of body (right below app bar)
     //   bottom = bodyHeight - toolbarHeight (toolbar top at top of body)
     // - minBottom: 0 (toolbar at bottom of body)
-    // Use actual or estimated height
-    final toolbarHeight = _getToolbarHeight();
     final maxBottom = bodyHeight - toolbarHeight;
     final minBottom = 0.0;
     // Ensure maxBottom is valid (at least 0)
