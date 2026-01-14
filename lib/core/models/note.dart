@@ -128,6 +128,7 @@ class Note extends Equatable {
     int? lineCount,
     String? userId,
     String? pdfPath,
+    bool backgroundColorSet = false,
   }) {
     return Note(
       id: id ?? this.id,
@@ -136,7 +137,7 @@ class Note extends Equatable {
       type: type ?? this.type,
       folderId: folderId ?? this.folderId,
       tags: tags ?? this.tags,
-      backgroundColor: backgroundColor ?? this.backgroundColor,
+      backgroundColor: backgroundColorSet ? backgroundColor : (backgroundColor ?? this.backgroundColor),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       syncedAt: syncedAt ?? this.syncedAt,

@@ -287,7 +287,7 @@ class NotesProvider extends ChangeNotifier {
     if (index < 0) return;
     
     final note = _notes[index];
-    await updateNote(note.copyWith(backgroundColor: color));
+    await updateNote(note.copyWith(backgroundColor: color, backgroundColorSet: true));
   }
 
   // ===========================================
