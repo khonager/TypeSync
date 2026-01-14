@@ -32,10 +32,12 @@ jobs:
       
       - name: Check formatting
         run: |
-          dart format --set-exit-if-changed lib test || {
-            echo "::error::Code is not properly formatted. Run 'dart format lib test' to fix."
+          dart format lib test
+          if [ -n "$(git status --porcelain lib test)" ]; then
+            echo "::error::Code is not properly formatted. Please run 'dart format lib test' and commit the changes."
+            git diff lib test
             exit 1
-          }
+          fi
       
       - name: Analyze code
         run: flutter analyze --fatal-infos
