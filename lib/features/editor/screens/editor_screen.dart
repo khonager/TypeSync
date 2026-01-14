@@ -11,9 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:file_picker/file_picker.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -21,6 +19,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
@@ -633,13 +632,8 @@ class _EditorScreenState extends State<EditorScreen> {
           return _buildPdfErrorView(pdfFile);
         }
 
-        // Try to use Syncfusion PDF viewer, fallback to external viewer if it fails
-        try {
-          return SfPdfViewer.file(pdfFile);
-        } catch (e) {
-          debugPrint('PDF viewer error: $e');
-          return _buildPdfErrorView(pdfFile);
-        }
+        // Use custom PDF viewer that works on all platforms
+        return PdfViewerWidget(pdfFile: pdfFile);
       },
     );
   }
