@@ -17,6 +17,7 @@ import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/utils/color_utils.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -732,50 +733,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   isSelected: currentColor == null,
                   label: 'None',
                 ),
-                _ColorOption(
-                  color: Colors.red,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#FF0000', dialogContext),
-                  isSelected: currentColor == '#FF0000',
-                ),
-                _ColorOption(
-                  color: Colors.blue,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#0000FF', dialogContext),
-                  isSelected: currentColor == '#0000FF',
-                ),
-                _ColorOption(
-                  color: Colors.green,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
-                  isSelected: currentColor == '#00FF00',
-                ),
-                _ColorOption(
-                  color: Colors.yellow,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#FFFF00', dialogContext),
-                  isSelected: currentColor == '#FFFF00',
-                ),
-                _ColorOption(
-                  color: Colors.orange,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#FFA500', dialogContext),
-                  isSelected: currentColor == '#FFA500',
-                ),
-                _ColorOption(
-                  color: Colors.purple,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#800080', dialogContext),
-                  isSelected: currentColor == '#800080',
-                ),
-                _ColorOption(
-                  color: Colors.pink,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#FFC0CB', dialogContext),
-                  isSelected: currentColor == '#FFC0CB',
-                ),
-                _ColorOption(
-                  color: Colors.cyan,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#00FFFF', dialogContext),
-                  isSelected: currentColor == '#00FFFF',
-                ),
-                _ColorOption(
-                  color: Colors.lime,
-                  onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
-                  isSelected: currentColor == '#00FF00',
+                ...AppColorPalette.noteBackgroundColors.map((colorOption) => 
+                  _ColorOption(
+                    color: colorOption.color,
+                    onTap: () => _setNoteBackgroundColor(noteId, colorOption.hex, dialogContext),
+                    isSelected: currentColor == colorOption.hex,
+                  ),
                 ),
               ],
             ),

@@ -3,6 +3,7 @@
 /// Main entry point for the application. Initializes Firebase,
 /// sets up providers, and configures the app theme.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -40,10 +41,13 @@ void main() async {
       );
     }
   } catch (e) {
-    // Log the error for debugging, but don't crash the app
-    // This allows the app to run even if Firebase isn't configured
-    debugPrint('Firebase initialization error: $e');
-    // On Linux, Firebase might not be fully supported, so we continue anyway
+    // Silently handle Firebase initialization errors
+    // On Linux and some platforms, Firebase might not be fully supported
+    // The app can run in offline mode without Firebase
+    // Only log in debug mode to reduce console noise
+    if (kDebugMode) {
+      debugPrint('Firebase initialization skipped: ${e.toString().split(':').first}');
+    }
   }
 
   // Set preferred orientations for mobile devices

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/color_utils.dart';
 
 /// Grid view for files/notes
 class FileGrid extends StatelessWidget {
@@ -74,6 +75,9 @@ class FileGridItem extends StatelessWidget {
     final bgColor = note.backgroundColor != null
         ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
+    
+    final iconColor = AppColorPalette.getIconColor(bgColor);
+    final textColor = AppColorPalette.getContrastingTextColor(bgColor);
 
     return Draggable<String>(
       data: 'note:${note.id}',
@@ -87,7 +91,7 @@ class FileGridItem extends StatelessWidget {
             color: bgColor,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, size: 48, color: Colors.white54),
+          child: Icon(icon, size: 48, color: iconColor),
         ),
       ),
       childWhenDragging: Opacity(
@@ -114,7 +118,7 @@ class FileGridItem extends StatelessWidget {
                         child: Icon(
                           icon,
                           size: 48,
-                          color: Colors.white54,
+                          color: iconColor,
                         ),
                       ),
                       // Favorite indicator
@@ -138,7 +142,9 @@ class FileGridItem extends StatelessWidget {
                 note.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: textColor,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -191,7 +197,9 @@ class FileGridItem extends StatelessWidget {
               note.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: textColor,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -261,6 +269,9 @@ class FileListItem extends StatelessWidget {
     final bgColor = note.backgroundColor != null
         ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
+    
+    final iconColor = AppColorPalette.getIconColor(bgColor);
+    final textColor = AppColorPalette.getContrastingTextColor(bgColor);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -285,7 +296,7 @@ class FileListItem extends StatelessWidget {
                         : Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: Colors.white54),
+                  child: Icon(icon, color: iconColor),
                 ),
                 const SizedBox(width: 16),
                 // File info
@@ -298,7 +309,9 @@ class FileListItem extends StatelessWidget {
                           Expanded(
                             child: Text(
                               note.title,
-                              style: Theme.of(context).textTheme.titleMedium,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: textColor,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -315,7 +328,7 @@ class FileListItem extends StatelessWidget {
                       Text(
                         dateFormat.format(note.updatedAt),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey,
+                          color: textColor.withOpacity(0.7),
                         ),
                       ),
                     ],

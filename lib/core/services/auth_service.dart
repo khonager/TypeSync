@@ -4,6 +4,7 @@
 /// login, registration, password reset, and session management.
 
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -94,10 +95,15 @@ class AuthService extends ChangeNotifier {
     _loadPreferences();
     // Only listen to auth state changes if Firebase is initialized
     try {
-      _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+      if (Firebase.apps.isNotEmpty) {
+        _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+      }
     } catch (e) {
       // Firebase not initialized (e.g., on Linux without proper config)
-      debugPrint('Firebase Auth not available: $e');
+      // Silently handle - app can run in offline mode
+      if (kDebugMode) {
+        debugPrint('Firebase Auth not available: ${e.toString().split(':').first}');
+      }
     }
   }
   

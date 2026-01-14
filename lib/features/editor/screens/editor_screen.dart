@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/utils/color_utils.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
@@ -202,8 +203,14 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     }
 
+    final bgColor = _note?.backgroundColor != null
+        ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
+        : null;
+
     return Scaffold(
+      backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
+        backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
@@ -261,7 +268,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   Container(
                     width: double.infinity,
                     height: double.infinity,
-                    color: Theme.of(context).scaffoldBackgroundColor,
+                    color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
                     padding: const EdgeInsets.all(16),
                     child: QuillEditor(
                       controller: _quillController,
@@ -412,50 +419,12 @@ class _EditorScreenState extends State<EditorScreen> {
                     isSelected: currentColor == null,
                     label: 'None',
                   ),
-                  _ColorOption(
-                    color: Colors.red,
-                    onTap: () => _setNoteBackgroundColor('#FF0000', dialogContext),
-                    isSelected: currentColor == '#FF0000',
-                  ),
-                  _ColorOption(
-                    color: Colors.blue,
-                    onTap: () => _setNoteBackgroundColor('#0000FF', dialogContext),
-                    isSelected: currentColor == '#0000FF',
-                  ),
-                  _ColorOption(
-                    color: Colors.green,
-                    onTap: () => _setNoteBackgroundColor('#00FF00', dialogContext),
-                    isSelected: currentColor == '#00FF00',
-                  ),
-                  _ColorOption(
-                    color: Colors.yellow,
-                    onTap: () => _setNoteBackgroundColor('#FFFF00', dialogContext),
-                    isSelected: currentColor == '#FFFF00',
-                  ),
-                  _ColorOption(
-                    color: Colors.orange,
-                    onTap: () => _setNoteBackgroundColor('#FFA500', dialogContext),
-                    isSelected: currentColor == '#FFA500',
-                  ),
-                  _ColorOption(
-                    color: Colors.purple,
-                    onTap: () => _setNoteBackgroundColor('#800080', dialogContext),
-                    isSelected: currentColor == '#800080',
-                  ),
-                  _ColorOption(
-                    color: Colors.pink,
-                    onTap: () => _setNoteBackgroundColor('#FFC0CB', dialogContext),
-                    isSelected: currentColor == '#FFC0CB',
-                  ),
-                  _ColorOption(
-                    color: Colors.cyan,
-                    onTap: () => _setNoteBackgroundColor('#00FFFF', dialogContext),
-                    isSelected: currentColor == '#00FFFF',
-                  ),
-                  _ColorOption(
-                    color: Colors.lime,
-                    onTap: () => _setNoteBackgroundColor('#00FF00', dialogContext),
-                    isSelected: currentColor == '#00FF00',
+                  ...AppColorPalette.noteBackgroundColors.map((colorOption) => 
+                    _ColorOption(
+                      color: colorOption.color,
+                      onTap: () => _setNoteBackgroundColor(colorOption.hex, dialogContext),
+                      isSelected: currentColor == colorOption.hex,
+                    ),
                   ),
                 ],
               ),

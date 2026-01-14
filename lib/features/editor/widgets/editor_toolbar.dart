@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../../../core/utils/color_utils.dart';
+
 /// Rich text editing toolbar
 /// 
 /// Provides quick access to common formatting options:
@@ -331,15 +333,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
               isSelected: currentColor == null,
               label: 'Default',
             ),
-            _ColorOption(color: const Color(0xFFFFFFFF), onTap: () => _setTextColor('#FFFFFF', dialogContext), isSelected: currentColor == '#FFFFFF'), // White
-            _ColorOption(color: const Color(0xFF64D2FF), onTap: () => _setTextColor('#64D2FF', dialogContext), isSelected: currentColor == '#64D2FF'), // Teal/cyan
-            _ColorOption(color: const Color(0xFF90EE90), onTap: () => _setTextColor('#90EE90', dialogContext), isSelected: currentColor == '#90EE90'), // Light green
-            _ColorOption(color: const Color(0xFFFFB6C1), onTap: () => _setTextColor('#FFB6C1', dialogContext), isSelected: currentColor == '#FFB6C1'), // Light pink
-            _ColorOption(color: const Color(0xFFFFD700), onTap: () => _setTextColor('#FFD700', dialogContext), isSelected: currentColor == '#FFD700'), // Gold
-            _ColorOption(color: const Color(0xFFFFA500), onTap: () => _setTextColor('#FFA500', dialogContext), isSelected: currentColor == '#FFA500'), // Orange
-            _ColorOption(color: const Color(0xFF9370DB), onTap: () => _setTextColor('#9370DB', dialogContext), isSelected: currentColor == '#9370DB'), // Medium purple
-            _ColorOption(color: const Color(0xFFFF69B4), onTap: () => _setTextColor('#FF69B4', dialogContext), isSelected: currentColor == '#FF69B4'), // Hot pink
-            _ColorOption(color: const Color(0xFF87CEEB), onTap: () => _setTextColor('#87CEEB', dialogContext), isSelected: currentColor == '#87CEEB'), // Sky blue
+            ...AppColorPalette.textColors.map((colorOption) => 
+              _ColorOption(
+                color: colorOption.color,
+                onTap: () => _setTextColor(colorOption.hex, dialogContext),
+                isSelected: currentColor == colorOption.hex,
+              ),
+            ),
           ],
         ),
         actions: [
@@ -372,13 +372,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
               isSelected: currentBgColor == null,
               label: 'None',
             ),
-            _ColorOption(color: const Color(0xFFFFFF00), onTap: () => _setMarkerColor('#FFFF00', dialogContext), isSelected: currentBgColor == '#FFFF00'), // Yellow
-            _ColorOption(color: const Color(0xFFFFA500), onTap: () => _setMarkerColor('#FFA500', dialogContext), isSelected: currentBgColor == '#FFA500'), // Orange
-            _ColorOption(color: const Color(0xFFFFC0CB), onTap: () => _setMarkerColor('#FFC0CB', dialogContext), isSelected: currentBgColor == '#FFC0CB'), // Pink
-            _ColorOption(color: const Color(0xFF00FFFF), onTap: () => _setMarkerColor('#00FFFF', dialogContext), isSelected: currentBgColor == '#00FFFF'), // Cyan
-            _ColorOption(color: const Color(0xFF90EE90), onTap: () => _setMarkerColor('#90EE90', dialogContext), isSelected: currentBgColor == '#90EE90'), // Light green
-            _ColorOption(color: const Color(0xFFFFB6C1), onTap: () => _setMarkerColor('#FFB6C1', dialogContext), isSelected: currentBgColor == '#FFB6C1'), // Light pink
-            _ColorOption(color: const Color(0xFFFFD700), onTap: () => _setMarkerColor('#FFD700', dialogContext), isSelected: currentBgColor == '#FFD700'), // Gold
+            ...AppColorPalette.markerColors.map((colorOption) => 
+              _ColorOption(
+                color: colorOption.color,
+                onTap: () => _setMarkerColor(colorOption.hex, dialogContext),
+                isSelected: currentBgColor == colorOption.hex,
+              ),
+            ),
           ],
         ),
         actions: [
