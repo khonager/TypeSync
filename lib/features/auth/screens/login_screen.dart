@@ -45,6 +45,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGuestMode() async {
+    final authService = context.read<AuthService>();
+    await authService.signInAsGuest();
+
+    if (mounted) {
+      AppRouter.navigateAndClearStack(context, AppRouter.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
@@ -187,6 +196,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Text('Sign Up'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Guest mode button
+                  OutlinedButton(
+                    onPressed: authService.isLoading ? null : _handleGuestMode,
+                    child: const Text('Continue as Guest'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Use the app locally without an account',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

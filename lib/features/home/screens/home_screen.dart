@@ -44,26 +44,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
-    if (authService.userId != null) {
-      // Initialize providers with user ID
-      await context.read<NotesProvider>().initialize(authService.userId!);
-      await context.read<FoldersProvider>().initialize(authService.userId!);
+    final userId = authService.userId;
+    
+    if (userId != null) {
+      // Initialize providers with user ID (works for both logged-in and guest users)
+      await context.read<NotesProvider>().initialize(userId);
+      await context.read<FoldersProvider>().initialize(userId);
       
-      // Start real-time sync
+      // Sync the sync service with auth preferences
       final syncService = context.read<SyncService>();
-      syncService.startListening(authService.userId!);
+      syncService.setSyncEnabled(authService.syncEnabled);
       
-      // Connect providers to sync service
-      context.read<NotesProvider>().setSyncService(syncService);
-      context.read<FoldersProvider>().setSyncService(syncService);
-      
-      // Set up sync callbacks
-      syncService.onNotesUpdated = (notes) {
-        context.read<NotesProvider>().handleCloudUpdate(notes);
-      };
-      syncService.onFoldersUpdated = (folders) {
-        context.read<FoldersProvider>().handleCloudUpdate(folders);
-      };
+      // Only start sync if user is logged in (not guest) and sync is enabled
+      if (authService.isLoggedIn && authService.syncEnabled) {
+        syncService.startListening(userId);
+        
+        // Connect providers to sync service
+        context.read<NotesProvider>().setSyncService(syncService);
+        context.read<FoldersProvider>().setSyncService(syncService);
+        
+        // Set up sync callbacks
+        syncService.onNotesUpdated = (notes) {
+          context.read<NotesProvider>().handleCloudUpdate(notes);
+        };
+        syncService.onFoldersUpdated = (folders) {
+          context.read<FoldersProvider>().handleCloudUpdate(folders);
+        };
+      } else {
+        // For guests or when sync is disabled, don't set up sync service
+        context.read<NotesProvider>().setSyncService(null);
+        context.read<FoldersProvider>().setSyncService(null);
+      }
     }
   }
 
@@ -317,11 +328,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _createNewNote() async {
     final authService = context.read<AuthService>();
-    if (authService.userId == null) return;
+    final userId = authService.userId;
+    if (userId == null) return;
     
     final notesProvider = context.read<NotesProvider>();
     final note = await notesProvider.createNote(
-      userId: authService.userId!,
+      userId: userId,
       folderId: _currentFolderId,
     );
     
@@ -338,10 +350,11 @@ class _HomeScreenState extends State<HomeScreen> {
     
     if (name != null && name.isNotEmpty) {
       final authService = context.read<AuthService>();
-      if (authService.userId == null) return;
+      final userId = authService.userId;
+      if (userId == null) return;
       
       await context.read<FoldersProvider>().createFolder(
-        userId: authService.userId!,
+        userId: userId,
         name: name,
         parentId: _currentFolderId,
       );

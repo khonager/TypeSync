@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/routes/app_router.dart';
 
 /// Settings screen with app preferences
@@ -17,6 +18,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeService = context.watch<ThemeService>();
     final authService = context.watch<AuthService>();
+    final syncService = context.watch<SyncService>();
 
     return Scaffold(
       appBar: AppBar(
@@ -98,17 +100,34 @@ class SettingsScreen extends StatelessWidget {
           // Sync Section
           _SectionHeader(title: 'Sync'),
           
-          _SettingsTile(
-            icon: Icons.sync,
-            title: 'Background Sync',
-            subtitle: 'Keep notes synced automatically',
-            trailing: Switch(
-              value: true, // TODO: Connect to actual setting
-              onChanged: (value) {
-                // TODO: Implement background sync toggle
-              },
+          // Only show sync toggle for logged-in users (not guests)
+          if (authService.isLoggedIn)
+            _SettingsTile(
+              icon: Icons.sync,
+              title: 'Cloud Sync',
+              subtitle: authService.syncEnabled 
+                  ? 'Syncing with cloud enabled' 
+                  : 'Syncing with cloud disabled',
+              trailing: Switch(
+                value: authService.syncEnabled,
+                onChanged: (value) async {
+                  await authService.setSyncEnabled(value);
+                  syncService.setSyncEnabled(value);
+                  if (value && authService.userId != null) {
+                    // Restart sync if enabled
+                    syncService.startListening(authService.userId!);
+                  }
+                },
+              ),
             ),
-          ),
+          
+          if (authService.isGuestMode)
+            _SettingsTile(
+              icon: Icons.cloud_off_outlined,
+              title: 'Guest Mode',
+              subtitle: 'Using app locally without sync',
+              trailing: const Icon(Icons.info_outline, color: Colors.grey),
+            ),
           
           _SettingsTile(
             icon: Icons.wifi_off_outlined,

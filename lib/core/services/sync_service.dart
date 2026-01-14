@@ -57,6 +57,21 @@ class SyncService extends ChangeNotifier {
   // Callbacks for data updates
   Function(List<Note>)? onNotesUpdated;
   Function(List<Folder>)? onFoldersUpdated;
+  
+  // Sync enabled flag (set by AuthService)
+  bool _syncEnabled = true;
+  
+  /// Set whether sync is enabled
+  void setSyncEnabled(bool enabled) {
+    if (!enabled) {
+      _stopListening();
+    }
+    _syncEnabled = enabled;
+    notifyListeners();
+  }
+  
+  /// Whether sync is currently enabled
+  bool get syncEnabled => _syncEnabled;
 
   // ===========================================
   // GETTERS
@@ -112,6 +127,11 @@ class SyncService extends ChangeNotifier {
   void startListening(String userId) {
     _stopListening();
     
+    if (!_syncEnabled) {
+      debugPrint('Sync is disabled, not starting listeners');
+      return;
+    }
+    
     try {
       // Listen to notes collection
       _notesSubscription = _firebaseFirestore
@@ -165,13 +185,13 @@ class SyncService extends ChangeNotifier {
 
   /// Trigger a sync operation (debounced)
   void triggerSync() {
-    if (!_isOnline) return;
+    if (!_isOnline || !_syncEnabled) return;
     _syncSubject.add(null);
   }
 
   /// Sync a single note to Firebase
   Future<bool> syncNote(Note note) async {
-    if (!_isOnline) {
+    if (!_isOnline || !_syncEnabled) {
       return false;
     }
     
@@ -194,7 +214,7 @@ class SyncService extends ChangeNotifier {
 
   /// Sync a single folder to Firebase
   Future<bool> syncFolder(Folder folder) async {
-    if (!_isOnline) {
+    if (!_isOnline || !_syncEnabled) {
       return false;
     }
     
@@ -217,7 +237,7 @@ class SyncService extends ChangeNotifier {
 
   /// Delete a note from Firebase (soft delete)
   Future<bool> deleteNote(String noteId) async {
-    if (!_isOnline) return false;
+    if (!_isOnline || !_syncEnabled) return false;
     
     try {
       await _firebaseFirestore
@@ -233,7 +253,7 @@ class SyncService extends ChangeNotifier {
 
   /// Delete a folder from Firebase (soft delete)
   Future<bool> deleteFolder(String folderId) async {
-    if (!_isOnline) return false;
+    if (!_isOnline || !_syncEnabled) return false;
     
     try {
       await _firebaseFirestore
@@ -252,7 +272,7 @@ class SyncService extends ChangeNotifier {
     required List<Note> dirtyNotes,
     required List<Folder> dirtyFolders,
   }) async {
-    if (!_isOnline || (dirtyNotes.isEmpty && dirtyFolders.isEmpty)) {
+    if (!_isOnline || !_syncEnabled || (dirtyNotes.isEmpty && dirtyFolders.isEmpty)) {
       return;
     }
     
@@ -293,7 +313,7 @@ class SyncService extends ChangeNotifier {
   
   /// Perform background sync
   Future<void> _performSync() async {
-    if (!_isOnline) return;
+    if (!_isOnline || !_syncEnabled) return;
     
     // This is called by the debouncer
     // Actual sync logic is handled by individual sync methods

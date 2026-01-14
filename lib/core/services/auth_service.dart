@@ -6,6 +6,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/user.dart';
 
@@ -32,12 +34,21 @@ class AuthService extends ChangeNotifier {
   // Current user data
   User? _currentUser;
   
+  // Guest mode flag
+  bool _isGuestMode = false;
+  
+  // Sync enabled preference (for logged-in users)
+  bool _syncEnabled = true;
+  
   // Loading state
   bool _isLoading = false;
   
   // Error state
   String? _errorMessage;
   bool _hasError = false;
+  
+  // UUID generator for guest IDs
+  final Uuid _uuid = const Uuid();
 
   // ===========================================
   // GETTERS
@@ -46,8 +57,14 @@ class AuthService extends ChangeNotifier {
   /// Current authenticated user (null if not logged in)
   User? get currentUser => _currentUser;
   
-  /// Whether a user is currently authenticated
+  /// Whether a user is currently authenticated (including guest)
   bool get isAuthenticated => _currentUser != null;
+  
+  /// Whether the current user is a guest
+  bool get isGuestMode => _isGuestMode;
+  
+  /// Whether sync is enabled (only relevant for logged-in users)
+  bool get syncEnabled => _syncEnabled;
   
   /// Loading state for async operations
   bool get isLoading => _isLoading;
@@ -58,20 +75,52 @@ class AuthService extends ChangeNotifier {
   /// Whether there's an active error
   bool get hasError => _hasError;
   
-  /// Firebase user ID (for sync operations)
-  String? get userId => _auth?.currentUser?.uid;
+  /// User ID for local storage (Firebase UID for logged-in users, guest ID for guests)
+  String? get userId {
+    if (_isGuestMode && _currentUser != null) {
+      return _currentUser!.id;
+    }
+    return _auth?.currentUser?.uid;
+  }
+  
+  /// Whether user is logged in (not guest)
+  bool get isLoggedIn => isAuthenticated && !_isGuestMode;
 
   // ===========================================
   // CONSTRUCTOR
   // ===========================================
   
   AuthService() {
+    _loadPreferences();
     // Only listen to auth state changes if Firebase is initialized
     try {
       _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
     } catch (e) {
       // Firebase not initialized (e.g., on Linux without proper config)
       debugPrint('Firebase Auth not available: $e');
+    }
+  }
+  
+  /// Load preferences from SharedPreferences
+  Future<void> _loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _syncEnabled = prefs.getBool('sync_enabled') ?? true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading preferences: $e');
+    }
+  }
+  
+  /// Save sync enabled preference
+  Future<void> _saveSyncEnabled(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sync_enabled', enabled);
+      _syncEnabled = enabled;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error saving sync preference: $e');
     }
   }
 
@@ -175,13 +224,53 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Sign in as guest (local-only mode)
+  Future<void> signInAsGuest() async {
+    _setLoading(true);
+    _clearError();
+    
+    try {
+      // Generate a guest user ID
+      final guestId = 'guest_${_uuid.v4()}';
+      
+      // Create a guest user object
+      _currentUser = User(
+        id: guestId,
+        email: 'guest@local',
+        displayName: 'Guest',
+        createdAt: DateTime.now(),
+        lastSignIn: DateTime.now(),
+        emailVerified: false,
+      );
+      
+      _isGuestMode = true;
+      _setLoading(false);
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to sign in as guest.');
+      _setLoading(false);
+    }
+  }
+  
+  /// Toggle sync enabled/disabled (only for logged-in users)
+  Future<void> setSyncEnabled(bool enabled) async {
+    if (_isGuestMode) {
+      // Guests can't sync anyway
+      return;
+    }
+    await _saveSyncEnabled(enabled);
+  }
+  
   /// Sign out the current user
   Future<void> signOut() async {
     _setLoading(true);
     
     try {
-      await _firebaseAuth.signOut();
+      if (!_isGuestMode) {
+        await _firebaseAuth.signOut();
+      }
       _currentUser = null;
+      _isGuestMode = false;
       notifyListeners();
     } catch (e) {
       _setError('Sign out failed. Please try again.');
@@ -272,9 +361,10 @@ class AuthService extends ChangeNotifier {
   
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
-    if (firebaseUser != null) {
+    if (firebaseUser != null && !_isGuestMode) {
       await _loadUserData(firebaseUser.uid);
-    } else {
+    } else if (firebaseUser == null && !_isGuestMode) {
+      // Only clear user if not in guest mode
       _currentUser = null;
       notifyListeners();
     }
