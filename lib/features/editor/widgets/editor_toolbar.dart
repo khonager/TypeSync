@@ -30,23 +30,39 @@ class EditorToolbar extends StatefulWidget {
 class _EditorToolbarState extends State<EditorToolbar> {
   Offset _position = const Offset(16, 100); // Bottom left by default
   bool _isExpanded = false;
+  final GlobalKey _toolbarKey = GlobalKey();
+  double? _measuredHeight;
 
   void _toggleExpanded() {
     setState(() {
-      if (!_isExpanded) {
-        // Expanding - adjust position if needed to stay within bounds
-        final screenSize = MediaQuery.of(context).size;
-        final appBarHeight = AppBar().preferredSize.height;
-        final statusBarHeight = MediaQuery.of(context).padding.top;
-        final bodyHeight = screenSize.height - appBarHeight - statusBarHeight;
-        final expandedHeight = 400.0;
-        final maxBottom = bodyHeight - expandedHeight;
-        // If current position would be out of bounds when expanded, adjust it
-        if (maxBottom > 0 && _position.dy > maxBottom) {
-          _position = Offset(_position.dx, maxBottom);
+      _isExpanded = !_isExpanded;
+      _measuredHeight = null; // Reset to remeasure
+    });
+  }
+  
+  double _getToolbarHeight() {
+    // Use measured height if available, otherwise use conservative estimate
+    if (_measuredHeight != null) {
+      return _measuredHeight!;
+    }
+    // Conservative estimates - use small value for expanded to ensure it can reach top
+    // Even if actual toolbar is taller, this allows it to go to top (may extend slightly above)
+    return _isExpanded ? 100.0 : 50.0;
+  }
+  
+  void _measureToolbar() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _toolbarKey.currentContext != null) {
+        final renderBox = _toolbarKey.currentContext!.findRenderObject() as RenderBox?;
+        if (renderBox != null && renderBox.hasSize) {
+          final height = renderBox.size.height;
+          if (_measuredHeight != height) {
+            setState(() {
+              _measuredHeight = height;
+            });
+          }
         }
       }
-      _isExpanded = !_isExpanded;
     });
   }
 
@@ -77,7 +93,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
     
     // Get toolbar size to calculate proper bounds
     final toolbarWidth = _isExpanded ? 250.0 : 50.0;
-    final toolbarHeight = _isExpanded ? 400.0 : 50.0;
+    // Get actual or estimated toolbar height
+    final toolbarHeight = _getToolbarHeight();
     
     // The Stack is in the body, which is below the app bar
     // Body height = screenHeight - totalAppBarHeight
@@ -87,12 +104,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
     // Bottom constraint: 
     // - maxBottom: when toolbar top edge is at the top of body (right below app bar)
-    //   In body coordinates: bottom = bodyHeight - toolbarHeight
-    //   But we're using screen coordinates, so: bottom = bodyHeight - toolbarHeight
+    //   bottom = bodyHeight - toolbarHeight (toolbar top at top of body)
     // - minBottom: 0 (toolbar at bottom of body)
+    // Use actual or estimated height
+    final toolbarHeight = _getToolbarHeight();
     final maxBottom = bodyHeight - toolbarHeight;
     final minBottom = 0.0;
-    // Ensure maxBottom is valid
+    // Ensure maxBottom is valid (at least 0)
     final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
     final bottom = _position.dy.clamp(minBottom, clampedMaxBottom);
     
@@ -107,7 +125,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
           onPanUpdate: (details) {
             setState(() {
               final currentWidth = _isExpanded ? 250.0 : 50.0;
-              final currentHeight = _isExpanded ? 400.0 : 50.0;
+              final currentHeight = _getToolbarHeight();
               final appBarHeight = AppBar().preferredSize.height;
               final statusBarHeight = MediaQuery.of(context).padding.top;
               final bodyHeight = screenSize.height - appBarHeight - statusBarHeight;
@@ -117,7 +135,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
               // bottom = bodyHeight - currentHeight
               final maxBottom = bodyHeight - currentHeight;
               final minBottom = 0.0; // Can go all the way to bottom
-              // Ensure maxBottom is valid
               final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
               
               final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - currentWidth);
@@ -126,10 +143,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
             });
           },
           child: Container(
+            key: _toolbarKey,
             constraints: BoxConstraints(
               maxWidth: toolbarWidth,
               minWidth: 50,
-              maxHeight: toolbarHeight,
             ),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
@@ -146,7 +163,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
                 ),
               ],
             ),
-            child: _isExpanded ? _buildExpandedToolbar() : _buildCollapsedToolbar(),
+            child: Builder(
+              builder: (context) {
+                // Measure toolbar after build
+                _measureToolbar();
+                return _isExpanded ? _buildExpandedToolbar() : _buildCollapsedToolbar();
+              },
+            ),
           ),
         ),
       ),
