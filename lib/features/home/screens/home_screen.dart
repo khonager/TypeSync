@@ -4,11 +4,14 @@
 /// Based on the design mockup with dark theme.
 
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/models/note.dart';
@@ -16,6 +19,7 @@ import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
+import '../../../core/services/local_file_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../widgets/folder_grid.dart';
@@ -58,6 +62,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final userId = authService.userId;
     
     if (userId != null) {
+      // Initialize local file service
+      await LocalFileService.instance.initialize(userId);
+      
       // Initialize providers with user ID (works for both logged-in and guest users)
       await context.read<NotesProvider>().initialize(userId);
       await context.read<FoldersProvider>().initialize(userId);
@@ -532,9 +539,23 @@ class _HomeScreenState extends State<HomeScreen> {
         content = await file.readAsString();
         noteType = fileExtension == 'md' || fileExtension == 'markdown' ? 'markdown' : 'text';
       } else if (fileExtension == 'pdf') {
-        // PDF files - store the file path
-        content = ''; // Empty content for PDFs
-        noteType = 'pdf';
+        // PDF files - copy to app storage and create PDF note
+        final storedPath = await LocalFileService.instance.copyFileToStorage(
+          filePath,
+          fileName: fileName,
+        );
+        
+        if (storedPath != null) {
+          content = ''; // Empty content for PDFs
+          noteType = 'pdf';
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to import PDF: $fileName')),
+            );
+          }
+          return;
+        }
       } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
         // Image files - create note with image reference
         content = '[Image file: $fileName]';
@@ -556,10 +577,16 @@ class _HomeScreenState extends State<HomeScreen> {
             : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
       );
       
-      // Store PDF path if it's a PDF
+      // Store PDF path if it's a PDF (use stored path, not original)
       if (noteType == 'pdf' && note != null) {
-        final updatedNote = note.copyWith(pdfPath: filePath);
-        await notesProvider.updateNote(updatedNote);
+        final storedPath = await LocalFileService.instance.copyFileToStorage(
+          filePath,
+          fileName: fileName,
+        );
+        if (storedPath != null) {
+          final updatedNote = note.copyWith(pdfPath: storedPath);
+          await notesProvider.updateNote(updatedNote);
+        }
       }
       
       if (note != null && mounted) {
@@ -646,6 +673,14 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Export folder'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportFolder(folderId);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('Delete', style: TextStyle(color: Colors.red)),
               onTap: () {
@@ -659,7 +694,140 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _exportFolder(String folderId) async {
+    final foldersProvider = context.read<FoldersProvider>();
+    final notesProvider = context.read<NotesProvider>();
+    final folder = foldersProvider.getFolderById(folderId);
+    if (folder == null) return;
+    
+    try {
+      // Use file picker to choose export directory
+      final directory = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Export folder to',
+      );
+      
+      if (directory == null) return;
+      
+      final exportDir = Directory('${directory.path}/${folder.name}');
+      if (!await exportDir.exists()) {
+        await exportDir.create(recursive: true);
+      }
+      
+      // Export all notes in this folder
+      final notes = notesProvider.getNotesInFolder(folderId);
+      int exportedCount = 0;
+      
+      for (final note in notes) {
+        try {
+          String fileName = note.title;
+          String extension = '.txt';
+          String content = '';
+          
+          if (note.type == NoteType.pdf && note.pdfPath != null) {
+            final pdfFile = File(note.pdfPath!);
+            if (await pdfFile.exists()) {
+              await pdfFile.copy('${exportDir.path}/$fileName.pdf');
+              exportedCount++;
+            }
+            continue;
+          } else if (note.type == NoteType.markdown) {
+            extension = '.md';
+            content = note.content;
+          } else {
+            extension = '.txt';
+            try {
+              final jsonData = jsonDecode(note.content) as List<dynamic>;
+              final document = Document.fromJson(jsonData);
+              content = document.toPlainText();
+            } catch (e) {
+              content = note.content;
+            }
+          }
+          
+          final file = File('${exportDir.path}/$fileName$extension');
+          await file.writeAsString(content);
+          exportedCount++;
+        } catch (e) {
+          debugPrint('Failed to export note ${note.id}: $e');
+        }
+      }
+      
+      // Export subfolders recursively
+      final subfolders = foldersProvider.getSubfolders(folderId);
+      for (final subfolder in subfolders) {
+        await _exportFolderRecursive(subfolder.id, exportDir.path);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported $exportedCount items from folder')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export folder: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportFolderRecursive(String folderId, String basePath) async {
+    final foldersProvider = context.read<FoldersProvider>();
+    final notesProvider = context.read<NotesProvider>();
+    final folder = foldersProvider.getFolderById(folderId);
+    if (folder == null) return;
+    
+    final folderDir = Directory('$basePath/${folder.name}');
+    if (!await folderDir.exists()) {
+      await folderDir.create(recursive: true);
+    }
+    
+    // Export notes in this folder
+    final notes = notesProvider.getNotesInFolder(folderId);
+    for (final note in notes) {
+      try {
+        String fileName = note.title;
+        String extension = '.txt';
+        String content = '';
+        
+        if (note.type == NoteType.pdf && note.pdfPath != null) {
+          final pdfFile = File(note.pdfPath!);
+          if (await pdfFile.exists()) {
+            await pdfFile.copy('${folderDir.path}/$fileName.pdf');
+          }
+          continue;
+        } else if (note.type == NoteType.markdown) {
+          extension = '.md';
+          content = note.content;
+        } else {
+          extension = '.txt';
+          try {
+            final jsonData = jsonDecode(note.content) as List<dynamic>;
+            final document = Document.fromJson(jsonData);
+            content = document.toPlainText();
+          } catch (e) {
+            content = note.content;
+          }
+        }
+        
+        final file = File('${folderDir.path}/$fileName$extension');
+        await file.writeAsString(content);
+      } catch (e) {
+        debugPrint('Failed to export note ${note.id}: $e');
+      }
+    }
+    
+    // Export subfolders
+    final subfolders = foldersProvider.getSubfolders(folderId);
+    for (final subfolder in subfolders) {
+      await _exportFolderRecursive(subfolder.id, folderDir.path);
+    }
+  }
+
   void _showNoteOptions(String noteId) {
+    final note = context.read<NotesProvider>().getNoteById(noteId);
+    
     showModalBottomSheet(
       context: context,
       builder: (bottomSheetContext) => SafeArea(
@@ -667,8 +835,12 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.star_outline),
-              title: const Text('Add to favorites'),
+              leading: Icon(note?.isFavorite == true 
+                  ? Icons.star 
+                  : Icons.star_outline),
+              title: Text(note?.isFavorite == true 
+                  ? 'Remove from favorites' 
+                  : 'Add to favorites'),
               onTap: () {
                 Navigator.pop(bottomSheetContext);
                 this.context.read<NotesProvider>().toggleFavorite(noteId);
@@ -695,6 +867,14 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Export'),
+              onTap: () {
+                Navigator.pop(bottomSheetContext);
+                _exportNote(noteId);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('Delete', style: TextStyle(color: Colors.red)),
               onTap: () {
@@ -706,6 +886,87 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _exportNote(String noteId) async {
+    final note = context.read<NotesProvider>().getNoteById(noteId);
+    if (note == null) return;
+    
+    try {
+      String fileName = note.title;
+      String extension = '.txt';
+      String content = '';
+      
+      if (note.type == NoteType.pdf && note.pdfPath != null) {
+        // Export PDF file
+        final pdfFile = File(note.pdfPath!);
+        if (!await pdfFile.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF file not found')),
+            );
+          }
+          return;
+        }
+        
+        // Use file picker to choose export location
+        final savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Export PDF',
+          fileName: '$fileName.pdf',
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        
+        if (savePath != null) {
+          await pdfFile.copy(savePath);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('PDF exported successfully')),
+            );
+          }
+        }
+        return;
+      } else if (note.type == NoteType.markdown) {
+        extension = '.md';
+        content = note.content;
+      } else {
+        // Text note - export as plain text
+        extension = '.txt';
+        // Convert Quill Delta to plain text
+        try {
+          final jsonData = jsonDecode(note.content) as List<dynamic>;
+          final document = Document.fromJson(jsonData);
+          content = document.toPlainText();
+        } catch (e) {
+          // If not JSON, use content as-is
+          content = note.content;
+        }
+      }
+      
+      // Use file picker to choose export location
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Note',
+        fileName: '$fileName$extension',
+        type: FileType.custom,
+        allowedExtensions: [extension.substring(1)],
+      );
+      
+      if (savePath != null) {
+        final file = File(savePath);
+        await file.writeAsString(content);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Note exported successfully')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export: $e')),
+        );
+      }
+    }
   }
 
   void _showNoteColorPicker(String noteId) {

@@ -8,6 +8,9 @@ import 'package:provider/provider.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
+import '../../../core/services/local_folder_sync_service.dart';
+import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/folders_provider.dart';
 import '../../../core/routes/app_router.dart';
 
 /// Settings screen with app preferences
@@ -19,6 +22,7 @@ class SettingsScreen extends StatelessWidget {
     final themeService = context.watch<ThemeService>();
     final authService = context.watch<AuthService>();
     final syncService = context.watch<SyncService>();
+    final localSyncService = context.watch<LocalFolderSyncService>();
 
     return Scaffold(
       appBar: AppBar(
@@ -136,6 +140,15 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.check, color: Colors.green),
           ),
           
+          _SettingsTile(
+            icon: Icons.folder_sync_outlined,
+            title: 'Local Folder Sync',
+            subtitle: localSyncService.syncFolder != null 
+                ? localSyncService.syncFolder!.path 
+                : 'Not configured',
+            onTap: () => _showLocalFolderSync(context),
+          ),
+          
           const Divider(),
           
           // About Section
@@ -209,6 +222,203 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showLocalFolderSync(BuildContext context) {
+    final syncService = context.read<LocalFolderSyncService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final authService = context.read<AuthService>();
+    final userId = authService.userId;
+
+    if (userId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Local Folder Sync'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (syncService.syncFolder != null) ...[
+                Text('Sync folder: ${syncService.syncFolder!.path}'),
+                const SizedBox(height: 16),
+              ],
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final success = await syncService.chooseSyncFolder();
+                  if (success && dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                    _showLocalFolderSync(context); // Refresh
+                  }
+                },
+                icon: const Icon(Icons.folder_open),
+                label: Text(syncService.syncFolder != null 
+                    ? 'Change Folder' 
+                    : 'Choose Folder'),
+              ),
+              if (syncService.syncFolder != null) ...[
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: syncService.isSyncing ? null : () async {
+                    // Set up conflict handler
+                    syncService.onConflictsDetected = (conflicts) {
+                      Navigator.pop(dialogContext);
+                      _showConflictResolution(
+                        context,
+                        conflicts,
+                        syncService,
+                        notesProvider,
+                        foldersProvider,
+                        userId,
+                      );
+                    };
+                    
+                    await syncService.sync(
+                      notesProvider: notesProvider,
+                      foldersProvider: foldersProvider,
+                      userId: userId,
+                    );
+                    
+                    if (dialogContext.mounted && syncService.conflicts.isEmpty) {
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Sync completed')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Sync Now'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConflictResolution(
+    BuildContext context,
+    List<ConflictInfo> conflicts,
+    LocalFolderSyncService syncService,
+    NotesProvider notesProvider,
+    FoldersProvider foldersProvider,
+    String userId,
+  ) {
+    if (conflicts.isEmpty) return;
+
+    int currentIndex = 0;
+
+    void showNextConflict() {
+      if (currentIndex >= conflicts.length) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All conflicts resolved')),
+        );
+        return;
+      }
+
+      final conflict = conflicts[currentIndex];
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Conflict: ${conflict.itemName}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.'),
+                const SizedBox(height: 16),
+                Text('Local modified: ${_formatDateTime(conflict.localModified)}'),
+                Text('Cloud modified: ${_formatDateTime(conflict.cloudModified)}'),
+                const SizedBox(height: 16),
+                const Text('Choose which version to keep:'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await syncService.resolveConflict(
+                  conflict,
+                  ConflictResolution.useLocal,
+                  notesProvider: notesProvider,
+                  foldersProvider: foldersProvider,
+                  userId: userId,
+                );
+                Navigator.pop(dialogContext);
+                currentIndex++;
+                showNextConflict();
+              },
+              child: const Text('Use Local'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await syncService.resolveConflict(
+                  conflict,
+                  ConflictResolution.useCloud,
+                  notesProvider: notesProvider,
+                  foldersProvider: foldersProvider,
+                  userId: userId,
+                );
+                Navigator.pop(dialogContext);
+                currentIndex++;
+                showNextConflict();
+              },
+              child: const Text('Use Cloud'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await syncService.resolveConflict(
+                  conflict,
+                  ConflictResolution.keepBoth,
+                  notesProvider: notesProvider,
+                  foldersProvider: foldersProvider,
+                  userId: userId,
+                );
+                Navigator.pop(dialogContext);
+                currentIndex++;
+                showNextConflict();
+              },
+              child: const Text('Keep Both'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await syncService.resolveConflict(
+                  conflict,
+                  ConflictResolution.skip,
+                  notesProvider: notesProvider,
+                  foldersProvider: foldersProvider,
+                  userId: userId,
+                );
+                Navigator.pop(dialogContext);
+                currentIndex++;
+                showNextConflict();
+              },
+              child: const Text('Skip'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    showNextConflict();
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
+           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   void _confirmSignOut(BuildContext context, AuthService authService) {

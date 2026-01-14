@@ -57,6 +57,7 @@ dependencies:
   collection: ^1.18.0
   equatable: ^2.0.5
   rxdart: ^0.27.7
+  path: ^1.9.0
   
   # Platform Specific
   window_manager: ^0.4.2

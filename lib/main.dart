@@ -15,6 +15,7 @@ import 'core/services/sync_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/theme_service.dart';
+import 'core/services/local_folder_sync_service.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
 import 'core/providers/timetable_provider.dart';
@@ -84,6 +85,9 @@ class TypeSyncApp extends StatelessWidget {
         
         // Sync service for real-time file synchronization
         ChangeNotifierProvider(create: (_) => SyncService()),
+        
+        // Local folder sync service for syncing with local folders
+        ChangeNotifierProvider(create: (_) => LocalFolderSyncService()),
         
         // User provider for managing user profile and preferences
         ChangeNotifierProvider(create: (_) => UserProvider()),

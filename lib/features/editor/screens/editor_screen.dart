@@ -13,10 +13,12 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/local_file_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
@@ -382,10 +384,63 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _insertPdf() async {
-    // TODO: Implement PDF picker and insertion
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('PDF insertion coming soon')),
-    );
+    try {
+      final filePicker = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: false,
+      );
+      
+      if (filePicker != null && filePicker.files.single.path != null) {
+        final filePath = filePicker.files.single.path!;
+        final fileName = filePicker.files.single.name;
+        
+        // Copy PDF to app storage
+        final authService = context.read<AuthService>();
+        final userId = authService.userId;
+        if (userId == null) return;
+        
+        await LocalFileService.instance.initialize(userId);
+        final storedPath = await LocalFileService.instance.copyFileToStorage(
+          filePath,
+          fileName: fileName,
+        );
+        
+        if (storedPath != null && _note != null) {
+          // Update note to be a PDF type
+          final notesProvider = context.read<NotesProvider>();
+          final updatedNote = _note!.copyWith(
+            type: NoteType.pdf,
+            pdfPath: storedPath,
+            title: fileName.replaceAll('.pdf', ''),
+          );
+          await notesProvider.updateNote(updatedNote);
+          
+          // Refresh the note
+          setState(() {
+            _note = updatedNote;
+          });
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('PDF imported: $fileName')),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to import PDF')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error importing PDF: $e')),
+        );
+      }
+    }
   }
 
   void _showTagDialog() {
@@ -475,8 +530,85 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  void _exportNote() {
-    // TODO: Implement export functionality
+  Future<void> _exportNote() async {
+    if (_note == null) return;
+    
+    try {
+      // Determine export file name and extension
+      String fileName = _note!.title;
+      String extension = '.txt';
+      String content = '';
+      
+      if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
+        // Export PDF file
+        final pdfFile = File(_note!.pdfPath!);
+        if (!await pdfFile.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF file not found')),
+            );
+          }
+          return;
+        }
+        
+        // Use file picker to choose export location
+        final savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Export PDF',
+          fileName: '$fileName.pdf',
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        
+        if (savePath != null) {
+          await pdfFile.copy(savePath);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('PDF exported to $savePath')),
+            );
+          }
+        }
+        return;
+      } else if (_note!.type == NoteType.markdown) {
+        extension = '.md';
+        content = _note!.content;
+      } else {
+        // Text note - export as plain text
+        extension = '.txt';
+        // Convert Quill Delta to plain text
+        try {
+          final jsonData = jsonDecode(_note!.content) as List<dynamic>;
+          final document = Document.fromJson(jsonData);
+          content = document.toPlainText();
+        } catch (e) {
+          // If not JSON, use content as-is
+          content = _note!.content;
+        }
+      }
+      
+      // Use file picker to choose export location
+      final savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export Note',
+        fileName: '$fileName$extension',
+        type: FileType.custom,
+        allowedExtensions: [extension.substring(1)],
+      );
+      
+      if (savePath != null) {
+        final file = File(savePath);
+        await file.writeAsString(content);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Note exported to $savePath')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildPdfViewer() {
@@ -486,61 +618,29 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     }
 
-    final pdfFile = File(_note!.pdfPath!);
-    if (!pdfFile.existsSync()) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.picture_as_pdf, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'PDF file not found on disk',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Path: ${_note!.pdfPath}',
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Use try-catch to handle PDF viewer errors gracefully
-    // Note: Syncfusion PDF viewer may have issues on Linux, so we'll use a fallback
+    final pdfPath = _note!.pdfPath!;
+    final pdfFile = File(pdfPath);
+    
     return FutureBuilder<bool>(
-      future: _checkPdfViewerAvailable(),
+      future: Future(() => pdfFile.existsSync()),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         
-        if (snapshot.data == true) {
-          try {
-            return SfPdfViewer.file(pdfFile);
-          } catch (e) {
-            debugPrint('PDF viewer error: $e');
-            return _buildPdfErrorView(pdfFile);
-          }
-        } else {
+        if (!snapshot.hasData || !snapshot.data!) {
+          return _buildPdfErrorView(pdfFile);
+        }
+
+        // Try to use Syncfusion PDF viewer, fallback to external viewer if it fails
+        try {
+          return SfPdfViewer.file(pdfFile);
+        } catch (e) {
+          debugPrint('PDF viewer error: $e');
           return _buildPdfErrorView(pdfFile);
         }
       },
     );
-  }
-
-  Future<bool> _checkPdfViewerAvailable() async {
-    // Check if PDF viewer is available (may fail on Linux)
-    try {
-      // Just return false for now to use fallback on Linux
-      // In production, you could check platform or test the viewer
-      return false; // Use fallback for now
-    } catch (e) {
-      return false;
-    }
   }
 
   Widget _buildPdfErrorView(File pdfFile) {
@@ -631,15 +731,46 @@ class _EditorScreenState extends State<EditorScreen> {
             );
           }
         } else if (fileExtension == 'pdf') {
-          // PDF files - insert reference
-          final selection = _quillController.selection;
-          final offset = selection.isCollapsed ? selection.start : selection.start;
-          _quillController.document.insert(offset, '\n\n[PDF: $fileName]\n\n');
+          // PDF files - import as PDF note
+          final authService = context.read<AuthService>();
+          final userId = authService.userId;
+          if (userId == null) return;
           
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('PDF reference added: $fileName')),
+          await LocalFileService.instance.initialize(userId);
+          final storedPath = await LocalFileService.instance.copyFileToStorage(
+            filePath,
+            fileName: fileName,
+          );
+          
+          if (storedPath != null) {
+            // Create a new PDF note
+            final notesProvider = context.read<NotesProvider>();
+            final pdfNote = await notesProvider.createNote(
+              userId: userId,
+              folderId: _note?.folderId,
+              title: fileName.replaceAll('.pdf', ''),
+              content: '',
+              type: NoteType.pdf,
             );
+            
+            if (pdfNote != null) {
+              final updatedNote = pdfNote.copyWith(pdfPath: storedPath);
+              await notesProvider.updateNote(updatedNote);
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('PDF imported: $fileName')),
+                );
+                // Optionally open the PDF note
+                // AppRouter.openEditor(context, noteId: pdfNote.id);
+              }
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to import PDF: $fileName')),
+              );
+            }
           }
         } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
           // Image files - insert reference
