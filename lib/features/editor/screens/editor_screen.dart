@@ -472,16 +472,19 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  void _setNoteBackgroundColor(String? color, BuildContext dialogContext) {
+  void _setNoteBackgroundColor(String? color, BuildContext dialogContext) async {
     if (_note == null) return;
     
     Navigator.pop(dialogContext);
-    context.read<NotesProvider>().setBackgroundColor(_note!.id, color);
+    await context.read<NotesProvider>().setBackgroundColor(_note!.id, color);
     
-    // Update local note state
-    setState(() {
-      _note = _note!.copyWith(backgroundColor: color);
-    });
+    // Refresh note from provider to ensure we have the latest state
+    final updatedNote = context.read<NotesProvider>().getNoteById(_note!.id);
+    if (updatedNote != null) {
+      setState(() {
+        _note = updatedNote;
+      });
+    }
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

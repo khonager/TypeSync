@@ -165,6 +165,8 @@ class NotesProvider extends ChangeNotifier {
       final updatedNote = note.copyWith(
         updatedAt: DateTime.now(),
         isDirty: true,
+        backgroundColor: note.backgroundColor,
+        backgroundColorSet: true, // Preserve background color
       );
       
       // Update locally
