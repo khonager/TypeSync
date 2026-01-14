@@ -355,20 +355,34 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _setTextColor(String color) {
     Navigator.pop(context);
     // Use Quill's built-in color attribute
-    // Create attribute with value using fromMap
-    final colorAttr = Attribute.fromMap({
-      Attribute.color.key: color,
-    });
-    widget.controller.formatSelection(colorAttr);
+    // Format using document.format with attribute key and value
+    final selection = widget.controller.selection;
+    if (selection.isValid) {
+      final length = selection.isCollapsed ? 0 : (selection.end - selection.start);
+      // Create a style map and format the selection
+      final style = <String, dynamic>{Attribute.color.key: color};
+      widget.controller.document.format(
+        selection.start,
+        length,
+        style,
+      );
+    }
   }
 
   void _setMarkerColor(String color) {
     Navigator.pop(context);
     // Use Quill's built-in background attribute for marker/highlight effect
-    final bgAttr = Attribute.fromMap({
-      Attribute.background.key: color,
-    });
-    widget.controller.formatSelection(bgAttr);
+    final selection = widget.controller.selection;
+    if (selection.isValid) {
+      final length = selection.isCollapsed ? 0 : (selection.end - selection.start);
+      // Create a style map and format the selection
+      final style = <String, dynamic>{Attribute.background.key: color};
+      widget.controller.document.format(
+        selection.start,
+        length,
+        style,
+      );
+    }
   }
 }
 
