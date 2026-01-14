@@ -218,6 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       folders: folders,
                       onFolderTap: _navigateToFolder,
                       onFolderLongPress: _showFolderOptions,
+                      onNoteDropped: _handleNoteDroppedOnFolder,
                     )
                   : FolderList(
                       folders: folders,
@@ -591,6 +592,11 @@ class _HomeScreenState extends State<HomeScreen> {
           controller: controller,
           autofocus: true,
           decoration: InputDecoration(hintText: hint),
+          onSubmitted: (value) {
+            if (value.isNotEmpty) {
+              Navigator.pop(context, value);
+            }
+          },
         ),
         actions: [
           TextButton(
@@ -686,6 +692,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  void _handleNoteDroppedOnFolder(String noteId, String folderId) {
+    context.read<NotesProvider>().moveToFolder(noteId, folderId);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note moved to folder')),
+      );
+    }
   }
 }
 

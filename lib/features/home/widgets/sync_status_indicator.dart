@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/sync_service.dart';
+import '../../../core/services/auth_service.dart';
 
 /// Visual indicator for sync status
 class SyncStatusIndicator extends StatelessWidget {
@@ -13,6 +14,13 @@ class SyncStatusIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authService = context.watch<AuthService>();
+    
+    // Don't show sync indicator in guest mode
+    if (authService.isGuestMode) {
+      return const SizedBox.shrink();
+    }
+    
     final syncService = context.watch<SyncService>();
     
     IconData icon;

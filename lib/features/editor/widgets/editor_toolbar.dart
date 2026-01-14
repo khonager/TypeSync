@@ -354,22 +354,17 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   void _setTextColor(String color) {
     Navigator.pop(context);
-    // Quill color formatting - placeholder for now
-    // Color formatting requires custom attribute setup in Quill
-    // For now, show a message that this feature needs implementation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Text color formatting coming soon - requires custom Quill setup'),
-      ),
+    // Use Quill's built-in color attribute
+    widget.controller.formatSelection(
+      Attribute.color.withValue(color),
     );
   }
 
   void _setMarkerColor(String color) {
     Navigator.pop(context);
-    // Note: Quill may not have built-in marker support, this is a placeholder
-    // You may need to use custom attributes
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Marker color feature coming soon')),
+    // Use Quill's built-in background attribute for marker/highlight effect
+    widget.controller.formatSelection(
+      Attribute.background.withValue(color),
     );
   }
 }

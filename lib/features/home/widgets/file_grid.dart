@@ -70,54 +70,123 @@ class FileGridItem extends StatelessWidget {
         icon = Icons.description_outlined;
     }
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // File icon container
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppTheme.darkSurface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Stack(
-                children: [
-                  // File icon
-                  Center(
-                    child: Icon(
-                      icon,
-                      size: 48,
-                      color: Colors.white54,
-                    ),
+    return Draggable<String>(
+      data: note.id,
+      feedback: Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: AppTheme.darkSurface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 48, color: Colors.white54),
+        ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: GestureDetector(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // File icon container
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.darkSurface,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  // Favorite indicator
-                  if (note.isFavorite)
-                    const Positioned(
-                      top: 8,
-                      right: 8,
+                  child: Stack(
+                    children: [
+                      // File icon
+                      Center(
+                        child: Icon(
+                          icon,
+                          size: 48,
+                          color: Colors.white54,
+                        ),
+                      ),
+                      // Favorite indicator
+                      if (note.isFavorite)
+                        const Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Icon(
+                            Icons.star,
+                            size: 16,
+                            color: Colors.amber,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // File name
+              Text(
+                note.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: GestureDetector(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // File icon container
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.darkSurface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  children: [
+                    // File icon
+                    Center(
                       child: Icon(
-                        Icons.star,
-                        size: 16,
-                        color: Colors.amber,
+                        icon,
+                        size: 48,
+                        color: Colors.white54,
                       ),
                     ),
-                ],
+                    // Favorite indicator
+                    if (note.isFavorite)
+                      const Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Icon(
+                          Icons.star,
+                          size: 16,
+                          color: Colors.amber,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          // File name
-          Text(
-            note.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
+            const SizedBox(height: 8),
+            // File name
+            Text(
+              note.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -19,6 +19,8 @@ import 'core/providers/folders_provider.dart';
 import 'core/providers/timetable_provider.dart';
 import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
+import 'core/providers/homework_provider.dart';
+import 'core/providers/calendar_provider.dart';
 import 'firebase_options.dart';
 
 /// Main entry point for the TypeSync application
@@ -90,6 +92,12 @@ class TypeSyncApp extends StatelessWidget {
         
         // Timetable provider for managing class schedule
         ChangeNotifierProvider(create: (_) => TimetableProvider()),
+        
+        // Homework provider for managing homework tasks
+        ChangeNotifierProvider(create: (_) => HomeworkProvider()),
+        
+        // Calendar provider for managing calendar events
+        ChangeNotifierProvider(create: (_) => CalendarProvider()),
         
         // Sync provider for tracking sync status across devices
         ChangeNotifierProvider(create: (_) => SyncProvider()),

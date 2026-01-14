@@ -291,6 +291,86 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Sync a homework task to Firebase
+  Future<bool> syncHomework(Map<String, dynamic> homeworkData) async {
+    if (!_isOnline || !_syncEnabled) {
+      return false;
+    }
+    
+    try {
+      _setStatus(SyncStatus.syncing);
+      
+      final homeworkId = homeworkData['id'] as String;
+      await _firebaseFirestore
+          .collection('homework')
+          .doc(homeworkId)
+          .set(homeworkData, SetOptions(merge: true));
+      
+      _setStatus(SyncStatus.synced);
+      _lastSyncTime = DateTime.now();
+      return true;
+    } catch (e) {
+      _setError('Failed to sync homework: $e');
+      return false;
+    }
+  }
+
+  /// Delete a homework task from Firebase (soft delete)
+  Future<bool> deleteHomework(String homeworkId) async {
+    if (!_isOnline || !_syncEnabled) return false;
+    
+    try {
+      await _firebaseFirestore
+          .collection('homework')
+          .doc(homeworkId)
+          .update({'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
+      return true;
+    } catch (e) {
+      _setError('Failed to delete homework: $e');
+      return false;
+    }
+  }
+
+  /// Sync a calendar event to Firebase
+  Future<bool> syncCalendarEvent(Map<String, dynamic> eventData) async {
+    if (!_isOnline || !_syncEnabled) {
+      return false;
+    }
+    
+    try {
+      _setStatus(SyncStatus.syncing);
+      
+      final eventId = eventData['id'] as String;
+      await _firebaseFirestore
+          .collection('calendar_events')
+          .doc(eventId)
+          .set(eventData, SetOptions(merge: true));
+      
+      _setStatus(SyncStatus.synced);
+      _lastSyncTime = DateTime.now();
+      return true;
+    } catch (e) {
+      _setError('Failed to sync calendar event: $e');
+      return false;
+    }
+  }
+
+  /// Delete a calendar event from Firebase (soft delete)
+  Future<bool> deleteCalendarEvent(String eventId) async {
+    if (!_isOnline || !_syncEnabled) return false;
+    
+    try {
+      await _firebaseFirestore
+          .collection('calendar_events')
+          .doc(eventId)
+          .update({'isDeleted': true});
+      return true;
+    } catch (e) {
+      _setError('Failed to delete calendar event: $e');
+      return false;
+    }
+  }
+
   /// Sync all dirty (unsynced) items
   Future<void> syncDirtyItems({
     required List<Note> dirtyNotes,

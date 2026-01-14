@@ -12,12 +12,14 @@ class FolderGrid extends StatelessWidget {
   final List<Folder> folders;
   final Function(String) onFolderTap;
   final Function(String) onFolderLongPress;
+  final Function(String noteId, String folderId)? onNoteDropped;
 
   const FolderGrid({
     super.key,
     required this.folders,
     required this.onFolderTap,
     required this.onFolderLongPress,
+    this.onNoteDropped,
   });
 
   @override
@@ -34,6 +36,7 @@ class FolderGrid extends StatelessWidget {
           folder: folders[index],
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
+          onNoteDropped: onNoteDropped,
         ),
         childCount: folders.length,
       ),
@@ -42,70 +45,108 @@ class FolderGrid extends StatelessWidget {
 }
 
 /// Individual folder item in grid
-class FolderGridItem extends StatelessWidget {
+class FolderGridItem extends StatefulWidget {
   final Folder folder;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final Function(String noteId, String folderId)? onNoteDropped;
 
   const FolderGridItem({
     super.key,
     required this.folder,
     required this.onTap,
     required this.onLongPress,
+    this.onNoteDropped,
   });
+
+  @override
+  State<FolderGridItem> createState() => _FolderGridItemState();
+}
+
+class _FolderGridItemState extends State<FolderGridItem> {
+  bool _isDragOver = false;
 
   @override
   Widget build(BuildContext context) {
     // Parse background color if set
-    final bgColor = folder.backgroundColor != null
-        ? Color(int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')))
+    final bgColor = widget.folder.backgroundColor != null
+        ? Color(int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.folderDefault;
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Folder icon container
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.folder,
-                  size: 48,
-                  color: Colors.white54,
+    return DragTarget<String>(
+      onWillAccept: (data) => true,
+      onAccept: (noteId) {
+        widget.onNoteDropped?.call(noteId, widget.folder.id);
+        setState(() {
+          _isDragOver = false;
+        });
+      },
+      onLeave: (data) {
+        setState(() {
+          _isDragOver = false;
+        });
+      },
+      onMove: (details) {
+        setState(() {
+          _isDragOver = true;
+        });
+      },
+      builder: (context, candidateData, rejectedData) {
+        return GestureDetector(
+          onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Folder icon container
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _isDragOver 
+                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                        : bgColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: _isDragOver
+                        ? Border.all(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          )
+                        : null,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _isDragOver ? Icons.folder_open : Icons.folder,
+                      size: 48,
+                      color: Colors.white54,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Folder name
-          Text(
-            folder.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-          // Subtitle if present
-          if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
-            Text(
-              folder.subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey,
-                fontSize: 10,
+              const SizedBox(height: 8),
+              // Folder name
+              Text(
+                widget.folder.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-        ],
-      ),
+              // Subtitle if present
+              if (widget.folder.subtitle != null && widget.folder.subtitle!.isNotEmpty)
+                Text(
+                  widget.folder.subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey,
+                    fontSize: 10,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

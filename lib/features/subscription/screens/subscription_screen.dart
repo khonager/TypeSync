@@ -135,6 +135,33 @@ class SubscriptionScreen extends StatelessWidget {
     AuthService authService,
     StorageService storageService,
   ) {
+    // Check if user is in guest mode
+    if (authService.isGuestMode) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Login Required'),
+          content: const Text('Please log in to upgrade your subscription. Guest mode only supports local storage.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context); // Close subscription screen
+                // Navigate to login screen
+                // TODO: Add navigation to login screen
+              },
+              child: const Text('Go to Login'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -171,23 +198,24 @@ class SubscriptionScreen extends StatelessWidget {
             onPressed: () async {
               Navigator.pop(context);
               
-              // Show loading
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Processing...'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              
               // TODO: Integrate with payment provider
+              // Only show success message after payment is confirmed
+              // For now, this is a placeholder - actual payment integration should
+              // only show success after payment confirmation
               final userId = authService.userId;
               if (userId != null) {
-                await storageService.upgradeSubscription(userId, plan.tier);
+                final success = await storageService.upgradeSubscription(userId, plan.tier);
                 
-                if (context.mounted) {
+                if (context.mounted && success) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Upgraded to ${plan.name}!'),
+                    ),
+                  );
+                } else if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to upgrade subscription. Please try again.'),
                     ),
                   );
                 }
