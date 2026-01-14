@@ -676,12 +676,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ListTile(
               leading: const Icon(Icons.palette_outlined),
               title: const Text('Set background color'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(bottomSheetContext);
-                // Show color picker using root navigator to ensure it appears
-                WidgetsBinding.instance.addPostFrameCallback((_) {
+                // Wait a bit for bottom sheet to close, then show dialog
+                await Future.delayed(const Duration(milliseconds: 200));
+                if (mounted) {
                   _showNoteColorPicker(noteId);
-                });
+                }
               },
             ),
             ListTile(
@@ -707,6 +708,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showNoteColorPicker(String noteId) {
+    if (!mounted) return;
+    
     final note = context.read<NotesProvider>().getNoteById(noteId);
     final currentColor = note?.backgroundColor;
 
@@ -714,73 +717,77 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      useRootNavigator: true,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Background Color'),
-        content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _ColorOption(
-              color: Colors.transparent,
-              onTap: () => _setNoteBackgroundColor(noteId, null, dialogContext),
-              isSelected: currentColor == null,
-              label: 'None',
+      useRootNavigator: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Background Color'),
+          content: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ColorOption(
+                  color: Colors.transparent,
+                  onTap: () => _setNoteBackgroundColor(noteId, null, dialogContext),
+                  isSelected: currentColor == null,
+                  label: 'None',
+                ),
+                _ColorOption(
+                  color: Colors.red,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#FF0000', dialogContext),
+                  isSelected: currentColor == '#FF0000',
+                ),
+                _ColorOption(
+                  color: Colors.blue,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#0000FF', dialogContext),
+                  isSelected: currentColor == '#0000FF',
+                ),
+                _ColorOption(
+                  color: Colors.green,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
+                  isSelected: currentColor == '#00FF00',
+                ),
+                _ColorOption(
+                  color: Colors.yellow,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#FFFF00', dialogContext),
+                  isSelected: currentColor == '#FFFF00',
+                ),
+                _ColorOption(
+                  color: Colors.orange,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#FFA500', dialogContext),
+                  isSelected: currentColor == '#FFA500',
+                ),
+                _ColorOption(
+                  color: Colors.purple,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#800080', dialogContext),
+                  isSelected: currentColor == '#800080',
+                ),
+                _ColorOption(
+                  color: Colors.pink,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#FFC0CB', dialogContext),
+                  isSelected: currentColor == '#FFC0CB',
+                ),
+                _ColorOption(
+                  color: Colors.cyan,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#00FFFF', dialogContext),
+                  isSelected: currentColor == '#00FFFF',
+                ),
+                _ColorOption(
+                  color: Colors.lime,
+                  onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
+                  isSelected: currentColor == '#00FF00',
+                ),
+              ],
             ),
-            _ColorOption(
-              color: Colors.red,
-              onTap: () => _setNoteBackgroundColor(noteId, '#FF0000', dialogContext),
-              isSelected: currentColor == '#FF0000',
-            ),
-            _ColorOption(
-              color: Colors.blue,
-              onTap: () => _setNoteBackgroundColor(noteId, '#0000FF', dialogContext),
-              isSelected: currentColor == '#0000FF',
-            ),
-            _ColorOption(
-              color: Colors.green,
-              onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
-              isSelected: currentColor == '#00FF00',
-            ),
-            _ColorOption(
-              color: Colors.yellow,
-              onTap: () => _setNoteBackgroundColor(noteId, '#FFFF00', dialogContext),
-              isSelected: currentColor == '#FFFF00',
-            ),
-            _ColorOption(
-              color: Colors.orange,
-              onTap: () => _setNoteBackgroundColor(noteId, '#FFA500', dialogContext),
-              isSelected: currentColor == '#FFA500',
-            ),
-            _ColorOption(
-              color: Colors.purple,
-              onTap: () => _setNoteBackgroundColor(noteId, '#800080', dialogContext),
-              isSelected: currentColor == '#800080',
-            ),
-            _ColorOption(
-              color: Colors.pink,
-              onTap: () => _setNoteBackgroundColor(noteId, '#FFC0CB', dialogContext),
-              isSelected: currentColor == '#FFC0CB',
-            ),
-            _ColorOption(
-              color: Colors.cyan,
-              onTap: () => _setNoteBackgroundColor(noteId, '#00FFFF', dialogContext),
-              isSelected: currentColor == '#00FFFF',
-            ),
-            _ColorOption(
-              color: Colors.lime,
-              onTap: () => _setNoteBackgroundColor(noteId, '#00FF00', dialogContext),
-              isSelected: currentColor == '#00FF00',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
