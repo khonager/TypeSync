@@ -111,8 +111,8 @@ class FoldersProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set sync service reference
-  void setSyncService(SyncService service) {
+  /// Set sync service reference (null to disable sync)
+  void setSyncService(SyncService? service) {
     _syncService = service;
   }
 
