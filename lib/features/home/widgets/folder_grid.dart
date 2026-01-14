@@ -13,6 +13,7 @@ class FolderGrid extends StatelessWidget {
   final Function(String) onFolderTap;
   final Function(String) onFolderLongPress;
   final Function(String noteId, String folderId)? onNoteDropped;
+  final Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGrid({
     super.key,
@@ -20,6 +21,7 @@ class FolderGrid extends StatelessWidget {
     required this.onFolderTap,
     required this.onFolderLongPress,
     this.onNoteDropped,
+    this.onFolderDropped,
   });
 
   @override
@@ -37,6 +39,7 @@ class FolderGrid extends StatelessWidget {
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
           onNoteDropped: onNoteDropped,
+          onFolderDropped: onFolderDropped,
         ),
         childCount: folders.length,
       ),
