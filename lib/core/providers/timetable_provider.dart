@@ -125,7 +125,7 @@ class TimetableProvider extends ChangeNotifier {
       await _entriesBox?.put(entry.id, entry);
       _entries.add(entry);
       
-      _syncService?.syncTimetableEntry(entry);
+      _syncService?.syncTimetableEntry(entry.toJson());
       
       notifyListeners();
       return entry;
@@ -150,7 +150,7 @@ class TimetableProvider extends ChangeNotifier {
         _entries[index] = updatedEntry;
       }
       
-      _syncService?.syncTimetableEntry(updatedEntry);
+      _syncService?.syncTimetableEntry(updatedEntry.toJson());
       
       notifyListeners();
       return true;
@@ -177,7 +177,7 @@ class TimetableProvider extends ChangeNotifier {
         _entries[index] = deletedEntry;
       }
       
-      _syncService?.syncTimetableEntry(deletedEntry);
+      _syncService?.syncTimetableEntry(deletedEntry.toJson());
       
       notifyListeners();
       return true;

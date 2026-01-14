@@ -185,13 +185,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   bool _hasFormat(Attribute attribute) {
-    final selection = widget.controller.selection;
-    if (selection.isCollapsed) {
-      final style = widget.controller.document.queryChildStyle(selection.start);
-      return style.containsKey(attribute.key);
-    } else {
+    try {
       final format = widget.controller.getSelectionStyle();
       return format.containsKey(attribute.key);
+    } catch (e) {
+      return false;
     }
   }
 
@@ -258,19 +256,14 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   void _setTextColor(String color) {
     Navigator.pop(context);
-    // Quill uses custom color attribute
-    // Note: This may require custom attribute setup in Quill
-    try {
-      // Try using ColorAttribute if available
-      final attribute = Attribute.fromJson({'color': color});
-      widget.controller.formatSelection(attribute);
-    } catch (e) {
-      // Fallback: show message that color picker needs custom setup
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Color formatting requires custom Quill setup')),
-      );
-      debugPrint('Color formatting error: $e');
-    }
+    // Quill color formatting - placeholder for now
+    // Color formatting requires custom attribute setup in Quill
+    // For now, show a message that this feature needs implementation
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Text color formatting coming soon - requires custom Quill setup'),
+      ),
+    );
   }
 
   void _setMarkerColor(String color) {

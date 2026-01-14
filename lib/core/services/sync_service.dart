@@ -267,6 +267,30 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Sync a timetable entry to Firebase
+  Future<bool> syncTimetableEntry(Map<String, dynamic> entryData) async {
+    if (!_isOnline || !_syncEnabled) {
+      return false;
+    }
+    
+    try {
+      _setStatus(SyncStatus.syncing);
+      
+      final entryId = entryData['id'] as String;
+      await _firebaseFirestore
+          .collection('timetable_entries')
+          .doc(entryId)
+          .set(entryData, SetOptions(merge: true));
+      
+      _setStatus(SyncStatus.synced);
+      _lastSyncTime = DateTime.now();
+      return true;
+    } catch (e) {
+      _setError('Failed to sync timetable entry: $e');
+      return false;
+    }
+  }
+
   /// Sync all dirty (unsynced) items
   Future<void> syncDirtyItems({
     required List<Note> dirtyNotes,
