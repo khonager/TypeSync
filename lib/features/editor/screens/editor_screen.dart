@@ -386,7 +386,112 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _showColorPicker() {
-    // TODO: Implement color picker
+    if (_note == null) return;
+    
+    final currentColor = _note?.backgroundColor;
+    
+    // Use Future.delayed to ensure bottom sheet is closed before showing dialog
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        useRootNavigator: true,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Background Color'),
+            content: SingleChildScrollView(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _ColorOption(
+                    color: Colors.transparent,
+                    onTap: () => _setNoteBackgroundColor(null, dialogContext),
+                    isSelected: currentColor == null,
+                    label: 'None',
+                  ),
+                  _ColorOption(
+                    color: Colors.red,
+                    onTap: () => _setNoteBackgroundColor('#FF0000', dialogContext),
+                    isSelected: currentColor == '#FF0000',
+                  ),
+                  _ColorOption(
+                    color: Colors.blue,
+                    onTap: () => _setNoteBackgroundColor('#0000FF', dialogContext),
+                    isSelected: currentColor == '#0000FF',
+                  ),
+                  _ColorOption(
+                    color: Colors.green,
+                    onTap: () => _setNoteBackgroundColor('#00FF00', dialogContext),
+                    isSelected: currentColor == '#00FF00',
+                  ),
+                  _ColorOption(
+                    color: Colors.yellow,
+                    onTap: () => _setNoteBackgroundColor('#FFFF00', dialogContext),
+                    isSelected: currentColor == '#FFFF00',
+                  ),
+                  _ColorOption(
+                    color: Colors.orange,
+                    onTap: () => _setNoteBackgroundColor('#FFA500', dialogContext),
+                    isSelected: currentColor == '#FFA500',
+                  ),
+                  _ColorOption(
+                    color: Colors.purple,
+                    onTap: () => _setNoteBackgroundColor('#800080', dialogContext),
+                    isSelected: currentColor == '#800080',
+                  ),
+                  _ColorOption(
+                    color: Colors.pink,
+                    onTap: () => _setNoteBackgroundColor('#FFC0CB', dialogContext),
+                    isSelected: currentColor == '#FFC0CB',
+                  ),
+                  _ColorOption(
+                    color: Colors.cyan,
+                    onTap: () => _setNoteBackgroundColor('#00FFFF', dialogContext),
+                    isSelected: currentColor == '#00FFFF',
+                  ),
+                  _ColorOption(
+                    color: Colors.lime,
+                    onTap: () => _setNoteBackgroundColor('#00FF00', dialogContext),
+                    isSelected: currentColor == '#00FF00',
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      );
+    });
+  }
+
+  void _setNoteBackgroundColor(String? color, BuildContext dialogContext) {
+    if (_note == null) return;
+    
+    Navigator.pop(dialogContext);
+    context.read<NotesProvider>().setBackgroundColor(_note!.id, color);
+    
+    // Update local note state
+    setState(() {
+      _note = _note!.copyWith(backgroundColor: color);
+    });
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(color == null 
+              ? 'Background color removed' 
+              : 'Background color set'),
+        ),
+      );
+    }
   }
 
   void _toggleFavorite() {
@@ -595,5 +700,57 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       }
     }
+  }
+}
+
+/// Color option widget for note background color picker
+class _ColorOption extends StatelessWidget {
+  final Color color;
+  final VoidCallback onTap;
+  final bool isSelected;
+  final String? label;
+
+  const _ColorOption({
+    required this.color,
+    required this.onTap,
+    this.isSelected = false,
+    this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected 
+                    ? Theme.of(context).colorScheme.primary 
+                    : Colors.grey,
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+            child: color == Colors.transparent
+                ? Icon(Icons.close, color: Colors.grey[700])
+                : null,
+          ),
+          if (label != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                label!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }

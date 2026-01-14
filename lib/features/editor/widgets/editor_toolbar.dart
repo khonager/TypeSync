@@ -314,7 +314,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _showColorPicker() {
     // Check current text color
     final currentStyle = widget.controller.getSelectionStyle();
-    final currentColor = currentStyle[Attribute.color.key] as String?;
+    final colorAttr = currentStyle.attributes[Attribute.color.key];
+    final currentColor = colorAttr?.value as String?;
 
     showDialog(
       context: context,
@@ -354,7 +355,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _showMarkerColorPicker() {
     // Check current background color
     final currentStyle = widget.controller.getSelectionStyle();
-    final currentBgColor = currentStyle[Attribute.background.key] as String?;
+    final bgAttr = currentStyle.attributes[Attribute.background.key];
+    final currentBgColor = bgAttr?.value as String?;
 
     showDialog(
       context: context,
