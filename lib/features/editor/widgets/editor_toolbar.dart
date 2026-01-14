@@ -72,6 +72,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
             });
           },
           child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 250,
+              minWidth: 50,
+            ),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
@@ -111,21 +115,26 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   Widget _buildExpandedToolbar() {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 250),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header with close button
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(width: 8),
-              Expanded(
+              Flexible(
                 child: Text(
                   'Format',
                   style: Theme.of(context).textTheme.labelSmall,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.close, size: 18),
                 padding: EdgeInsets.zero,

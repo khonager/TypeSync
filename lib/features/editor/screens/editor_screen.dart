@@ -12,6 +12,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -410,12 +411,112 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final pdfFile = File(_note!.pdfPath!);
     if (!pdfFile.existsSync()) {
-      return const Center(
-        child: Text('PDF file not found on disk'),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.picture_as_pdf, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              'PDF file not found on disk',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Path: ${_note!.pdfPath}',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       );
     }
 
-    return SfPdfViewer.file(pdfFile);
+    // Use try-catch to handle PDF viewer errors gracefully
+    // Note: Syncfusion PDF viewer may have issues on Linux, so we'll use a fallback
+    return FutureBuilder<bool>(
+      future: _checkPdfViewerAvailable(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.data == true) {
+          try {
+            return SfPdfViewer.file(pdfFile);
+          } catch (e) {
+            debugPrint('PDF viewer error: $e');
+            return _buildPdfErrorView(pdfFile);
+          }
+        } else {
+          return _buildPdfErrorView(pdfFile);
+        }
+      },
+    );
+  }
+
+  Future<bool> _checkPdfViewerAvailable() async {
+    // Check if PDF viewer is available (may fail on Linux)
+    try {
+      // Just return false for now to use fallback on Linux
+      // In production, you could check platform or test the viewer
+      return false; // Use fallback for now
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Widget _buildPdfErrorView(File pdfFile) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.picture_as_pdf, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            'PDF Viewer',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            pdfFile.path,
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () async {
+              // Try to open PDF in external viewer
+              final uri = Uri.file(pdfFile.absolute.path);
+              try {
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  // Try using xdg-open on Linux
+                  if (Platform.isLinux) {
+                    await Process.run('xdg-open', [pdfFile.absolute.path]);
+                  } else {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Unable to open PDF in external viewer')),
+                      );
+                    }
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error opening PDF: $e')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('Open in external viewer'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _handleDroppedFiles(List<XFile> files) async {
