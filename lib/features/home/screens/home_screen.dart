@@ -708,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
       
       if (directory == null) return;
       
-      final exportDir = Directory('${directory.path}/${folder.name}');
+      final exportDir = Directory('$directory/${folder.name}');
       if (!await exportDir.exists()) {
         await exportDir.create(recursive: true);
       }

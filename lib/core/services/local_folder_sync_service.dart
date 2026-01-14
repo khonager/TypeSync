@@ -263,7 +263,9 @@ class LocalFolderSyncService extends ChangeNotifier {
       final localDir = Directory(path.join(_syncFolder!.path, localPath));
 
       if (await localDir.exists()) {
-        final localModified = await localDir.lastModified();
+        // Get directory modification time using stat
+        final stat = await localDir.stat();
+        final localModified = stat.modified;
         final cloudModified = folder.updatedAt;
 
         if (localModified.difference(cloudModified).abs().inMinutes > 1) {

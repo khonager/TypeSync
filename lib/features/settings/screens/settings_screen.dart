@@ -141,7 +141,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           
           _SettingsTile(
-            icon: Icons.folder_sync_outlined,
+            icon: Icons.sync,
             title: 'Local Folder Sync',
             subtitle: localSyncService.syncFolder != null 
                 ? localSyncService.syncFolder!.path 
