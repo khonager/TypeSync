@@ -529,8 +529,8 @@ class _HomeScreenState extends State<HomeScreen> {
         content = await file.readAsString();
         noteType = fileExtension == 'md' || fileExtension == 'markdown' ? 'markdown' : 'text';
       } else if (fileExtension == 'pdf') {
-        // PDF files - create note with PDF reference
-        content = '[PDF file: $fileName]';
+        // PDF files - store the file path
+        content = ''; // Empty content for PDFs
         noteType = 'pdf';
       } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
         // Image files - create note with image reference
@@ -552,6 +552,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ? NoteType.pdf 
             : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
       );
+      
+      // Store PDF path if it's a PDF
+      if (noteType == 'pdf' && note != null) {
+        final updatedNote = note.copyWith(pdfPath: filePath);
+        await notesProvider.updateNote(updatedNote);
+      }
       
       if (note != null && mounted) {
         // Open the note with the imported content

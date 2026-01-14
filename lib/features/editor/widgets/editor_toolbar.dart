@@ -28,7 +28,7 @@ class EditorToolbar extends StatefulWidget {
 }
 
 class _EditorToolbarState extends State<EditorToolbar> {
-  Offset _position = const Offset(16, 100); // Bottom left by default (100px from bottom)
+  Offset _position = const Offset(16, 100); // Bottom left by default
   bool _isExpanded = false;
 
   @override
@@ -52,10 +52,16 @@ class _EditorToolbarState extends State<EditorToolbar> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    // Ensure position is within bounds
+    final left = _position.dx.clamp(0.0, screenSize.width - 250);
+    final bottom = _position.dy.clamp(16.0, screenSize.height - 400);
+    
     return Positioned(
-      left: _position.dx.clamp(0.0, screenSize.width - 250),
-      bottom: _position.dy.clamp(16.0, screenSize.height - 400),
+      left: left,
+      bottom: bottom,
       child: Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(24),
         color: Colors.transparent,
         child: GestureDetector(
           onPanUpdate: (details) {
@@ -69,6 +75,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                width: 1,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),

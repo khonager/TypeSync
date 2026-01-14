@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -233,41 +234,46 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         ],
       ),
-      body: DropTarget(
-        onDragEntered: (details) {
-          setState(() {
-            _isDragging = true;
-          });
-        },
-        onDragExited: (details) {
-          setState(() {
-            _isDragging = false;
-          });
-        },
-        onDragDone: (details) {
-          _handleDroppedFiles(details.files);
-          setState(() {
-            _isDragging = false;
-          });
-        },
-        child: Stack(
-          children: [
-            // Editor area
-            Container(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              padding: const EdgeInsets.all(16),
-              child: QuillEditor(
-                controller: _quillController,
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-              ),
-            ),
-            
-            // Floating toolbar
-            EditorToolbar(
-              controller: _quillController,
-              onInsertPdf: _insertPdf,
-            ),
+      body: _note?.type == NoteType.pdf && _note?.pdfPath != null
+          ? _buildPdfViewer()
+          : DropTarget(
+              onDragEntered: (details) {
+                setState(() {
+                  _isDragging = true;
+                });
+              },
+              onDragExited: (details) {
+                setState(() {
+                  _isDragging = false;
+                });
+              },
+              onDragDone: (details) {
+                _handleDroppedFiles(details.files);
+                setState(() {
+                  _isDragging = false;
+                });
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Editor area
+                  Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    padding: const EdgeInsets.all(16),
+                    child: QuillEditor(
+                      controller: _quillController,
+                      focusNode: _focusNode,
+                      scrollController: _scrollController,
+                    ),
+                  ),
+                  
+                  // Floating toolbar
+                  EditorToolbar(
+                    controller: _quillController,
+                    onInsertPdf: _insertPdf,
+                  ),
             // Drag overlay
             if (_isDragging)
               Container(
@@ -393,6 +399,23 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _exportNote() {
     // TODO: Implement export functionality
+  }
+
+  Widget _buildPdfViewer() {
+    if (_note?.pdfPath == null) {
+      return const Center(
+        child: Text('PDF file not found'),
+      );
+    }
+
+    final pdfFile = File(_note!.pdfPath!);
+    if (!pdfFile.existsSync()) {
+      return const Center(
+        child: Text('PDF file not found on disk'),
+      );
+    }
+
+    return SfPdfViewer.file(pdfFile);
   }
 
   Future<void> _handleDroppedFiles(List<XFile> files) async {
