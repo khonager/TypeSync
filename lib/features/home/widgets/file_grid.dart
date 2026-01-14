@@ -32,6 +32,7 @@ class FileGrid extends StatelessWidget {
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileGridItem(
+          key: ValueKey('${notes[index].id}-${notes[index].backgroundColor}'),
           note: notes[index],
           onTap: () => onNoteTap(notes[index].id),
           onLongPress: () => onNoteLongPress(notes[index].id),

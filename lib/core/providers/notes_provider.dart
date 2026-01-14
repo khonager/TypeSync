@@ -4,6 +4,7 @@
 /// filtering, and sync status tracking.
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -162,12 +163,13 @@ class NotesProvider extends ChangeNotifier {
   /// Update an existing note
   Future<bool> updateNote(Note note) async {
     try {
+      // Don't call copyWith again - the note passed in already has all updates
       final updatedNote = note.copyWith(
         updatedAt: DateTime.now(),
         isDirty: true,
-        backgroundColor: note.backgroundColor,
-        backgroundColorSet: true, // Preserve background color
       );
+      
+      debugPrint('updateNote: Updating note ${note.id}, backgroundColor: ${updatedNote.backgroundColor}');
       
       // Update locally
       await _notesBox?.put(updatedNote.id, updatedNote);
@@ -175,6 +177,9 @@ class NotesProvider extends ChangeNotifier {
       final index = _notes.indexWhere((n) => n.id == note.id);
       if (index >= 0) {
         _notes[index] = updatedNote;
+        debugPrint('updateNote: Updated note at index $index, new backgroundColor: ${_notes[index].backgroundColor}');
+      } else {
+        debugPrint('updateNote: Note ${note.id} not found in list');
       }
       
       // Trigger sync
@@ -183,6 +188,7 @@ class NotesProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('updateNote error: $e');
       _errorMessage = 'Failed to update note';
       notifyListeners();
       return false;
@@ -286,10 +292,24 @@ class NotesProvider extends ChangeNotifier {
   /// Set note background color
   Future<void> setBackgroundColor(String noteId, String? color) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
-    if (index < 0) return;
+    if (index < 0) {
+      debugPrint('setBackgroundColor: Note $noteId not found');
+      return;
+    }
     
     final note = _notes[index];
-    await updateNote(note.copyWith(backgroundColor: color, backgroundColorSet: true));
+    final updatedNote = note.copyWith(backgroundColor: color, backgroundColorSet: true);
+    debugPrint('setBackgroundColor: Updating note ${note.id} from ${note.backgroundColor} to $color');
+    final success = await updateNote(updatedNote);
+    if (success) {
+      // Verify the update
+      final verifyIndex = _notes.indexWhere((n) => n.id == noteId);
+      if (verifyIndex >= 0) {
+        debugPrint('setBackgroundColor: Verified update - note backgroundColor is now ${_notes[verifyIndex].backgroundColor}');
+      }
+    } else {
+      debugPrint('setBackgroundColor: Update failed');
+    }
   }
 
   // ===========================================
