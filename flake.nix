@@ -97,6 +97,10 @@
             github-cli
             nspr
             nss
+            
+            # Python for Firebase Functions
+            python313
+            python313Packages.pip
           ]);
 
           runScript = "bash";
@@ -127,7 +131,20 @@
             echo "║    flutter run -d android  - Run on Android              ║"
             echo "║    flutter build apk       - Build Android APK           ║"
             echo "║    flutter build linux     - Build Linux app             ║"
+            echo "║    firebase deploy         - Deploy Firebase services    ║"
             echo "╚═══════════════════════════════════════════════════════════╝"
+            
+            # Set up Python venv for Firebase Functions if functions directory exists
+            if [ -d "functions" ] && [ ! -d "functions/venv" ]; then
+              echo "Setting up Python virtual environment for Firebase Functions..."
+              cd functions
+              python3.13 -m venv venv
+              source venv/bin/activate
+              pip install -r requirements.txt
+              deactivate
+              cd ..
+              echo "✓ Python venv ready for Firebase Functions"
+            fi
           '';
         };
 
@@ -146,6 +163,10 @@
             unzip
             which
             nodejs_22
+            
+            # Python for Firebase Functions
+            python313
+            python313Packages.pip
           ];
 
           shellHook = ''
