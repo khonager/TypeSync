@@ -60,9 +60,14 @@ class _EditorToolbarState extends State<EditorToolbar> {
     
     // Ensure position is within bounds - allow movement to edges but not through app bar
     final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
-    // Bottom constraint: can't go above app bar, so max bottom is screenHeight - appBarHeight - toolbarHeight
+    // Bottom constraint: can go all the way to top (0) but toolbar must stay below app bar
+    // When at bottom=0, toolbar top edge is at toolbarHeight from bottom
+    // We want toolbar top edge to be at appBarHeight from top
+    // So: bottom = screenHeight - appBarHeight - toolbarHeight
+    // But we also want to allow it to go to 0 (all the way to top of content area)
     final maxBottom = screenSize.height - appBarHeight - toolbarHeight;
-    final bottom = _position.dy.clamp(0.0, maxBottom);
+    final minBottom = 0.0; // Can go all the way to top
+    final bottom = _position.dy.clamp(minBottom, maxBottom);
     
     return Positioned(
       left: left,
@@ -77,10 +82,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
               final currentWidth = _isExpanded ? 250.0 : 50.0;
               final currentHeight = _isExpanded ? 400.0 : 50.0;
               final appBarHeight = AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
+              // Allow toolbar to go all the way to top (bottom = 0) but ensure it doesn't overlap app bar
               final maxBottom = screenSize.height - appBarHeight - currentHeight;
+              final minBottom = 0.0;
               
               final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - currentWidth);
-              final newDy = (_position.dy - details.delta.dy).clamp(0.0, maxBottom);
+              final newDy = (_position.dy - details.delta.dy).clamp(minBottom, maxBottom);
               _position = Offset(newDx, newDy);
             });
           },
