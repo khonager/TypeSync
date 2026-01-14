@@ -2,6 +2,7 @@
 ///
 /// Contains the main MaterialApp configuration including routing,
 /// theming, and global app settings.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

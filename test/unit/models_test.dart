@@ -1,6 +1,7 @@
 /// Model Unit Tests
 ///
 /// Tests for data models to ensure correct serialization and behavior.
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:typesync/core/models/user.dart';

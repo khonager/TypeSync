@@ -1,6 +1,7 @@
 /// TypeSync Widget Tests
 ///
 /// Basic widget tests to ensure the app renders correctly.
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 

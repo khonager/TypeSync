@@ -1,4 +1,5 @@
 /// Note Model
+library;
 ///
 /// Represents a note document in TypeSync. Contains the content,
 /// metadata, and sync information for each note.
@@ -183,7 +184,9 @@ class Note extends Equatable {
       content: json['content'] as String,
       type: NoteType.values[json['type'] as int],
       folderId: json['folderId'] as String?,
-      tags: List<String>.from(json['tags'] ?? []),
+      tags: json['tags'] != null
+          ? List<String>.from(json['tags'] as List<dynamic>)
+          : <String>[],
       backgroundColor: json['backgroundColor'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),

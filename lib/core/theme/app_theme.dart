@@ -90,8 +90,8 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: darkSurface,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
 
@@ -176,8 +176,8 @@ class AppTheme {
       // Dialog theme
       dialogTheme: DialogThemeData(
         backgroundColor: darkSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),
 
@@ -230,8 +230,8 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: lightSurface,
         elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
 
@@ -298,8 +298,8 @@ class AppTheme {
 
       dialogTheme: DialogThemeData(
         backgroundColor: lightSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),
 

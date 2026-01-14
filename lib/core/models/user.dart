@@ -1,4 +1,5 @@
 /// User Model
+library;
 ///
 /// Represents a TypeSync user with profile information,
 /// subscription status, and storage quota.

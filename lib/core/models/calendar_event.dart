@@ -1,6 +1,7 @@
 /// Calendar Event Model
 ///
 /// Represents a calendar event such as a test reminder or class.
+library;
 
 import 'package:equatable/equatable.dart';
 

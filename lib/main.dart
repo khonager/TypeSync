@@ -2,6 +2,7 @@
 ///
 /// Main entry point for the application. Initializes Firebase,
 /// sets up providers, and configures the app theme.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';

@@ -1,4 +1,5 @@
 /// Folder Model
+library;
 ///
 /// Represents a folder in the TypeSync file system.
 /// Folders can contain notes and other subfolders.

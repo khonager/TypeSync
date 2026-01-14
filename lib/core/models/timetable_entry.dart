@@ -1,4 +1,5 @@
 /// Timetable Entry Model
+library;
 ///
 /// Represents a recurring class/subject in the weekly timetable.
 

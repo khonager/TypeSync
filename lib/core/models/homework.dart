@@ -1,4 +1,5 @@
 /// Homework Model
+library;
 ///
 /// Represents a homework task in the todo list.
 
