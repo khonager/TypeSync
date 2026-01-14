@@ -52,8 +52,10 @@ class LocalFileService {
   /// [sourcePath] - Path to the source file
   /// [fileName] - Optional custom file name, otherwise uses source file name
   /// Returns the new file path in app storage, or null if failed
-  Future<String?> copyFileToStorage(String sourcePath,
-      {String? fileName,}) async {
+  Future<String?> copyFileToStorage(
+    String sourcePath, {
+    String? fileName,
+  }) async {
     if (!_initialized || _appFilesDirectory == null) {
       debugPrint('LocalFileService not initialized');
       return null;

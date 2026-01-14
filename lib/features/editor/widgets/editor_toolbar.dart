@@ -21,7 +21,9 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
 
   const EditorToolbar({
-    required this.controller, required this.onInsertPdf, super.key,
+    required this.controller,
+    required this.onInsertPdf,
+    super.key,
   });
 
   @override

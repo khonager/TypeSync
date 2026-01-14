@@ -1,5 +1,6 @@
 /// User Model
 library;
+
 ///
 /// Represents a TypeSync user with profile information,
 /// subscription status, and storage quota.
@@ -114,7 +115,8 @@ class User extends Equatable {
   const User({
     required this.id,
     required this.email,
-    required this.createdAt, this.displayName,
+    required this.createdAt,
+    this.displayName,
     this.photoUrl,
     this.subscriptionTier = SubscriptionTier.free,
     this.storageUsedBytes = 0,

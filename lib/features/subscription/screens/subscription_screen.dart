@@ -107,7 +107,11 @@ class SubscriptionScreen extends StatelessWidget {
                   ? null
                   : () {
                       _showUpgradeDialog(
-                          context, plan, authService, storageService,);
+                        context,
+                        plan,
+                        authService,
+                        storageService,
+                      );
                     },
             );
           }),
@@ -146,7 +150,8 @@ class SubscriptionScreen extends StatelessWidget {
         builder: (context) => AlertDialog(
           title: const Text('Login Required'),
           content: const Text(
-              'Please log in to upgrade your subscription. Guest mode only supports local storage.',),
+            'Please log in to upgrade your subscription. Guest mode only supports local storage.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -182,16 +187,18 @@ class SubscriptionScreen extends StatelessWidget {
             const SizedBox(height: 16),
             Text('${plan.storage} cloud storage'),
             const SizedBox(height: 8),
-            ...plan.features.map((f) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.check, size: 16, color: Colors.green),
-                      const SizedBox(width: 8),
-                      Text(f),
-                    ],
-                  ),
-                ),),
+            ...plan.features.map(
+              (f) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check, size: 16, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text(f),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
         actions: [
@@ -222,7 +229,8 @@ class SubscriptionScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                          'Failed to upgrade subscription. Please try again.',),
+                        'Failed to upgrade subscription. Please try again.',
+                      ),
                     ),
                   );
                 }

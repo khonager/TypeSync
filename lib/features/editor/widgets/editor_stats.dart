@@ -13,7 +13,9 @@ class EditorStats extends StatelessWidget {
   final int characterCount;
 
   const EditorStats({
-    required this.lineCount, required this.characterCount, super.key,
+    required this.lineCount,
+    required this.characterCount,
+    super.key,
   });
 
   @override

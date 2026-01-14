@@ -1,5 +1,6 @@
 /// Tag Model
 library;
+
 ///
 /// Represents a tag that can be attached to notes for organization.
 

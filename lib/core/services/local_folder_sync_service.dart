@@ -252,13 +252,15 @@ class LocalFolderSyncService extends ChangeNotifier {
 
         // If both exist and modified times differ significantly, it's a conflict
         if (localModified.difference(cloudModified).abs().inMinutes > 1) {
-          _conflicts.add(ConflictInfo(
-            itemId: note.id,
-            itemName: note.title,
-            localModified: localModified,
-            cloudModified: cloudModified,
-            isNote: true,
-          ),);
+          _conflicts.add(
+            ConflictInfo(
+              itemId: note.id,
+              itemName: note.title,
+              localModified: localModified,
+              cloudModified: cloudModified,
+              isNote: true,
+            ),
+          );
         }
       }
     }
@@ -275,13 +277,15 @@ class LocalFolderSyncService extends ChangeNotifier {
         final cloudModified = folder.updatedAt;
 
         if (localModified.difference(cloudModified).abs().inMinutes > 1) {
-          _conflicts.add(ConflictInfo(
-            itemId: folder.id,
-            itemName: folder.name,
-            localModified: localModified,
-            cloudModified: cloudModified,
-            isNote: false,
-          ),);
+          _conflicts.add(
+            ConflictInfo(
+              itemId: folder.id,
+              itemName: folder.name,
+              localModified: localModified,
+              cloudModified: cloudModified,
+              isNote: false,
+            ),
+          );
         }
       }
     }

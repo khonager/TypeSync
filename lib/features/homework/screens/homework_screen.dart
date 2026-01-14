@@ -224,17 +224,21 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                           initialValue: selectedPriority,
                           items: const [
                             DropdownMenuItem(
-                                value: HomeworkPriority.low,
-                                child: Text('Low'),),
+                              value: HomeworkPriority.low,
+                              child: Text('Low'),
+                            ),
                             DropdownMenuItem(
-                                value: HomeworkPriority.medium,
-                                child: Text('Medium'),),
+                              value: HomeworkPriority.medium,
+                              child: Text('Medium'),
+                            ),
                             DropdownMenuItem(
-                                value: HomeworkPriority.high,
-                                child: Text('High'),),
+                              value: HomeworkPriority.high,
+                              child: Text('High'),
+                            ),
                             DropdownMenuItem(
-                                value: HomeworkPriority.urgent,
-                                child: Text('Urgent'),),
+                              value: HomeworkPriority.urgent,
+                              child: Text('Urgent'),
+                            ),
                           ],
                           onChanged: (value) {
                             if (value != null) {
@@ -301,7 +305,8 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                       if (taskController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please enter a task title'),),
+                            content: Text('Please enter a task title'),
+                          ),
                         );
                         return;
                       }

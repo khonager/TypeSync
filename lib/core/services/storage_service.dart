@@ -241,7 +241,9 @@ class StorageService extends ChangeNotifier {
   /// Note: In production, this would integrate with a payment provider
   /// like Stripe or Google Play Billing.
   Future<bool> upgradeSubscription(
-      String userId, SubscriptionTier newTier,) async {
+    String userId,
+    SubscriptionTier newTier,
+  ) async {
     _isLoading = true;
     notifyListeners();
 

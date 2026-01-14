@@ -340,7 +340,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           return DropdownMenuItem(
                             value: minute,
                             child: Text(
-                                ':$minute${minute.toString().padLeft(2, '0')}',),
+                              ':$minute${minute.toString().padLeft(2, '0')}',
+                            ),
                           );
                         }).toList(),
                         onChanged: (value) {
@@ -389,7 +390,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           return DropdownMenuItem(
                             value: minute,
                             child: Text(
-                                ':$minute${minute.toString().padLeft(2, '0')}',),
+                              ':$minute${minute.toString().padLeft(2, '0')}',
+                            ),
                           );
                         }).toList(),
                         onChanged: (value) {

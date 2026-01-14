@@ -1,5 +1,6 @@
 /// Homework Model
 library;
+
 ///
 /// Represents a homework task in the todo list.
 
@@ -32,7 +33,10 @@ class Homework extends Equatable {
   const Homework({
     required this.id,
     required this.title,
-    required this.userId, required this.createdAt, required this.updatedAt, this.description,
+    required this.userId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.description,
     this.subject,
     this.dueDate,
     this.priority = HomeworkPriority.medium,

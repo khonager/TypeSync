@@ -16,7 +16,9 @@ class HomeBottomBar extends StatelessWidget {
   final VoidCallback onNewFolder;
 
   const HomeBottomBar({
-    required this.onNewNote, required this.onNewFolder, super.key,
+    required this.onNewNote,
+    required this.onNewFolder,
+    super.key,
     this.currentFolderId,
   });
 

@@ -17,7 +17,10 @@ class FolderGrid extends StatelessWidget {
   final Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGrid({
-    required this.folders, required this.onFolderTap, required this.onFolderLongPress, super.key,
+    required this.folders,
+    required this.onFolderTap,
+    required this.onFolderLongPress,
+    super.key,
     this.onNoteDropped,
     this.onFolderDropped,
   });
@@ -54,7 +57,10 @@ class FolderGridItem extends StatefulWidget {
   final Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGridItem({
-    required this.folder, required this.onTap, required this.onLongPress, super.key,
+    required this.folder,
+    required this.onTap,
+    required this.onLongPress,
+    super.key,
     this.onNoteDropped,
     this.onFolderDropped,
   });
@@ -71,7 +77,8 @@ class _FolderGridItemState extends State<FolderGridItem> {
     // Parse background color if set
     final bgColor = widget.folder.backgroundColor != null
         ? Color(
-            int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')),)
+            int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')),
+          )
         : AppTheme.folderDefault;
 
     return Draggable<String>(
@@ -94,8 +101,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
         child: _buildFolderContent(bgColor),
       ),
       child: DragTarget<String>(
-        onWillAcceptWithDetails: (data) =>
-            data != 'folder:${widget.folder.id}',
+        onWillAcceptWithDetails: (data) => data != 'folder:${widget.folder.id}',
         onAcceptWithDetails: (data) {
           if (data.startsWith('note:')) {
             final noteId = data.substring(5);
@@ -194,7 +200,10 @@ class FolderList extends StatelessWidget {
   final Function(String) onFolderLongPress;
 
   const FolderList({
-    required this.folders, required this.onFolderTap, required this.onFolderLongPress, super.key,
+    required this.folders,
+    required this.onFolderTap,
+    required this.onFolderLongPress,
+    super.key,
   });
 
   @override
@@ -219,7 +228,10 @@ class FolderListItem extends StatelessWidget {
   final VoidCallback onLongPress;
 
   const FolderListItem({
-    required this.folder, required this.onTap, required this.onLongPress, super.key,
+    required this.folder,
+    required this.onTap,
+    required this.onLongPress,
+    super.key,
   });
 
   @override

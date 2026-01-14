@@ -158,40 +158,44 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           )
         else
-          ...events.map((event) => Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: Container(
-                    width: 4,
-                    height: double.infinity,
-                    color: event.color != null
-                        ? Color(
-                            int.parse(event.color!.replaceFirst('#', '0xFF')),)
-                        : Theme.of(context).colorScheme.primary,
-                  ),
-                  title: Text(event.title),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (event.subject != null)
-                        Text('Subject: ${event.subject}'),
-                      Text(
-                        '${event.startTime.hour.toString().padLeft(2, '0')}:${event.startTime.minute.toString().padLeft(2, '0')}',
-                      ),
-                      if (event.description != null &&
-                          event.description!.isNotEmpty)
-                        Text(event.description!),
-                    ],
-                  ),
-                  trailing: Icon(
-                    _getEventTypeIcon(event.type),
-                    color: event.color != null
-                        ? Color(
-                            int.parse(event.color!.replaceFirst('#', '0xFF')),)
-                        : null,
-                  ),
+          ...events.map(
+            (event) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Container(
+                  width: 4,
+                  height: double.infinity,
+                  color: event.color != null
+                      ? Color(
+                          int.parse(event.color!.replaceFirst('#', '0xFF')),
+                        )
+                      : Theme.of(context).colorScheme.primary,
                 ),
-              ),),
+                title: Text(event.title),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (event.subject != null)
+                      Text('Subject: ${event.subject}'),
+                    Text(
+                      '${event.startTime.hour.toString().padLeft(2, '0')}:${event.startTime.minute.toString().padLeft(2, '0')}',
+                    ),
+                    if (event.description != null &&
+                        event.description!.isNotEmpty)
+                      Text(event.description!),
+                  ],
+                ),
+                trailing: Icon(
+                  _getEventTypeIcon(event.type),
+                  color: event.color != null
+                      ? Color(
+                          int.parse(event.color!.replaceFirst('#', '0xFF')),
+                        )
+                      : null,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -256,19 +260,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     initialValue: selectedType,
                     items: const [
                       DropdownMenuItem(
-                          value: EventType.test, child: Text('Test'),),
+                        value: EventType.test,
+                        child: Text('Test'),
+                      ),
                       DropdownMenuItem(
-                          value: EventType.exam, child: Text('Exam'),),
+                        value: EventType.exam,
+                        child: Text('Exam'),
+                      ),
                       DropdownMenuItem(
-                          value: EventType.assignment,
-                          child: Text('Assignment'),),
+                        value: EventType.assignment,
+                        child: Text('Assignment'),
+                      ),
                       DropdownMenuItem(
-                          value: EventType.reminder, child: Text('Reminder'),),
+                        value: EventType.reminder,
+                        child: Text('Reminder'),
+                      ),
                       DropdownMenuItem(
-                          value: EventType.classEvent,
-                          child: Text('Class Event'),),
+                        value: EventType.classEvent,
+                        child: Text('Class Event'),
+                      ),
                       DropdownMenuItem(
-                          value: EventType.other, child: Text('Other'),),
+                        value: EventType.other,
+                        child: Text('Other'),
+                      ),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -378,7 +392,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       if (titleController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please enter an event title'),),
+                            content: Text('Please enter an event title'),
+                          ),
                         );
                         return;
                       }
@@ -386,7 +401,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       if (selectedDate == null || selectedTime == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please select date and time'),),
+                            content: Text('Please select date and time'),
+                          ),
                         );
                         return;
                       }

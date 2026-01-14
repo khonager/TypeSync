@@ -16,7 +16,8 @@ class ExpandableError extends StatefulWidget {
   final VoidCallback? onDismiss;
 
   const ExpandableError({
-    required this.message, super.key,
+    required this.message,
+    super.key,
     this.details,
     this.onDismiss,
   });

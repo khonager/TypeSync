@@ -17,7 +17,10 @@ class FileGrid extends StatelessWidget {
   final Function(String) onNoteLongPress;
 
   const FileGrid({
-    required this.notes, required this.onNoteTap, required this.onNoteLongPress, super.key,
+    required this.notes,
+    required this.onNoteTap,
+    required this.onNoteLongPress,
+    super.key,
   });
 
   @override
@@ -49,7 +52,10 @@ class FileGridItem extends StatelessWidget {
   final VoidCallback onLongPress;
 
   const FileGridItem({
-    required this.note, required this.onTap, required this.onLongPress, super.key,
+    required this.note,
+    required this.onTap,
+    required this.onLongPress,
+    super.key,
   });
 
   @override
@@ -102,8 +108,11 @@ class FileGridItem extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: note.backgroundColor != null
-                        ? Color(int.parse(
-                            note.backgroundColor!.replaceFirst('#', '0xFF'),),)
+                        ? Color(
+                            int.parse(
+                              note.backgroundColor!.replaceFirst('#', '0xFF'),
+                            ),
+                          )
                         : AppTheme.darkSurface,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -158,8 +167,11 @@ class FileGridItem extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   color: note.backgroundColor != null
-                      ? Color(int.parse(
-                          note.backgroundColor!.replaceFirst('#', '0xFF'),),)
+                      ? Color(
+                          int.parse(
+                            note.backgroundColor!.replaceFirst('#', '0xFF'),
+                          ),
+                        )
                       : AppTheme.darkSurface,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -213,7 +225,10 @@ class FileList extends StatelessWidget {
   final Function(String) onNoteLongPress;
 
   const FileList({
-    required this.notes, required this.onNoteTap, required this.onNoteLongPress, super.key,
+    required this.notes,
+    required this.onNoteTap,
+    required this.onNoteLongPress,
+    super.key,
   });
 
   @override
@@ -238,7 +253,10 @@ class FileListItem extends StatelessWidget {
   final VoidCallback onLongPress;
 
   const FileListItem({
-    required this.note, required this.onTap, required this.onLongPress, super.key,
+    required this.note,
+    required this.onTap,
+    required this.onLongPress,
+    super.key,
   });
 
   @override

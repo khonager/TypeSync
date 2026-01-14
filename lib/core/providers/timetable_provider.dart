@@ -98,7 +98,12 @@ class TimetableProvider extends ChangeNotifier {
   Future<TimetableEntry?> createEntry({
     required String userId,
     required String subject,
-    required Weekday weekday, required int startHour, required int startMinute, required int endHour, required int endMinute, String? teacher,
+    required Weekday weekday,
+    required int startHour,
+    required int startMinute,
+    required int endHour,
+    required int endMinute,
+    String? teacher,
     String? room,
     String? color,
   }) async {

@@ -452,8 +452,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (note != null && mounted) {
-      AppRouter.openEditor(context,
-          noteId: note.id, folderId: _currentFolderId,);
+      AppRouter.openEditor(
+        context,
+        noteId: note.id,
+        folderId: _currentFolderId,
+      );
     }
   }
 
@@ -596,8 +599,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (note != null && mounted) {
         // Open the note with the imported content
-        AppRouter.openEditor(context,
-            noteId: note.id, folderId: _currentFolderId,);
+        AppRouter.openEditor(
+          context,
+          noteId: note.id,
+          folderId: _currentFolderId,
+        );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Imported $fileName')),
@@ -849,10 +855,13 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             ListTile(
               leading: Icon(
-                  note?.isFavorite == true ? Icons.star : Icons.star_outline,),
-              title: Text(note?.isFavorite == true
-                  ? 'Remove from favorites'
-                  : 'Add to favorites',),
+                note?.isFavorite == true ? Icons.star : Icons.star_outline,
+              ),
+              title: Text(
+                note?.isFavorite == true
+                    ? 'Remove from favorites'
+                    : 'Add to favorites',
+              ),
               onTap: () {
                 Navigator.pop(bottomSheetContext);
                 context.read<NotesProvider>().toggleFavorite(noteId);
@@ -1011,7 +1020,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   (colorOption) => _ColorOption(
                     color: colorOption.color,
                     onTap: () => _setNoteBackgroundColor(
-                        noteId, colorOption.hex, dialogContext,),
+                      noteId,
+                      colorOption.hex,
+                      dialogContext,
+                    ),
                     isSelected: currentColor == colorOption.hex,
                   ),
                 ),
@@ -1030,15 +1042,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _setNoteBackgroundColor(
-      String noteId, String? color, BuildContext dialogContext,) {
+    String noteId,
+    String? color,
+    BuildContext dialogContext,
+  ) {
     Navigator.pop(dialogContext);
     context.read<NotesProvider>().setBackgroundColor(noteId, color);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(color == null
-              ? 'Background color removed'
-              : 'Background color set',),
+          content: Text(
+            color == null ? 'Background color removed' : 'Background color set',
+          ),
         ),
       );
     }
@@ -1059,7 +1074,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              newParentId == null ? 'Folder moved to root' : 'Folder moved',),
+            newParentId == null ? 'Folder moved to root' : 'Folder moved',
+          ),
         ),
       );
     }

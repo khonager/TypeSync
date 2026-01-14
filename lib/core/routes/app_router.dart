@@ -81,14 +81,19 @@ class AppRouter {
   // ===========================================
 
   /// Navigate to a named route
-  static Future<T?> navigateTo<T>(BuildContext context, String routeName,
-      {Object? arguments,}) {
+  static Future<T?> navigateTo<T>(
+    BuildContext context,
+    String routeName, {
+    Object? arguments,
+  }) {
     return Navigator.pushNamed<T>(context, routeName, arguments: arguments);
   }
 
   /// Navigate to a route and remove all previous routes
   static Future<T?> navigateAndClearStack<T>(
-      BuildContext context, String routeName,) {
+    BuildContext context,
+    String routeName,
+  ) {
     return Navigator.pushNamedAndRemoveUntil<T>(
       context,
       routeName,
@@ -97,8 +102,11 @@ class AppRouter {
   }
 
   /// Navigate to the editor with a specific note
-  static Future<void> openEditor(BuildContext context,
-      {String? noteId, String? folderId,}) {
+  static Future<void> openEditor(
+    BuildContext context, {
+    String? noteId,
+    String? folderId,
+  }) {
     return Navigator.push(
       context,
       MaterialPageRoute(

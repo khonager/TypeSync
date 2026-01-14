@@ -483,7 +483,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     (colorOption) => _ColorOption(
                       color: colorOption.color,
                       onTap: () => _setNoteBackgroundColor(
-                          colorOption.hex, dialogContext,),
+                        colorOption.hex,
+                        dialogContext,
+                      ),
                       isSelected: currentColor == colorOption.hex,
                     ),
                   ),
@@ -503,7 +505,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _setNoteBackgroundColor(
-      String? color, BuildContext dialogContext,) async {
+    String? color,
+    BuildContext dialogContext,
+  ) async {
     if (_note == null) return;
 
     Navigator.pop(dialogContext);
@@ -520,9 +524,9 @@ class _EditorScreenState extends State<EditorScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(color == null
-              ? 'Background color removed'
-              : 'Background color set',),
+          content: Text(
+            color == null ? 'Background color removed' : 'Background color set',
+          ),
         ),
       );
     }
@@ -678,8 +682,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content:
-                                Text('Unable to open PDF in external viewer'),),
+                          content:
+                              Text('Unable to open PDF in external viewer'),
+                        ),
                       );
                     }
                   }

@@ -104,7 +104,8 @@ class AuthService extends ChangeNotifier {
       // Silently handle - app can run in offline mode
       if (kDebugMode) {
         debugPrint(
-            'Firebase Auth not available: ${e.toString().split(':').first}',);
+          'Firebase Auth not available: ${e.toString().split(':').first}',
+        );
       }
     }
   }

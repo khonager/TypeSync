@@ -1,5 +1,6 @@
 /// Note Model
 library;
+
 ///
 /// Represents a note document in TypeSync. Contains the content,
 /// metadata, and sync information for each note.
@@ -72,7 +73,10 @@ class Note extends Equatable {
     required this.id,
     required this.title,
     required this.content,
-    required this.createdAt, required this.updatedAt, required this.userId, this.type = NoteType.text,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.userId,
+    this.type = NoteType.text,
     this.folderId,
     this.tags = const [],
     this.backgroundColor,

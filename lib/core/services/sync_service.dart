@@ -240,7 +240,8 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('notes').doc(noteId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
+        {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
+      );
       return true;
     } catch (e) {
       _setError('Failed to delete note: $e');
@@ -254,7 +255,8 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('folders').doc(folderId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
+        {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
+      );
       return true;
     } catch (e) {
       _setError('Failed to delete folder: $e');
@@ -316,7 +318,8 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('homework').doc(homeworkId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
+        {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
+      );
       return true;
     } catch (e) {
       _setError('Failed to delete homework: $e');
@@ -384,27 +387,29 @@ class SyncService extends ChangeNotifier {
       for (final note in dirtyNotes) {
         final ref = _firebaseFirestore.collection('notes').doc(note.id);
         batch.set(
-            ref,
-            note
-                .copyWith(
-                  isDirty: false,
-                  syncedAt: DateTime.now(),
-                )
-                .toJson(),
-            SetOptions(merge: true),);
+          ref,
+          note
+              .copyWith(
+                isDirty: false,
+                syncedAt: DateTime.now(),
+              )
+              .toJson(),
+          SetOptions(merge: true),
+        );
       }
 
       for (final folder in dirtyFolders) {
         final ref = _firebaseFirestore.collection('folders').doc(folder.id);
         batch.set(
-            ref,
-            folder
-                .copyWith(
-                  isDirty: false,
-                  syncedAt: DateTime.now(),
-                )
-                .toJson(),
-            SetOptions(merge: true),);
+          ref,
+          folder
+              .copyWith(
+                isDirty: false,
+                syncedAt: DateTime.now(),
+              )
+              .toJson(),
+          SetOptions(merge: true),
+        );
       }
 
       await batch.commit();

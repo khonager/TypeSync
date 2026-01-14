@@ -45,11 +45,13 @@ class CalendarProvider extends ChangeNotifier {
   /// Get events for a specific date
   List<CalendarEvent> getEventsForDate(DateTime date) {
     return _events
-        .where((e) =>
-            !e.isDeleted &&
-            e.startTime.year == date.year &&
-            e.startTime.month == date.month &&
-            e.startTime.day == date.day,)
+        .where(
+          (e) =>
+              !e.isDeleted &&
+              e.startTime.year == date.year &&
+              e.startTime.month == date.month &&
+              e.startTime.day == date.day,
+        )
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
@@ -107,7 +109,8 @@ class CalendarProvider extends ChangeNotifier {
   Future<CalendarEvent?> createEvent({
     required String userId,
     required String title,
-    required DateTime startTime, String? description,
+    required DateTime startTime,
+    String? description,
     EventType type = EventType.reminder,
     DateTime? endTime,
     String? subject,

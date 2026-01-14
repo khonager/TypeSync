@@ -1,5 +1,6 @@
 /// Folder Model
 library;
+
 ///
 /// Represents a folder in the TypeSync file system.
 /// Folders can contain notes and other subfolders.
@@ -52,7 +53,10 @@ class Folder extends Equatable {
   const Folder({
     required this.id,
     required this.name,
-    required this.createdAt, required this.updatedAt, required this.userId, this.subtitle,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.userId,
+    this.subtitle,
     this.parentId,
     this.backgroundColor,
     this.icon = 'folder',

@@ -49,7 +49,8 @@ void main() async {
     // Only log in debug mode to reduce console noise
     if (kDebugMode) {
       debugPrint(
-          'Firebase initialization skipped: ${e.toString().split(':').first}',);
+        'Firebase initialization skipped: ${e.toString().split(':').first}',
+      );
     }
   }
 

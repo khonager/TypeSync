@@ -15,7 +15,8 @@ class PdfViewerWidget extends StatefulWidget {
   final File pdfFile;
 
   const PdfViewerWidget({
-    required this.pdfFile, super.key,
+    required this.pdfFile,
+    super.key,
   });
 
   @override
@@ -146,8 +147,11 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         await Process.run('open', [widget.pdfFile.absolute.path]);
       } else if (Platform.isWindows) {
         // Use start on Windows
-        await Process.run('start', [widget.pdfFile.absolute.path],
-            runInShell: true,);
+        await Process.run(
+          'start',
+          [widget.pdfFile.absolute.path],
+          runInShell: true,
+        );
       } else {
         // Try url_launcher for mobile
         if (await canLaunchUrl(uri)) {

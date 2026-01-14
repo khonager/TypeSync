@@ -257,16 +257,19 @@ class SettingsScreen extends StatelessWidget {
                   } else if (!success && dialogContext.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(syncService.errorMessage ??
-                            'Failed to choose folder',),
+                        content: Text(
+                          syncService.errorMessage ?? 'Failed to choose folder',
+                        ),
                       ),
                     );
                   }
                 },
                 icon: const Icon(Icons.folder_open),
-                label: Text(syncService.syncFolder != null
-                    ? 'Change Folder'
-                    : 'Choose Folder',),
+                label: Text(
+                  syncService.syncFolder != null
+                      ? 'Change Folder'
+                      : 'Choose Folder',
+                ),
               ),
               if (syncService.syncFolder != null) ...[
                 const SizedBox(height: 16),
@@ -351,12 +354,15 @@ class SettingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',),
+                  'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',
+                ),
                 const SizedBox(height: 16),
                 Text(
-                    'Local modified: ${_formatDateTime(conflict.localModified)}',),
+                  'Local modified: ${_formatDateTime(conflict.localModified)}',
+                ),
                 Text(
-                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',),
+                  'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',
+                ),
                 const SizedBox(height: 16),
                 const Text('Choose which version to keep:'),
               ],

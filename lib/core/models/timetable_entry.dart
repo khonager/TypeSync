@@ -1,5 +1,6 @@
 /// Timetable Entry Model
 library;
+
 ///
 /// Represents a recurring class/subject in the weekly timetable.
 
@@ -76,7 +77,13 @@ class TimetableEntry extends Equatable {
   const TimetableEntry({
     required this.id,
     required this.subject,
-    required this.weekday, required this.startHour, required this.startMinute, required this.endHour, required this.endMinute, required this.userId, this.teacher,
+    required this.weekday,
+    required this.startHour,
+    required this.startMinute,
+    required this.endHour,
+    required this.endMinute,
+    required this.userId,
+    this.teacher,
     this.room,
     this.color = '#64D2FF',
     this.isDirty = true,
