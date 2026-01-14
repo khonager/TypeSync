@@ -8,6 +8,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:cross_file/cross_file.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -61,6 +63,9 @@ class _EditorScreenState extends State<EditorScreen> {
   
   // Loading state
   bool _isLoading = true;
+  
+  // Drag and drop state
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -200,23 +205,19 @@ class _EditorScreenState extends State<EditorScreen> {
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Row(
-          children: [
-            // Editable title
-            Expanded(
-              child: TextField(
-                controller: _titleController,
-                style: Theme.of(context).textTheme.titleMedium,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Title',
-                  contentPadding: EdgeInsets.zero,
-                  filled: false,
-                ),
-                onChanged: _updateTitle,
-              ),
+        title: Center(
+          child: TextField(
+            controller: _titleController,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Title',
+              contentPadding: EdgeInsets.zero,
+              filled: false,
             ),
-          ],
+            onChanged: _updateTitle,
+          ),
         ),
         actions: [
           // Stats display (Lines/Char counter)
@@ -231,11 +232,27 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Editor area
-          Expanded(
-            child: Container(
+      body: DropTarget(
+        onDragEntered: (details) {
+          setState(() {
+            _isDragging = true;
+          });
+        },
+        onDragExited: (details) {
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        onDragDone: (details) {
+          _handleDroppedFiles(details.files);
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        child: Stack(
+          children: [
+            // Editor area
+            Container(
               color: Theme.of(context).scaffoldBackgroundColor,
               padding: const EdgeInsets.all(16),
               child: QuillEditor(
@@ -244,14 +261,47 @@ class _EditorScreenState extends State<EditorScreen> {
                 scrollController: _scrollController,
               ),
             ),
-          ),
-          
-          // Toolbar
-          EditorToolbar(
-            controller: _quillController,
-            onInsertPdf: _insertPdf,
-          ),
-        ],
+            
+            // Floating toolbar
+            EditorToolbar(
+              controller: _quillController,
+              onInsertPdf: _insertPdf,
+            ),
+            // Drag overlay
+            if (_isDragging)
+              Container(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.cloud_upload,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Drop files here to import',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -342,5 +392,27 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _exportNote() {
     // TODO: Implement export functionality
+  }
+
+  Future<void> _handleDroppedFiles(List<XFile> files) async {
+    for (final file in files) {
+      try {
+        final filePath = file.path;
+        final fileName = file.name;
+        // TODO: Handle file import into the note (PDF, images, etc.)
+        // For now, show a message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File dropped: $fileName')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to import ${file.name}: $e')),
+          );
+        }
+      }
+    }
   }
 }

@@ -5,6 +5,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:cross_file/cross_file.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/models/note.dart';
@@ -35,6 +38,9 @@ class _HomeScreenState extends State<HomeScreen> {
   
   // View mode (grid or list)
   bool _isGridView = true;
+  
+  // Drag and drop state
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -129,13 +135,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
         currentFolderId: _currentFolderId,
-        onNewNote: _createNewNote,
-        onNewFolder: _createNewFolder,
+        onNewNote: _showCreateOptions,
+        onNewFolder: _showCreateOptions,
       ),
       
       // FAB for quick note creation
       floatingActionButton: FloatingActionButton(
-        onPressed: _createNewNote,
+        onPressed: _showCreateOptions,
         child: const Icon(Icons.add),
       ),
     );
@@ -157,10 +163,29 @@ class _HomeScreenState extends State<HomeScreen> {
       return _buildEmptyState();
     }
 
-    return RefreshIndicator(
-      onRefresh: _initializeData,
-      child: CustomScrollView(
-        slivers: [
+    return DropTarget(
+      onDragEntered: (details) {
+        setState(() {
+          _isDragging = true;
+        });
+      },
+      onDragExited: (details) {
+        setState(() {
+          _isDragging = false;
+        });
+      },
+      onDragDone: (details) {
+        _handleDroppedFiles(details.files);
+        setState(() {
+          _isDragging = false;
+        });
+      },
+      child: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _initializeData,
+            child: CustomScrollView(
+              slivers: [
           // Breadcrumb navigation
           if (_currentFolderId != null)
             SliverToBoxAdapter(
@@ -233,6 +258,42 @@ class _HomeScreenState extends State<HomeScreen> {
           const SliverToBoxAdapter(
             child: SizedBox(height: 100),
           ),
+        ],
+      ),
+    ),
+          // Drag overlay
+          if (_isDragging)
+            Container(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_upload,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Drop files here to import',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -326,6 +387,46 @@ class _HomeScreenState extends State<HomeScreen> {
     AppRouter.openEditor(context, noteId: noteId, folderId: _currentFolderId);
   }
 
+  void _showCreateOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.note_add),
+              title: const Text('Create File'),
+              subtitle: const Text('Create a new note/document'),
+              onTap: () {
+                Navigator.pop(context);
+                _createNewNote();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('Create Folder'),
+              subtitle: const Text('Create a new folder'),
+              onTap: () {
+                Navigator.pop(context);
+                _createNewFolder();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Add Document from Storage'),
+              subtitle: const Text('Import a file from your device'),
+              onTap: () {
+                Navigator.pop(context);
+                _addDocumentFromStorage();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _createNewNote() async {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
@@ -358,6 +459,62 @@ class _HomeScreenState extends State<HomeScreen> {
         name: name,
         parentId: _currentFolderId,
       );
+    }
+  }
+
+  Future<void> _addDocumentFromStorage() async {
+    try {
+      final filePicker = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+      
+      if (filePicker != null && filePicker.files.single.path != null) {
+        final filePath = filePicker.files.single.path!;
+        final fileName = filePicker.files.single.name;
+        await _importFile(filePath, fileName);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import file: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDroppedFiles(List<XFile> files) async {
+    for (final file in files) {
+      try {
+        final filePath = file.path;
+        final fileName = file.name;
+        await _importFile(filePath, fileName);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to import ${file.name}: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _importFile(String filePath, String fileName) async {
+    final authService = context.read<AuthService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+    
+    final notesProvider = context.read<NotesProvider>();
+    final note = await notesProvider.createNote(
+      userId: userId,
+      folderId: _currentFolderId,
+      title: fileName,
+    );
+    
+    if (note != null && mounted) {
+      // TODO: Handle file import (PDF, images, etc.)
+      // For now, just open the note
+      AppRouter.openEditor(context, noteId: note.id, folderId: _currentFolderId);
     }
   }
 

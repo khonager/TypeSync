@@ -16,6 +16,7 @@ import 'core/services/storage_service.dart';
 import 'core/services/theme_service.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
+import 'core/providers/timetable_provider.dart';
 import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
 import 'firebase_options.dart';
@@ -86,6 +87,9 @@ class TypeSyncApp extends StatelessWidget {
         
         // Folders provider for managing folder structure
         ChangeNotifierProvider(create: (_) => FoldersProvider()),
+        
+        // Timetable provider for managing class schedule
+        ChangeNotifierProvider(create: (_) => TimetableProvider()),
         
         // Sync provider for tracking sync status across devices
         ChangeNotifierProvider(create: (_) => SyncProvider()),

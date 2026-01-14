@@ -30,6 +30,8 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^28.1.37
   printing: ^5.13.0
   pdf: ^3.11.0
+  desktop_drop: ^0.7.0
+  cross_file: ^0.3.4
   
   # Markdown & Text Editing
   flutter_quill: ^11.5.0
