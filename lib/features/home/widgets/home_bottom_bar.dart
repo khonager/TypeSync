@@ -1,5 +1,5 @@
 /// Home Bottom Bar Widget
-/// 
+///
 /// Bottom navigation bar matching the design mockup.
 
 import 'package:flutter/material.dart';
@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../core/routes/app_router.dart';
 
 /// Bottom navigation bar for home screen
-/// 
+///
 /// Contains navigation to files, sync, and profile sections.
 class HomeBottomBar extends StatelessWidget {
   final String? currentFolderId;
@@ -48,7 +48,7 @@ class HomeBottomBar extends StatelessWidget {
               },
               isSelected: true,
             ),
-            
+
             // Sync button - navigates to sync status/settings
             _BottomBarButton(
               icon: Icons.sync,
@@ -58,7 +58,7 @@ class HomeBottomBar extends StatelessWidget {
                 _showSyncOptions(context);
               },
             ),
-            
+
             // Profile button
             _BottomBarButton(
               icon: Icons.person_outline,
@@ -139,9 +139,8 @@ class _BottomBarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelected 
-        ? Theme.of(context).colorScheme.primary 
-        : Colors.grey;
+    final color =
+        isSelected ? Theme.of(context).colorScheme.primary : Colors.grey;
 
     return InkWell(
       onTap: onTap,
@@ -167,6 +166,3 @@ class _BottomBarButton extends StatelessWidget {
     );
   }
 }
-
-
-

@@ -1,12 +1,12 @@
 /// Expandable Error Widget
-/// 
+///
 /// Error message that expands on tap to show more details.
 /// Simple view by default for users, detailed view on tap.
 
 import 'package:flutter/material.dart';
 
 /// Error display with expandable details
-/// 
+///
 /// Shows a simplified error message by default.
 /// Tap to expand and see full error details.
 class ExpandableError extends StatefulWidget {
@@ -116,28 +116,26 @@ class _ExpandableErrorState extends State<ExpandableError> {
     // Provide more context based on the error message
     if (widget.message.contains('password')) {
       return 'Password errors usually occur when:\n'
-             '• The password is incorrect\n'
-             '• The password doesn\'t meet requirements (min 6 characters)\n'
-             '• Caps lock might be on';
+          '• The password is incorrect\n'
+          '• The password doesn\'t meet requirements (min 6 characters)\n'
+          '• Caps lock might be on';
     }
     if (widget.message.contains('email')) {
       return 'Email errors usually occur when:\n'
-             '• The email format is invalid\n'
-             '• The email is already registered\n'
-             '• The email doesn\'t exist in our system';
+          '• The email format is invalid\n'
+          '• The email is already registered\n'
+          '• The email doesn\'t exist in our system';
     }
-    if (widget.message.contains('network') || widget.message.contains('connection')) {
+    if (widget.message.contains('network') ||
+        widget.message.contains('connection')) {
       return 'Network errors usually occur when:\n'
-             '• You have no internet connection\n'
-             '• The server is temporarily unavailable\n'
-             '• Your firewall might be blocking the connection';
+          '• You have no internet connection\n'
+          '• The server is temporarily unavailable\n'
+          '• Your firewall might be blocking the connection';
     }
     return 'If this error persists, try:\n'
-           '• Checking your internet connection\n'
-           '• Refreshing the page\n'
-           '• Contacting support';
+        '• Checking your internet connection\n'
+        '• Refreshing the page\n'
+        '• Contacting support';
   }
 }
-
-
-

@@ -1,12 +1,12 @@
 /// Color Utilities
-/// 
+///
 /// Provides a unified color palette system that works well
 /// in both dark and light modes, with proper contrast ratios.
 
 import 'package:flutter/material.dart';
 
 /// Unified color palette for the app
-/// 
+///
 /// All colors are designed to work well together and provide
 /// good contrast in both dark and light modes.
 class AppColorPalette {
@@ -17,7 +17,7 @@ class AppColorPalette {
   // ===========================================
   // These are subtle, muted colors that work as backgrounds
   // and provide good contrast with text in both themes
-  
+
   static const List<ColorOption> noteBackgroundColors = [
     ColorOption(
       name: 'Coral',
@@ -86,7 +86,7 @@ class AppColorPalette {
   // ===========================================
   // Bright, vibrant colors for text that stand out
   // against both dark and light backgrounds
-  
+
   static const List<ColorOption> textColors = [
     ColorOption(
       name: 'Cyan',
@@ -149,7 +149,7 @@ class AppColorPalette {
   // ===========================================
   // Semi-transparent, vibrant colors for highlighting text
   // These work well with both dark and light text
-  
+
   static const List<ColorOption> markerColors = [
     ColorOption(
       name: 'Yellow',
@@ -203,22 +203,22 @@ class AppColorPalette {
   ];
 
   /// Get contrasting text color for a background
-  /// 
+  ///
   /// Returns white for dark backgrounds, black for light backgrounds
   static Color getContrastingTextColor(Color backgroundColor) {
     // Calculate relative luminance
     final double luminance = backgroundColor.computeLuminance();
-    
+
     // Use white text on dark backgrounds (luminance < 0.5), black on light
     return luminance > 0.5 ? Colors.black87 : Colors.white;
   }
 
   /// Get adaptive text color based on theme brightness
-  /// 
+  ///
   /// Adjusts text color to ensure visibility in both dark and light modes
   static Color getAdaptiveTextColor(Color baseColor, Brightness brightness) {
     final double luminance = baseColor.computeLuminance();
-    
+
     if (brightness == Brightness.dark) {
       // In dark mode, ensure text is visible
       if (luminance < 0.3) {
@@ -234,7 +234,7 @@ class AppColorPalette {
   }
 
   /// Get icon color for a background
-  /// 
+  ///
   /// Returns appropriate icon color based on background brightness
   static Color getIconColor(Color backgroundColor) {
     final double luminance = backgroundColor.computeLuminance();

@@ -1,5 +1,5 @@
 /// Calendar Event Model
-/// 
+///
 /// Represents a calendar event such as a test reminder or class.
 
 import 'package:equatable/equatable.dart';
@@ -55,8 +55,8 @@ class CalendarEvent extends Equatable {
   bool get isToday {
     final now = DateTime.now();
     return startTime.year == now.year &&
-           startTime.month == now.month &&
-           startTime.day == now.day;
+        startTime.month == now.month &&
+        startTime.day == now.day;
   }
 
   CalendarEvent copyWith({
@@ -88,7 +88,8 @@ class CalendarEvent extends Equatable {
       location: location ?? this.location,
       color: color ?? this.color,
       hasReminder: hasReminder ?? this.hasReminder,
-      reminderMinutesBefore: reminderMinutesBefore ?? this.reminderMinutesBefore,
+      reminderMinutesBefore:
+          reminderMinutesBefore ?? this.reminderMinutesBefore,
       noteId: noteId ?? this.noteId,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
@@ -98,48 +99,61 @@ class CalendarEvent extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'description': description,
-    'type': type.index,
-    'startTime': startTime.toIso8601String(),
-    'endTime': endTime?.toIso8601String(),
-    'subject': subject,
-    'location': location,
-    'color': color,
-    'hasReminder': hasReminder,
-    'reminderMinutesBefore': reminderMinutesBefore,
-    'noteId': noteId,
-    'userId': userId,
-    'createdAt': createdAt.toIso8601String(),
-    'isDeleted': isDeleted,
-  };
+        'id': id,
+        'title': title,
+        'description': description,
+        'type': type.index,
+        'startTime': startTime.toIso8601String(),
+        'endTime': endTime?.toIso8601String(),
+        'subject': subject,
+        'location': location,
+        'color': color,
+        'hasReminder': hasReminder,
+        'reminderMinutesBefore': reminderMinutesBefore,
+        'noteId': noteId,
+        'userId': userId,
+        'createdAt': createdAt.toIso8601String(),
+        'isDeleted': isDeleted,
+      };
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
-    id: json['id'] as String,
-    title: json['title'] as String,
-    description: json['description'] as String?,
-    type: EventType.values[json['type'] as int? ?? 4],
-    startTime: DateTime.parse(json['startTime'] as String),
-    endTime: json['endTime'] != null 
-        ? DateTime.parse(json['endTime'] as String)
-        : null,
-    subject: json['subject'] as String?,
-    location: json['location'] as String?,
-    color: json['color'] as String?,
-    hasReminder: json['hasReminder'] as bool? ?? true,
-    reminderMinutesBefore: json['reminderMinutesBefore'] as int? ?? 30,
-    noteId: json['noteId'] as String?,
-    userId: json['userId'] as String,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    isDirty: false,
-    isDeleted: json['isDeleted'] as bool? ?? false,
-  );
+        id: json['id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String?,
+        type: EventType.values[json['type'] as int? ?? 4],
+        startTime: DateTime.parse(json['startTime'] as String),
+        endTime: json['endTime'] != null
+            ? DateTime.parse(json['endTime'] as String)
+            : null,
+        subject: json['subject'] as String?,
+        location: json['location'] as String?,
+        color: json['color'] as String?,
+        hasReminder: json['hasReminder'] as bool? ?? true,
+        reminderMinutesBefore: json['reminderMinutesBefore'] as int? ?? 30,
+        noteId: json['noteId'] as String?,
+        userId: json['userId'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        isDirty: false,
+        isDeleted: json['isDeleted'] as bool? ?? false,
+      );
 
   @override
   List<Object?> get props => [
-    id, title, description, type, startTime, endTime, subject, location,
-    color, hasReminder, reminderMinutesBefore, noteId, userId, createdAt,
-    isDirty, isDeleted,
-  ];
+        id,
+        title,
+        description,
+        type,
+        startTime,
+        endTime,
+        subject,
+        location,
+        color,
+        hasReminder,
+        reminderMinutesBefore,
+        noteId,
+        userId,
+        createdAt,
+        isDirty,
+        isDeleted,
+      ];
 }

@@ -1,5 +1,5 @@
 /// Calendar Provider
-/// 
+///
 /// State management for calendar events including CRUD operations,
 /// filtering, and sync status tracking.
 
@@ -11,47 +11,48 @@ import '../models/calendar_event.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing calendar event state
-/// 
+///
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class CalendarProvider extends ChangeNotifier {
   // Local storage box
   Box<CalendarEvent>? _eventsBox;
-  
+
   // In-memory events list
   List<CalendarEvent> _events = [];
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // UUID generator
   final Uuid _uuid = const Uuid();
-  
+
   // Sync service reference (set by parent)
   SyncService? _syncService;
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   List<CalendarEvent> get events => _events.where((e) => !e.isDeleted).toList();
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
+
   /// Get events for a specific date
   List<CalendarEvent> getEventsForDate(DateTime date) {
     return _events
-        .where((e) => !e.isDeleted && 
+        .where((e) =>
+            !e.isDeleted &&
             e.startTime.year == date.year &&
             e.startTime.month == date.month &&
             e.startTime.day == date.day)
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
-  
+
   /// Get upcoming events
   List<CalendarEvent> get upcomingEvents {
     final now = DateTime.now();
@@ -60,33 +61,34 @@ class CalendarProvider extends ChangeNotifier {
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
-  
+
   /// Get events with unsynced changes
-  List<CalendarEvent> get dirtyEvents => _events.where((e) => e.isDirty).toList();
+  List<CalendarEvent> get dirtyEvents =>
+      _events.where((e) => e.isDirty).toList();
 
   // ===========================================
   // INITIALIZATION
   // ===========================================
-  
+
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
     Future.microtask(() => notifyListeners());
-    
+
     try {
       if (!Hive.isAdapterRegistered(5)) {
         Hive.registerAdapter(CalendarEventAdapter());
       }
-      
+
       _eventsBox = await Hive.openBox<CalendarEvent>('calendar_events_$userId');
       _events = _eventsBox!.values.toList();
-      
+
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load calendar events';
       debugPrint('Calendar initialization error: $e');
     }
-    
+
     _isLoading = false;
     Future.microtask(() => notifyListeners());
   }
@@ -99,7 +101,7 @@ class CalendarProvider extends ChangeNotifier {
   // ===========================================
   // CRUD OPERATIONS
   // ===========================================
-  
+
   /// Create a new calendar event
   Future<CalendarEvent?> createEvent({
     required String userId,
@@ -131,12 +133,12 @@ class CalendarProvider extends ChangeNotifier {
         reminderMinutesBefore: reminderMinutesBefore,
         createdAt: now,
       );
-      
+
       await _eventsBox?.put(event.id, event);
       _events.add(event);
-      
+
       _syncService?.syncCalendarEvent(event.toJson());
-      
+
       notifyListeners();
       return event;
     } catch (e) {
@@ -152,16 +154,16 @@ class CalendarProvider extends ChangeNotifier {
       final updatedEvent = event.copyWith(
         isDirty: true,
       );
-      
+
       await _eventsBox?.put(updatedEvent.id, updatedEvent);
-      
+
       final index = _events.indexWhere((e) => e.id == event.id);
       if (index >= 0) {
         _events[index] = updatedEvent;
       }
-      
+
       _syncService?.syncCalendarEvent(updatedEvent.toJson());
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -176,17 +178,17 @@ class CalendarProvider extends ChangeNotifier {
     try {
       final index = _events.indexWhere((e) => e.id == eventId);
       if (index < 0) return false;
-      
+
       final deletedEvent = _events[index].copyWith(
         isDeleted: true,
         isDirty: true,
       );
-      
+
       _events[index] = deletedEvent;
       await _eventsBox?.put(eventId, deletedEvent);
-      
+
       _syncService?.deleteCalendarEvent(eventId);
-      
+
       notifyListeners();
       return true;
     } catch (e) {

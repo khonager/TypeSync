@@ -1,5 +1,5 @@
 /// Subscription Screen
-/// 
+///
 /// Storage plan management and upgrade options.
 
 import 'package:flutter/material.dart';
@@ -10,7 +10,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/auth_service.dart';
 
 /// Subscription management screen
-/// 
+///
 /// Shows available storage plans:
 /// - Free: 1GB (included)
 /// - Basic: 5GB for €1.99/month
@@ -86,30 +86,33 @@ class SubscriptionScreen extends StatelessWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           Text(
             'Available Plans',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 16),
-          
+
           // Plan cards
           ...StorageService.subscriptionPlans.map((plan) {
             final isCurrentPlan = plan.tier == storageService.currentTier;
-            
+
             return _PlanCard(
               plan: plan,
               isCurrentPlan: isCurrentPlan,
-              onSelect: isCurrentPlan ? null : () {
-                _showUpgradeDialog(context, plan, authService, storageService);
-              },
+              onSelect: isCurrentPlan
+                  ? null
+                  : () {
+                      _showUpgradeDialog(
+                          context, plan, authService, storageService);
+                    },
             );
           }),
-          
+
           const SizedBox(height: 24),
-          
+
           // Restore purchases
           Center(
             child: TextButton(
@@ -141,7 +144,8 @@ class SubscriptionScreen extends StatelessWidget {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Login Required'),
-          content: const Text('Please log in to upgrade your subscription. Guest mode only supports local storage.'),
+          content: const Text(
+              'Please log in to upgrade your subscription. Guest mode only supports local storage.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -161,7 +165,7 @@ class SubscriptionScreen extends StatelessWidget {
       );
       return;
     }
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -178,15 +182,15 @@ class SubscriptionScreen extends StatelessWidget {
             Text('${plan.storage} cloud storage'),
             const SizedBox(height: 8),
             ...plan.features.map((f) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  const Icon(Icons.check, size: 16, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Text(f),
-                ],
-              ),
-            )),
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check, size: 16, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Text(f),
+                    ],
+                  ),
+                )),
           ],
         ),
         actions: [
@@ -197,15 +201,16 @@ class SubscriptionScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               // TODO: Integrate with payment provider
               // Only show success message after payment is confirmed
               // For now, this is a placeholder - actual payment integration should
               // only show success after payment confirmation
               final userId = authService.userId;
               if (userId != null) {
-                final success = await storageService.upgradeSubscription(userId, plan.tier);
-                
+                final success =
+                    await storageService.upgradeSubscription(userId, plan.tier);
+
                 if (context.mounted && success) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -215,7 +220,8 @@ class SubscriptionScreen extends StatelessWidget {
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Failed to upgrade subscription. Please try again.'),
+                      content: Text(
+                          'Failed to upgrade subscription. Please try again.'),
                     ),
                   );
                 }
@@ -285,9 +291,13 @@ class _PlanCard extends StatelessWidget {
                             ),
                             child: Text(
                               'Current',
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onPrimary,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.onPrimary,
+                                  ),
                             ),
                           ),
                         ],
@@ -297,8 +307,8 @@ class _PlanCard extends StatelessWidget {
                     Text(
                       plan.storage,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                     ),
                   ],
                 ),
@@ -320,6 +330,3 @@ class _PlanCard extends StatelessWidget {
     );
   }
 }
-
-
-

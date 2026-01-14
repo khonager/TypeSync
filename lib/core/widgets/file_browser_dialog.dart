@@ -1,5 +1,5 @@
 /// File Browser Dialog
-/// 
+///
 /// A cross-platform file and directory browser dialog that works
 /// on all platforms without requiring zenity or other external tools.
 
@@ -67,14 +67,14 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
 
     try {
       Directory? startDir;
-      
+
       if (widget.initialPath != null) {
         startDir = Directory(widget.initialPath!);
         if (!await startDir.exists()) {
           startDir = null;
         }
       }
-      
+
       if (startDir == null) {
         // Get default directory based on platform
         if (Platform.isLinux || Platform.isMacOS) {
@@ -107,7 +107,7 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
 
     try {
       final items = <FileSystemEntity>[];
-      
+
       await for (final entity in dir.list()) {
         // Filter by extension if specified
         if (widget.allowedExtensions != null && entity is File) {
@@ -116,7 +116,7 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
             continue;
           }
         }
-        
+
         items.add(entity);
       }
 
@@ -128,8 +128,8 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
           return aIsDir ? -1 : 1;
         }
         return path.basename(a.path).toLowerCase().compareTo(
-          path.basename(b.path).toLowerCase(),
-        );
+              path.basename(b.path).toLowerCase(),
+            );
       });
 
       setState(() {
@@ -215,8 +215,10 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      widget.dialogTitle ?? 
-                        (widget.selectDirectory ? 'Select Directory' : 'Select File'),
+                      widget.dialogTitle ??
+                          (widget.selectDirectory
+                              ? 'Select Directory'
+                              : 'Select File'),
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
@@ -227,7 +229,7 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                 ],
               ),
             ),
-            
+
             // Path bar
             Container(
               padding: const EdgeInsets.all(8),
@@ -306,14 +308,23 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                               Icon(
                                 Icons.folder_open,
                                 size: 64,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.3),
                               ),
                               const SizedBox(height: 16),
                               Text(
                                 'This folder is empty',
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.6),
+                                    ),
                               ),
                             ],
                           ),
@@ -325,24 +336,20 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                             final isDirectory = item is Directory;
                             final isFile = item is File;
                             final name = path.basename(item.path);
-                            final isSelectable = widget.selectDirectory
-                                ? isDirectory
-                                : isFile;
+                            final isSelectable =
+                                widget.selectDirectory ? isDirectory : isFile;
 
                             return ListTile(
                               leading: Icon(
-                                isDirectory
-                                    ? Icons.folder
-                                    : Icons.description,
-                                color: isDirectory
-                                    ? Colors.blue
-                                    : Colors.grey,
+                                isDirectory ? Icons.folder : Icons.description,
+                                color: isDirectory ? Colors.blue : Colors.grey,
                               ),
                               title: Text(name),
                               subtitle: isFile
                                   ? Text(
                                       _formatFileSize(item),
-                                      style: Theme.of(context).textTheme.bodySmall,
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
                                     )
                                   : null,
                               trailing: isDirectory && !widget.selectDirectory
@@ -377,7 +384,8 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                   ),
                   if (widget.selectDirectory && _currentDirectory != null)
                     ElevatedButton(
-                      onPressed: () => Navigator.pop(context, _currentDirectory!.path),
+                      onPressed: () =>
+                          Navigator.pop(context, _currentDirectory!.path),
                       child: const Text('Select Folder'),
                     ),
                 ],

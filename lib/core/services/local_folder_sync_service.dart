@@ -1,5 +1,5 @@
 /// Local Folder Sync Service
-/// 
+///
 /// Manages synchronization between a local folder on disk and the app's data.
 /// Handles conflict resolution when files differ between local and cloud storage.
 
@@ -88,7 +88,7 @@ class LocalFolderSyncService extends ChangeNotifier {
   }
 
   /// Choose sync folder using file picker
-  /// 
+  ///
   /// [context] is required for the file browser dialog
   Future<bool> chooseSyncFolder({required BuildContext context}) async {
     try {
@@ -97,11 +97,11 @@ class LocalFolderSyncService extends ChangeNotifier {
         context: context,
         dialogTitle: 'Choose folder to sync with',
       );
-      
+
       if (directory != null) {
         return await setSyncFolder(directory);
       }
-      
+
       return false;
     } catch (e) {
       _errorMessage = 'Failed to choose sync folder: $e';
@@ -216,13 +216,14 @@ class LocalFolderSyncService extends ChangeNotifier {
   /// Scan local folder for files
   Future<Map<String, FileSystemEntity>> _scanLocalFolder() async {
     final files = <String, FileSystemEntity>{};
-    
+
     if (_syncFolder == null) return files;
 
     try {
       await for (final entity in _syncFolder!.list(recursive: true)) {
         if (entity is File) {
-          final relativePath = path.relative(entity.path, from: _syncFolder!.path);
+          final relativePath =
+              path.relative(entity.path, from: _syncFolder!.path);
           files[relativePath] = entity;
         }
       }
@@ -350,12 +351,14 @@ class LocalFolderSyncService extends ChangeNotifier {
         );
 
         if (storedPath != null) {
-          await notesProvider.createNote(
+          await notesProvider
+              .createNote(
             userId: userId,
             title: fileName.replaceAll('.pdf', ''),
             content: '',
             type: NoteType.pdf,
-          ).then((note) {
+          )
+              .then((note) {
             if (note != null) {
               notesProvider.updateNote(note.copyWith(pdfPath: storedPath));
             }
@@ -450,7 +453,8 @@ class LocalFolderSyncService extends ChangeNotifier {
         break;
       case ConflictResolution.keepBoth:
         // Keep both - rename local file
-        final renamedPath = '${localPath}_local_${DateTime.now().millisecondsSinceEpoch}';
+        final renamedPath =
+            '${localPath}_local_${DateTime.now().millisecondsSinceEpoch}';
         final renamedFile = File(path.join(_syncFolder!.path, renamedPath));
         await localFile.copy(renamedFile.path);
         // Also export app version
@@ -489,7 +493,8 @@ class LocalFolderSyncService extends ChangeNotifier {
         break;
       case ConflictResolution.keepBoth:
         // Keep both - rename local folder
-        final renamedPath = '${localPath}_local_${DateTime.now().millisecondsSinceEpoch}';
+        final renamedPath =
+            '${localPath}_local_${DateTime.now().millisecondsSinceEpoch}';
         final renamedDir = Directory(path.join(_syncFolder!.path, renamedPath));
         if (await localDir.exists()) {
           await localDir.rename(renamedDir.path);

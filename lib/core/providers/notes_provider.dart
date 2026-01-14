@@ -1,5 +1,5 @@
 /// Notes Provider
-/// 
+///
 /// State management for notes including CRUD operations,
 /// filtering, and sync status tracking.
 
@@ -12,89 +12,82 @@ import '../models/note.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing note state
-/// 
+///
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class NotesProvider extends ChangeNotifier {
   // Local storage box
   Box<Note>? _notesBox;
-  
+
   // In-memory notes list
   List<Note> _notes = [];
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // UUID generator
   final Uuid _uuid = const Uuid();
-  
+
   // Sync service reference (set by parent)
   SyncService? _syncService;
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   List<Note> get notes => _notes.where((n) => !n.isDeleted).toList();
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
+
   /// Get notes for a specific folder
   List<Note> getNotesInFolder(String? folderId) {
-    return _notes
-        .where((n) => !n.isDeleted && n.folderId == folderId)
-        .toList()
+    return _notes.where((n) => !n.isDeleted && n.folderId == folderId).toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
-  
+
   /// Get favorite notes
-  List<Note> get favoriteNotes => _notes
-      .where((n) => !n.isDeleted && n.isFavorite)
-      .toList();
-  
+  List<Note> get favoriteNotes =>
+      _notes.where((n) => !n.isDeleted && n.isFavorite).toList();
+
   /// Get recently edited notes
   List<Note> get recentNotes {
-    final sorted = _notes
-        .where((n) => !n.isDeleted)
-        .toList()
+    final sorted = _notes.where((n) => !n.isDeleted).toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return sorted.take(10).toList();
   }
-  
+
   /// Get notes with unsynced changes
   List<Note> get dirtyNotes => _notes.where((n) => n.isDirty).toList();
-  
+
   /// Search notes by title and content
   List<Note> searchNotes(String query) {
     final lowerQuery = query.toLowerCase();
     return _notes
-        .where((n) => !n.isDeleted && (
-            n.title.toLowerCase().contains(lowerQuery) ||
-            n.content.toLowerCase().contains(lowerQuery)
-        ))
+        .where((n) =>
+            !n.isDeleted &&
+            (n.title.toLowerCase().contains(lowerQuery) ||
+                n.content.toLowerCase().contains(lowerQuery)))
         .toList();
   }
-  
+
   /// Get notes by tag
   List<Note> getNotesByTag(String tagId) {
-    return _notes
-        .where((n) => !n.isDeleted && n.tags.contains(tagId))
-        .toList();
+    return _notes.where((n) => !n.isDeleted && n.tags.contains(tagId)).toList();
   }
 
   // ===========================================
   // INITIALIZATION
   // ===========================================
-  
+
   /// Initialize the provider and load local data
   Future<void> initialize(String userId) async {
     _isLoading = true;
     // Defer notifyListeners to avoid calling during build
     Future.microtask(() => notifyListeners());
-    
+
     try {
       // Open Hive box for notes
       if (!Hive.isAdapterRegistered(0)) {
@@ -103,16 +96,16 @@ class NotesProvider extends ChangeNotifier {
       if (!Hive.isAdapterRegistered(1)) {
         Hive.registerAdapter(NoteTypeAdapter());
       }
-      
+
       _notesBox = await Hive.openBox<Note>('notes_$userId');
       _notes = _notesBox!.values.toList();
-      
+
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load notes';
       debugPrint('Notes initialization error: $e');
     }
-    
+
     _isLoading = false;
     Future.microtask(() => notifyListeners());
   }
@@ -125,7 +118,7 @@ class NotesProvider extends ChangeNotifier {
   // ===========================================
   // CRUD OPERATIONS
   // ===========================================
-  
+
   /// Create a new note
   Future<Note?> createNote({
     required String userId,
@@ -143,14 +136,14 @@ class NotesProvider extends ChangeNotifier {
         folderId: folderId,
         type: type,
       );
-      
+
       // Save locally
       await _notesBox?.put(note.id, note);
       _notes.add(note);
-      
+
       // Trigger sync
       _syncService?.syncNote(note);
-      
+
       notifyListeners();
       return note;
     } catch (e) {
@@ -168,23 +161,25 @@ class NotesProvider extends ChangeNotifier {
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
-      debugPrint('updateNote: Updating note ${note.id}, backgroundColor: ${updatedNote.backgroundColor}');
-      
+
+      debugPrint(
+          'updateNote: Updating note ${note.id}, backgroundColor: ${updatedNote.backgroundColor}');
+
       // Update locally
       await _notesBox?.put(updatedNote.id, updatedNote);
-      
+
       final index = _notes.indexWhere((n) => n.id == note.id);
       if (index >= 0) {
         _notes[index] = updatedNote;
-        debugPrint('updateNote: Updated note at index $index, new backgroundColor: ${_notes[index].backgroundColor}');
+        debugPrint(
+            'updateNote: Updated note at index $index, new backgroundColor: ${_notes[index].backgroundColor}');
       } else {
         debugPrint('updateNote: Note ${note.id} not found in list');
       }
-      
+
       // Trigger sync
       _syncService?.syncNote(updatedNote);
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -204,7 +199,7 @@ class NotesProvider extends ChangeNotifier {
   }) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    
+
     final updatedNote = _notes[index].copyWith(
       content: content,
       characterCount: characterCount,
@@ -212,13 +207,13 @@ class NotesProvider extends ChangeNotifier {
       updatedAt: DateTime.now(),
       isDirty: true,
     );
-    
+
     _notes[index] = updatedNote;
     await _notesBox?.put(noteId, updatedNote);
-    
+
     // Trigger sync (debounced in sync service)
     _syncService?.triggerSync();
-    
+
     notifyListeners();
   }
 
@@ -227,19 +222,19 @@ class NotesProvider extends ChangeNotifier {
     try {
       final index = _notes.indexWhere((n) => n.id == noteId);
       if (index < 0) return false;
-      
+
       final deletedNote = _notes[index].copyWith(
         isDeleted: true,
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
+
       _notes[index] = deletedNote;
       await _notesBox?.put(noteId, deletedNote);
-      
+
       // Sync deletion
       _syncService?.deleteNote(noteId);
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -253,7 +248,7 @@ class NotesProvider extends ChangeNotifier {
   Future<void> toggleFavorite(String noteId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    
+
     final note = _notes[index];
     await updateNote(note.copyWith(isFavorite: !note.isFavorite));
   }
@@ -262,7 +257,7 @@ class NotesProvider extends ChangeNotifier {
   Future<void> moveToFolder(String noteId, String? folderId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    
+
     final note = _notes[index];
     await updateNote(note.copyWith(folderId: folderId));
   }
@@ -271,10 +266,10 @@ class NotesProvider extends ChangeNotifier {
   Future<void> addTag(String noteId, String tagId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    
+
     final note = _notes[index];
     if (note.tags.contains(tagId)) return;
-    
+
     await updateNote(note.copyWith(tags: [...note.tags, tagId]));
   }
 
@@ -282,7 +277,7 @@ class NotesProvider extends ChangeNotifier {
   Future<void> removeTag(String noteId, String tagId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
-    
+
     final note = _notes[index];
     await updateNote(note.copyWith(
       tags: note.tags.where((t) => t != tagId).toList(),
@@ -296,16 +291,19 @@ class NotesProvider extends ChangeNotifier {
       debugPrint('setBackgroundColor: Note $noteId not found');
       return;
     }
-    
+
     final note = _notes[index];
-    final updatedNote = note.copyWith(backgroundColor: color, backgroundColorSet: true);
-    debugPrint('setBackgroundColor: Updating note ${note.id} from ${note.backgroundColor} to $color');
+    final updatedNote =
+        note.copyWith(backgroundColor: color, backgroundColorSet: true);
+    debugPrint(
+        'setBackgroundColor: Updating note ${note.id} from ${note.backgroundColor} to $color');
     final success = await updateNote(updatedNote);
     if (success) {
       // Verify the update
       final verifyIndex = _notes.indexWhere((n) => n.id == noteId);
       if (verifyIndex >= 0) {
-        debugPrint('setBackgroundColor: Verified update - note backgroundColor is now ${_notes[verifyIndex].backgroundColor}');
+        debugPrint(
+            'setBackgroundColor: Verified update - note backgroundColor is now ${_notes[verifyIndex].backgroundColor}');
       }
     } else {
       debugPrint('setBackgroundColor: Update failed');
@@ -315,17 +313,18 @@ class NotesProvider extends ChangeNotifier {
   // ===========================================
   // SYNC OPERATIONS
   // ===========================================
-  
+
   /// Handle notes updated from cloud
   void handleCloudUpdate(List<Note> cloudNotes) {
     for (final cloudNote in cloudNotes) {
       final localIndex = _notes.indexWhere((n) => n.id == cloudNote.id);
-      
+
       if (localIndex >= 0) {
         final localNote = _notes[localIndex];
-        
+
         // Cloud wins if local isn't dirty, or if cloud is newer
-        if (!localNote.isDirty || cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
+        if (!localNote.isDirty ||
+            cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
           _notes[localIndex] = cloudNote;
           _notesBox?.put(cloudNote.id, cloudNote);
         }
@@ -335,7 +334,7 @@ class NotesProvider extends ChangeNotifier {
         _notesBox?.put(cloudNote.id, cloudNote);
       }
     }
-    
+
     notifyListeners();
   }
 
@@ -423,6 +422,3 @@ class NoteTypeAdapter extends TypeAdapter<NoteType> {
     writer.writeInt(obj.index);
   }
 }
-
-
-

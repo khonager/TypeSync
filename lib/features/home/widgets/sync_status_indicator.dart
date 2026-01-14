@@ -1,5 +1,5 @@
 /// Sync Status Indicator Widget
-/// 
+///
 /// Shows the current sync status with a visual indicator.
 
 import 'package:flutter/material.dart';
@@ -15,18 +15,18 @@ class SyncStatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
-    
+
     // Don't show sync indicator in guest mode
     if (authService.isGuestMode) {
       return const SizedBox.shrink();
     }
-    
+
     final syncService = context.watch<SyncService>();
-    
+
     IconData icon;
     Color color;
     String tooltip;
-    
+
     switch (syncService.status) {
       case SyncStatus.idle:
         icon = Icons.cloud_done_outlined;
@@ -109,6 +109,3 @@ class _SyncingAnimationState extends State<_SyncingAnimation>
     );
   }
 }
-
-
-

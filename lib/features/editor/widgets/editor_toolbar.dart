@@ -1,5 +1,5 @@
 /// Editor Toolbar Widget
-/// 
+///
 /// Floating draggable toolbar with formatting options.
 
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import '../../../core/utils/color_utils.dart';
 
 /// Rich text editing toolbar
-/// 
+///
 /// Provides quick access to common formatting options:
 /// - Text formatting (bold, italic, underline)
 /// - Text color and marker
@@ -41,7 +41,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _measuredHeight = null; // Reset to remeasure
     });
   }
-  
+
   double _getToolbarHeight() {
     // Use measured height if available, otherwise use conservative estimate
     if (_measuredHeight != null) {
@@ -51,11 +51,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
     // Even if actual toolbar is taller, this allows it to go to top (may extend slightly above)
     return _isExpanded ? 100.0 : 50.0;
   }
-  
+
   void _measureToolbar() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _toolbarKey.currentContext != null) {
-        final renderBox = _toolbarKey.currentContext!.findRenderObject() as RenderBox?;
+        final renderBox =
+            _toolbarKey.currentContext!.findRenderObject() as RenderBox?;
         if (renderBox != null && renderBox.hasSize) {
           final height = renderBox.size.height;
           if (_measuredHeight != height) {
@@ -92,19 +93,19 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final appBarHeight = AppBar().preferredSize.height;
     final statusBarHeight = MediaQuery.of(context).padding.top;
     final totalAppBarHeight = appBarHeight + statusBarHeight;
-    
+
     // Get toolbar size to calculate proper bounds
     final toolbarWidth = _isExpanded ? 250.0 : 50.0;
     // Get actual or estimated toolbar height
     final toolbarHeight = _getToolbarHeight();
-    
+
     // The Stack is in the body, which is below the app bar
     // Body height = screenHeight - totalAppBarHeight
     final bodyHeight = screenSize.height - totalAppBarHeight;
-    
+
     // Ensure position is within bounds - allow movement to edges but not through app bar
     final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
-    // Bottom constraint: 
+    // Bottom constraint:
     // - maxBottom: when toolbar top edge is at the top of body (right below app bar)
     //   bottom = bodyHeight - toolbarHeight (toolbar top at top of body)
     // - minBottom: 0 (toolbar at bottom of body)
@@ -113,7 +114,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     // Ensure maxBottom is valid (at least 0)
     final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
     final bottom = _position.dy.clamp(minBottom, clampedMaxBottom);
-    
+
     return Positioned(
       left: left,
       bottom: bottom,
@@ -128,17 +129,21 @@ class _EditorToolbarState extends State<EditorToolbar> {
               final currentHeight = _getToolbarHeight();
               final appBarHeight = AppBar().preferredSize.height;
               final statusBarHeight = MediaQuery.of(context).padding.top;
-              final bodyHeight = screenSize.height - appBarHeight - statusBarHeight;
-              
+              final bodyHeight =
+                  screenSize.height - appBarHeight - statusBarHeight;
+
               // Allow toolbar to go all the way to top (toolbar top at top of body)
               // maxBottom: when toolbar top edge is at top of body
               // bottom = bodyHeight - currentHeight
               final maxBottom = bodyHeight - currentHeight;
               final minBottom = 0.0; // Can go all the way to bottom
-              final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
-              
-              final newDx = (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - currentWidth);
-              final newDy = (_position.dy - details.delta.dy).clamp(minBottom, clampedMaxBottom);
+              final clampedMaxBottom =
+                  maxBottom > minBottom ? maxBottom : minBottom;
+
+              final newDx = (_position.dx + details.delta.dx)
+                  .clamp(0.0, screenSize.width - currentWidth);
+              final newDy = (_position.dy - details.delta.dy)
+                  .clamp(minBottom, clampedMaxBottom);
               _position = Offset(newDx, newDy);
             });
           },
@@ -167,7 +172,9 @@ class _EditorToolbarState extends State<EditorToolbar> {
               builder: (context) {
                 // Measure toolbar after build
                 _measureToolbar();
-                return _isExpanded ? _buildExpandedToolbar() : _buildCollapsedToolbar();
+                return _isExpanded
+                    ? _buildExpandedToolbar()
+                    : _buildCollapsedToolbar();
               },
             ),
           ),
@@ -235,12 +242,14 @@ class _EditorToolbarState extends State<EditorToolbar> {
               _ToolbarButton(
                 icon: Icons.format_italic,
                 isActive: _hasFormat(Attribute.italic),
-                onTap: () => widget.controller.formatSelection(Attribute.italic),
+                onTap: () =>
+                    widget.controller.formatSelection(Attribute.italic),
               ),
               _ToolbarButton(
                 icon: Icons.format_underlined,
                 isActive: _hasFormat(Attribute.underline),
-                onTap: () => widget.controller.formatSelection(Attribute.underline),
+                onTap: () =>
+                    widget.controller.formatSelection(Attribute.underline),
               ),
               _ToolbarButton(
                 icon: Icons.format_color_text,
@@ -265,7 +274,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
               _ToolbarButton(
                 icon: Icons.check_box,
                 isActive: _hasFormat(Attribute.checked),
-                onTap: () => widget.controller.formatSelection(Attribute.checked),
+                onTap: () =>
+                    widget.controller.formatSelection(Attribute.checked),
               ),
               _ToolbarButton(
                 icon: Icons.format_list_numbered,
@@ -333,8 +343,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
               isSelected: currentColor == null,
               label: 'Default',
             ),
-            ...AppColorPalette.textColors.map((colorOption) => 
-              _ColorOption(
+            ...AppColorPalette.textColors.map(
+              (colorOption) => _ColorOption(
                 color: colorOption.color,
                 onTap: () => _setTextColor(colorOption.hex, dialogContext),
                 isSelected: currentColor == colorOption.hex,
@@ -372,8 +382,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
               isSelected: currentBgColor == null,
               label: 'None',
             ),
-            ...AppColorPalette.markerColors.map((colorOption) => 
-              _ColorOption(
+            ...AppColorPalette.markerColors.map(
+              (colorOption) => _ColorOption(
                 color: colorOption.color,
                 onTap: () => _setMarkerColor(colorOption.hex, dialogContext),
                 isSelected: currentBgColor == colorOption.hex,
@@ -509,8 +519,8 @@ class _ColorOption extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.grey,
                 width: isSelected ? 3 : 1,
               ),
@@ -525,8 +535,8 @@ class _ColorOption extends StatelessWidget {
               label!,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.grey,
               ),
             ),

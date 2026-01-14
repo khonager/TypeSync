@@ -1,5 +1,5 @@
 /// Editor Screen
-/// 
+///
 /// Note editing screen with rich text support, line/character count,
 /// and real-time sync. Based on the bottom-right design mockup.
 
@@ -24,7 +24,7 @@ import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
 /// Note editor with markdown-like rich text editing
-/// 
+///
 /// Features:
 /// - Rich text formatting (bold, italic, headers, lists)
 /// - Line and character counter
@@ -47,29 +47,29 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   // Quill editor controller
   late QuillController _quillController;
-  
+
   // Focus node for the editor
   final FocusNode _focusNode = FocusNode();
-  
+
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
-  
+
   // Current note being edited
   Note? _note;
-  
+
   // Title controller
   final TextEditingController _titleController = TextEditingController();
-  
+
   // Auto-save timer
   Timer? _saveTimer;
-  
+
   // Stats
   int _characterCount = 0;
   int _lineCount = 0;
-  
+
   // Loading state
   bool _isLoading = true;
-  
+
   // Drag and drop state
   bool _isDragging = false;
 
@@ -81,14 +81,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _initializeEditor() async {
     final notesProvider = context.read<NotesProvider>();
-    
+
     if (widget.noteId != null) {
       // Load existing note
       _note = notesProvider.getNoteById(widget.noteId!);
-      
+
       if (_note != null) {
         _titleController.text = _note!.title;
-        
+
         // Parse content as Delta if it's JSON, otherwise treat as plain text
         try {
           if (_note!.content.isNotEmpty && _note!.content.startsWith('[')) {
@@ -114,17 +114,17 @@ class _EditorScreenState extends State<EditorScreen> {
             selection: const TextSelection.collapsed(offset: 0),
           );
         }
-        
+
         _characterCount = _note!.characterCount;
         _lineCount = _note!.lineCount;
       }
     }
-    
+
     // Create new note if none exists
     if (_note == null) {
       _quillController = QuillController.basic();
       _titleController.text = 'No name';
-      
+
       final authService = context.read<AuthService>();
       if (authService.userId != null) {
         _note = await notesProvider.createNote(
@@ -133,14 +133,14 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
     }
-    
+
     // Listen for content changes
     _quillController.addListener(_onContentChanged);
-    
+
     setState(() {
       _isLoading = false;
     });
-    
+
     // Calculate initial stats
     _updateStats();
   }
@@ -165,12 +165,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _saveNote() async {
     if (_note == null) return;
-    
+
     final notesProvider = context.read<NotesProvider>();
-    
+
     // Get content as JSON string
     final content = jsonEncode(_quillController.document.toDelta().toJson());
-    
+
     await notesProvider.updateNoteContent(
       noteId: _note!.id,
       content: content,
@@ -181,7 +181,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _updateTitle(String title) async {
     if (_note == null) return;
-    
+
     final notesProvider = context.read<NotesProvider>();
     await notesProvider.updateNote(_note!.copyWith(title: title));
   }
@@ -212,7 +212,8 @@ class _EditorScreenState extends State<EditorScreen> {
     return Scaffold(
       backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+        backgroundColor:
+            bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
@@ -278,48 +279,51 @@ class _EditorScreenState extends State<EditorScreen> {
                       scrollController: _scrollController,
                     ),
                   ),
-                  
+
                   // Floating toolbar
                   EditorToolbar(
                     controller: _quillController,
                     onInsertPdf: _insertPdf,
                   ),
-            // Drag overlay
-            if (_isDragging)
-              Container(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
+                  // Drag overlay
+                  if (_isDragging)
+                    Container(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.2),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.cloud_upload,
+                                size: 64,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Drop files here to import',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.cloud_upload,
-                          size: 64,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Drop files here to import',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
               ),
-          ],
-        ),
-      ),
+            ),
     );
   }
 
@@ -360,8 +364,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 color: _note?.isFavorite == true ? Colors.amber : null,
               ),
               title: Text(
-                _note?.isFavorite == true 
-                    ? 'Remove from favorites' 
+                _note?.isFavorite == true
+                    ? 'Remove from favorites'
                     : 'Add to favorites',
               ),
               onTap: () {
@@ -390,22 +394,22 @@ class _EditorScreenState extends State<EditorScreen> {
         dialogTitle: 'Select PDF file',
         allowedExtensions: ['pdf'],
       );
-      
+
       if (filePath != null) {
         final file = File(filePath);
         final fileName = file.path.split('/').last;
-        
+
         // Copy PDF to app storage
         final authService = context.read<AuthService>();
         final userId = authService.userId;
         if (userId == null) return;
-        
+
         await LocalFileService.instance.initialize(userId);
         final storedPath = await LocalFileService.instance.copyFileToStorage(
           filePath,
           fileName: fileName,
         );
-        
+
         if (storedPath != null && _note != null) {
           // Update note to be a PDF type
           final notesProvider = context.read<NotesProvider>();
@@ -415,12 +419,12 @@ class _EditorScreenState extends State<EditorScreen> {
             title: fileName.replaceAll('.pdf', ''),
           );
           await notesProvider.updateNote(updatedNote);
-          
+
           // Refresh the note
           setState(() {
             _note = updatedNote;
           });
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('PDF imported: $fileName')),
@@ -449,13 +453,13 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _showColorPicker() {
     if (_note == null) return;
-    
+
     final currentColor = _note?.backgroundColor;
-    
+
     // Use Future.delayed to ensure bottom sheet is closed before showing dialog
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted) return;
-      
+
       showDialog(
         context: context,
         barrierDismissible: true,
@@ -474,10 +478,11 @@ class _EditorScreenState extends State<EditorScreen> {
                     isSelected: currentColor == null,
                     label: 'None',
                   ),
-                  ...AppColorPalette.noteBackgroundColors.map((colorOption) => 
-                    _ColorOption(
+                  ...AppColorPalette.noteBackgroundColors.map(
+                    (colorOption) => _ColorOption(
                       color: colorOption.color,
-                      onTap: () => _setNoteBackgroundColor(colorOption.hex, dialogContext),
+                      onTap: () => _setNoteBackgroundColor(
+                          colorOption.hex, dialogContext),
                       isSelected: currentColor == colorOption.hex,
                     ),
                   ),
@@ -496,12 +501,13 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  void _setNoteBackgroundColor(String? color, BuildContext dialogContext) async {
+  void _setNoteBackgroundColor(
+      String? color, BuildContext dialogContext) async {
     if (_note == null) return;
-    
+
     Navigator.pop(dialogContext);
     await context.read<NotesProvider>().setBackgroundColor(_note!.id, color);
-    
+
     // Refresh note from provider to ensure we have the latest state
     final updatedNote = context.read<NotesProvider>().getNoteById(_note!.id);
     if (updatedNote != null) {
@@ -509,12 +515,12 @@ class _EditorScreenState extends State<EditorScreen> {
         _note = updatedNote;
       });
     }
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(color == null 
-              ? 'Background color removed' 
+          content: Text(color == null
+              ? 'Background color removed'
               : 'Background color set'),
         ),
       );
@@ -532,13 +538,13 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _exportNote() async {
     if (_note == null) return;
-    
+
     try {
       // Determine export file name and extension
       String fileName = _note!.title;
       String extension = '.txt';
       String content = '';
-      
+
       if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
         // Export PDF file
         final pdfFile = File(_note!.pdfPath!);
@@ -550,7 +556,7 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return;
         }
-        
+
         // Use file picker to choose export location (with Linux fallback)
         final savePath = await FilePickerHelper.saveFile(
           context: context,
@@ -558,7 +564,7 @@ class _EditorScreenState extends State<EditorScreen> {
           fileName: '$fileName.pdf',
           fileExtension: 'pdf',
         );
-        
+
         if (savePath != null) {
           await pdfFile.copy(savePath);
           if (mounted) {
@@ -584,7 +590,7 @@ class _EditorScreenState extends State<EditorScreen> {
           content = _note!.content;
         }
       }
-      
+
       // Use file picker to choose export location (with Linux fallback)
       final savePath = await FilePickerHelper.saveFile(
         context: context,
@@ -592,7 +598,7 @@ class _EditorScreenState extends State<EditorScreen> {
         fileName: '$fileName$extension',
         fileExtension: extension.substring(1),
       );
-      
+
       if (savePath != null) {
         final file = File(savePath);
         await file.writeAsString(content);
@@ -620,14 +626,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final pdfPath = _note!.pdfPath!;
     final pdfFile = File(pdfPath);
-    
+
     return FutureBuilder<bool>(
       future: Future(() => pdfFile.existsSync()),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        
+
         if (!snapshot.hasData || !snapshot.data!) {
           return _buildPdfErrorView(pdfFile);
         }
@@ -670,7 +676,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   } else {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Unable to open PDF in external viewer')),
+                        const SnackBar(
+                            content:
+                                Text('Unable to open PDF in external viewer')),
                       );
                     }
                   }
@@ -697,7 +705,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final filePath = file.path;
         final fileName = file.name;
         final fileExtension = fileName.split('.').last.toLowerCase();
-        
+
         // Read file content
         final fileData = File(filePath);
         if (!await fileData.exists()) {
@@ -708,18 +716,23 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           continue;
         }
-        
+
         // Handle different file types
-        if (fileExtension == 'txt' || fileExtension == 'md' || fileExtension == 'markdown') {
+        if (fileExtension == 'txt' ||
+            fileExtension == 'md' ||
+            fileExtension == 'markdown') {
           // Text files - insert content into current note
           final content = await fileData.readAsString();
           final selection = _quillController.selection;
-          final offset = selection.isCollapsed ? selection.start : selection.start;
-          
+          final offset =
+              selection.isCollapsed ? selection.start : selection.start;
+
           // Insert file content
-          _quillController.document.insert(offset, '\n\n--- Imported from $fileName ---\n\n');
-          _quillController.document.insert(offset + 35 + fileName.length, content);
-          
+          _quillController.document
+              .insert(offset, '\n\n--- Imported from $fileName ---\n\n');
+          _quillController.document
+              .insert(offset + 35 + fileName.length, content);
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Imported $fileName into note')),
@@ -730,13 +743,13 @@ class _EditorScreenState extends State<EditorScreen> {
           final authService = context.read<AuthService>();
           final userId = authService.userId;
           if (userId == null) return;
-          
+
           await LocalFileService.instance.initialize(userId);
           final storedPath = await LocalFileService.instance.copyFileToStorage(
             filePath,
             fileName: fileName,
           );
-          
+
           if (storedPath != null) {
             // Create a new PDF note
             final notesProvider = context.read<NotesProvider>();
@@ -747,11 +760,11 @@ class _EditorScreenState extends State<EditorScreen> {
               content: '',
               type: NoteType.pdf,
             );
-            
+
             if (pdfNote != null) {
               final updatedNote = pdfNote.copyWith(pdfPath: storedPath);
               await notesProvider.updateNote(updatedNote);
-              
+
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('PDF imported: $fileName')),
@@ -767,12 +780,15 @@ class _EditorScreenState extends State<EditorScreen> {
               );
             }
           }
-        } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
+        } else if (['jpg', 'jpeg', 'png', 'gif', 'webp']
+            .contains(fileExtension)) {
           // Image files - insert reference
           final selection = _quillController.selection;
-          final offset = selection.isCollapsed ? selection.start : selection.start;
-          _quillController.document.insert(offset, '\n\n[Image: $fileName]\n\n');
-          
+          final offset =
+              selection.isCollapsed ? selection.start : selection.start;
+          _quillController.document
+              .insert(offset, '\n\n[Image: $fileName]\n\n');
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Image reference added: $fileName')),
@@ -781,9 +797,10 @@ class _EditorScreenState extends State<EditorScreen> {
         } else {
           // Other files - insert reference
           final selection = _quillController.selection;
-          final offset = selection.isCollapsed ? selection.start : selection.start;
+          final offset =
+              selection.isCollapsed ? selection.start : selection.start;
           _quillController.document.insert(offset, '\n\n[File: $fileName]\n\n');
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('File reference added: $fileName')),
@@ -829,8 +846,8 @@ class _ColorOption extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.grey,
                 width: isSelected ? 3 : 1,
               ),

@@ -1,5 +1,5 @@
 /// PDF Viewer Widget
-/// 
+///
 /// A custom PDF viewer that works on all platforms by rendering
 /// PDF pages as images using the pdf package.
 
@@ -43,7 +43,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
 
       // Read PDF file
       final bytes = await widget.pdfFile.readAsBytes();
-      
+
       // PDF loaded successfully
       setState(() {
         _pdfBytes = bytes;
@@ -117,7 +117,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
             ],
           ),
         ),
-        
+
         // PDF Preview
         Expanded(
           child: _pdfBytes != null
@@ -138,7 +138,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   Future<void> _openInExternalViewer() async {
     try {
       final uri = Uri.file(widget.pdfFile.absolute.path);
-      
+
       if (Platform.isLinux) {
         // Use xdg-open on Linux
         await Process.run('xdg-open', [widget.pdfFile.absolute.path]);
@@ -147,7 +147,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         await Process.run('open', [widget.pdfFile.absolute.path]);
       } else if (Platform.isWindows) {
         // Use start on Windows
-        await Process.run('start', [widget.pdfFile.absolute.path], runInShell: true);
+        await Process.run('start', [widget.pdfFile.absolute.path],
+            runInShell: true);
       } else {
         // Try url_launcher for mobile
         if (await canLaunchUrl(uri)) {

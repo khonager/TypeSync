@@ -1,5 +1,5 @@
 /// Folder Grid Widget
-/// 
+///
 /// Displays folders in a grid layout matching the design.
 
 import 'package:flutter/material.dart';
@@ -75,7 +75,8 @@ class _FolderGridItemState extends State<FolderGridItem> {
   Widget build(BuildContext context) {
     // Parse background color if set
     final bgColor = widget.folder.backgroundColor != null
-        ? Color(int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')))
+        ? Color(
+            int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.folderDefault;
 
     return Draggable<String>(
@@ -98,7 +99,8 @@ class _FolderGridItemState extends State<FolderGridItem> {
         child: _buildFolderContent(bgColor),
       ),
       child: DragTarget<String>(
-        onWillAccept: (data) => data != null && data != 'folder:${widget.folder.id}',
+        onWillAccept: (data) =>
+            data != null && data != 'folder:${widget.folder.id}',
         onAccept: (data) {
           if (data.startsWith('note:')) {
             final noteId = data.substring(5);
@@ -123,7 +125,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
         },
         builder: (context, candidateData, rejectedData) {
           return _buildFolderContent(
-            _isDragOver 
+            _isDragOver
                 ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
                 : bgColor,
             showBorder: _isDragOver,
@@ -172,15 +174,16 @@ class _FolderGridItemState extends State<FolderGridItem> {
             textAlign: TextAlign.center,
           ),
           // Subtitle if present
-          if (widget.folder.subtitle != null && widget.folder.subtitle!.isNotEmpty)
+          if (widget.folder.subtitle != null &&
+              widget.folder.subtitle!.isNotEmpty)
             Text(
               widget.folder.subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey,
-                fontSize: 10,
-              ),
+                    color: Colors.grey,
+                    fontSize: 10,
+                  ),
               textAlign: TextAlign.center,
             ),
         ],
@@ -272,12 +275,14 @@ class FolderListItem extends StatelessWidget {
                         folder.name,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
+                      if (folder.subtitle != null &&
+                          folder.subtitle!.isNotEmpty)
                         Text(
                           folder.subtitle!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey,
+                                  ),
                         ),
                     ],
                   ),
@@ -295,6 +300,3 @@ class FolderListItem extends StatelessWidget {
     );
   }
 }
-
-
-

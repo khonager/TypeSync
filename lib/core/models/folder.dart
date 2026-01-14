@@ -1,50 +1,50 @@
 /// Folder Model
-/// 
+///
 /// Represents a folder in the TypeSync file system.
 /// Folders can contain notes and other subfolders.
 
 import 'package:equatable/equatable.dart';
 
 /// Folder model for organizing notes
-/// 
+///
 /// Supports nested folder structure with customizable appearance.
 class Folder extends Equatable {
   /// Unique identifier for the folder
   final String id;
-  
+
   /// Display name of the folder
   final String name;
-  
+
   /// Optional subtitle/description
   final String? subtitle;
-  
+
   /// Parent folder ID (null if in root)
   final String? parentId;
-  
+
   /// Background color as hex string
   final String? backgroundColor;
-  
+
   /// Icon identifier (defaults to folder icon)
   final String icon;
-  
+
   /// Creation timestamp
   final DateTime createdAt;
-  
+
   /// Last modification timestamp
   final DateTime updatedAt;
-  
+
   /// Last sync timestamp
   final DateTime? syncedAt;
-  
+
   /// Whether folder has unsynced changes
   final bool isDirty;
-  
+
   /// Whether folder is deleted (soft delete)
   final bool isDeleted;
-  
+
   /// User ID who owns this folder
   final String userId;
-  
+
   /// Sort order within parent
   final int sortOrder;
 
@@ -158,19 +158,18 @@ class Folder extends Equatable {
 
   @override
   List<Object?> get props => [
-    id,
-    name,
-    subtitle,
-    parentId,
-    backgroundColor,
-    icon,
-    createdAt,
-    updatedAt,
-    syncedAt,
-    isDirty,
-    isDeleted,
-    userId,
-    sortOrder,
-  ];
+        id,
+        name,
+        subtitle,
+        parentId,
+        backgroundColor,
+        icon,
+        createdAt,
+        updatedAt,
+        syncedAt,
+        isDirty,
+        isDeleted,
+        userId,
+        sortOrder,
+      ];
 }
-

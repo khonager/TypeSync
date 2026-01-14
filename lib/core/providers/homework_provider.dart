@@ -1,5 +1,5 @@
 /// Homework Provider
-/// 
+///
 /// State management for homework tasks including CRUD operations,
 /// filtering, and sync status tracking.
 
@@ -11,36 +11,36 @@ import '../models/homework.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing homework state
-/// 
+///
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class HomeworkProvider extends ChangeNotifier {
   // Local storage box
   Box<Homework>? _homeworkBox;
-  
+
   // In-memory homework list
   List<Homework> _homework = [];
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // UUID generator
   final Uuid _uuid = const Uuid();
-  
+
   // Sync service reference (set by parent)
   SyncService? _syncService;
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   List<Homework> get homework => _homework.where((h) => !h.isDeleted).toList();
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
+
   /// Get homework by completion status
   List<Homework> getHomeworkByStatus(bool showCompleted) {
     if (showCompleted) {
@@ -58,36 +58,38 @@ class HomeworkProvider extends ChangeNotifier {
         return b.priority.index.compareTo(a.priority.index);
       });
   }
-  
+
   /// Get overdue homework
-  List<Homework> get overdueHomework => homework.where((h) => h.isOverdue).toList();
-  
+  List<Homework> get overdueHomework =>
+      homework.where((h) => h.isOverdue).toList();
+
   /// Get homework with unsynced changes
-  List<Homework> get dirtyHomework => _homework.where((h) => h.isDirty).toList();
+  List<Homework> get dirtyHomework =>
+      _homework.where((h) => h.isDirty).toList();
 
   // ===========================================
   // INITIALIZATION
   // ===========================================
-  
+
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
     Future.microtask(() => notifyListeners());
-    
+
     try {
       if (!Hive.isAdapterRegistered(4)) {
         Hive.registerAdapter(HomeworkAdapter());
       }
-      
+
       _homeworkBox = await Hive.openBox<Homework>('homework_$userId');
       _homework = _homeworkBox!.values.toList();
-      
+
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load homework';
       debugPrint('Homework initialization error: $e');
     }
-    
+
     _isLoading = false;
     Future.microtask(() => notifyListeners());
   }
@@ -100,7 +102,7 @@ class HomeworkProvider extends ChangeNotifier {
   // ===========================================
   // CRUD OPERATIONS
   // ===========================================
-  
+
   /// Create a new homework task
   Future<Homework?> createHomework({
     required String userId,
@@ -123,12 +125,12 @@ class HomeworkProvider extends ChangeNotifier {
         createdAt: now,
         updatedAt: now,
       );
-      
+
       await _homeworkBox?.put(homework.id, homework);
       _homework.add(homework);
-      
+
       _syncService?.syncHomework(homework.toJson());
-      
+
       notifyListeners();
       return homework;
     } catch (e) {
@@ -145,16 +147,16 @@ class HomeworkProvider extends ChangeNotifier {
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
+
       await _homeworkBox?.put(updatedHomework.id, updatedHomework);
-      
+
       final index = _homework.indexWhere((h) => h.id == homework.id);
       if (index >= 0) {
         _homework[index] = updatedHomework;
       }
-      
+
       _syncService?.syncHomework(updatedHomework.toJson());
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -169,18 +171,18 @@ class HomeworkProvider extends ChangeNotifier {
     try {
       final index = _homework.indexWhere((h) => h.id == homeworkId);
       if (index < 0) return false;
-      
+
       final deletedHomework = _homework[index].copyWith(
         isDeleted: true,
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
+
       _homework[index] = deletedHomework;
       await _homeworkBox?.put(homeworkId, deletedHomework);
-      
+
       _syncService?.deleteHomework(homeworkId);
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -194,7 +196,7 @@ class HomeworkProvider extends ChangeNotifier {
   Future<void> toggleCompletion(String homeworkId) async {
     final index = _homework.indexWhere((h) => h.id == homeworkId);
     if (index < 0) return;
-    
+
     final homework = _homework[index];
     await updateHomework(homework.copyWith(isCompleted: !homework.isCompleted));
   }

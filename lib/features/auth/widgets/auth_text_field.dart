@@ -1,5 +1,5 @@
 /// Auth Text Field Widget
-/// 
+///
 /// Styled text field for authentication forms.
 
 import 'package:flutter/material.dart';
@@ -43,6 +43,3 @@ class AuthTextField extends StatelessWidget {
     );
   }
 }
-
-
-

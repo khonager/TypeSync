@@ -1,5 +1,5 @@
 /// Profile Screen
-/// 
+///
 /// User profile management screen.
 
 import 'package:flutter/material.dart';
@@ -62,8 +62,8 @@ class ProfileScreen extends StatelessWidget {
                 Text(
                   user?.email ?? '',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
-                  ),
+                        color: Colors.grey,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 // Email verification status
@@ -86,9 +86,9 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // Storage usage
           Card(
             child: Padding(
@@ -140,9 +140,9 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Edit profile
           ListTile(
             leading: const Icon(Icons.edit_outlined),
@@ -150,7 +150,7 @@ class ProfileScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showEditProfile(context, authService),
           ),
-          
+
           // Change password
           ListTile(
             leading: const Icon(Icons.lock_outline),
@@ -158,9 +158,9 @@ class ProfileScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showChangePassword(context),
           ),
-          
+
           const Divider(height: 32),
-          
+
           // Danger zone
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
@@ -270,4 +270,3 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 }
-

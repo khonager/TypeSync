@@ -1,5 +1,5 @@
 /// Authentication Service
-/// 
+///
 /// Handles user authentication via Firebase Auth including
 /// login, registration, password reset, and session management.
 
@@ -13,69 +13,69 @@ import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 
 /// Service for managing user authentication
-/// 
+///
 /// Provides methods for sign in, sign up, sign out, and
 /// password recovery. Maintains current user state.
 class AuthService extends ChangeNotifier {
   // Firebase Auth instance (lazy initialization)
   firebase.FirebaseAuth? _auth;
   FirebaseFirestore? _firestore;
-  
+
   // Lazy getters for Firebase instances
   firebase.FirebaseAuth get _firebaseAuth {
     _auth ??= firebase.FirebaseAuth.instance;
     return _auth!;
   }
-  
+
   FirebaseFirestore get _firebaseFirestore {
     _firestore ??= FirebaseFirestore.instance;
     return _firestore!;
   }
-  
+
   // Current user data
   User? _currentUser;
-  
+
   // Guest mode flag
   bool _isGuestMode = false;
-  
+
   // Sync enabled preference (for logged-in users)
   bool _syncEnabled = true;
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
   bool _hasError = false;
-  
+
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   /// Current authenticated user (null if not logged in)
   User? get currentUser => _currentUser;
-  
+
   /// Whether a user is currently authenticated (including guest)
   bool get isAuthenticated => _currentUser != null;
-  
+
   /// Whether the current user is a guest
   bool get isGuestMode => _isGuestMode;
-  
+
   /// Whether sync is enabled (only relevant for logged-in users)
   bool get syncEnabled => _syncEnabled;
-  
+
   /// Loading state for async operations
   bool get isLoading => _isLoading;
-  
+
   /// Current error message (null if no error)
   String? get errorMessage => _errorMessage;
-  
+
   /// Whether there's an active error
   bool get hasError => _hasError;
-  
+
   /// User ID for local storage (Firebase UID for logged-in users, guest ID for guests)
   String? get userId {
     if (_isGuestMode && _currentUser != null) {
@@ -83,14 +83,14 @@ class AuthService extends ChangeNotifier {
     }
     return _auth?.currentUser?.uid;
   }
-  
+
   /// Whether user is logged in (not guest)
   bool get isLoggedIn => isAuthenticated && !_isGuestMode;
 
   // ===========================================
   // CONSTRUCTOR
   // ===========================================
-  
+
   AuthService() {
     _loadPreferences();
     // Only listen to auth state changes if Firebase is initialized
@@ -102,11 +102,12 @@ class AuthService extends ChangeNotifier {
       // Firebase not initialized (e.g., on Linux without proper config)
       // Silently handle - app can run in offline mode
       if (kDebugMode) {
-        debugPrint('Firebase Auth not available: ${e.toString().split(':').first}');
+        debugPrint(
+            'Firebase Auth not available: ${e.toString().split(':').first}');
       }
     }
   }
-  
+
   /// Load preferences from SharedPreferences
   Future<void> _loadPreferences() async {
     try {
@@ -117,7 +118,7 @@ class AuthService extends ChangeNotifier {
       debugPrint('Error loading preferences: $e');
     }
   }
-  
+
   /// Save sync enabled preference
   Future<void> _saveSyncEnabled(bool enabled) async {
     try {
@@ -133,9 +134,9 @@ class AuthService extends ChangeNotifier {
   // ===========================================
   // AUTHENTICATION METHODS
   // ===========================================
-  
+
   /// Sign in with email and password
-  /// 
+  ///
   /// Returns true if sign in was successful, false otherwise.
   /// Check [errorMessage] for failure details.
   Future<bool> signIn({
@@ -144,19 +145,19 @@ class AuthService extends ChangeNotifier {
   }) async {
     _setLoading(true);
     _clearError();
-    
+
     try {
       // Attempt Firebase sign in
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
-      
+
       // Load user data from Firestore
       if (credential.user != null) {
         await _loadUserData(credential.user!.uid);
       }
-      
+
       _setLoading(false);
       return true;
     } on firebase.FirebaseAuthException catch (e) {
@@ -172,7 +173,7 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Register a new user with email and password
-  /// 
+  ///
   /// Creates both a Firebase Auth account and a Firestore user document.
   Future<bool> register({
     required String email,
@@ -181,20 +182,20 @@ class AuthService extends ChangeNotifier {
   }) async {
     _setLoading(true);
     _clearError();
-    
+
     try {
       // Create Firebase Auth account
       final credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
-      
+
       if (credential.user != null) {
         // Update display name if provided
         if (displayName != null && displayName.isNotEmpty) {
           await credential.user!.updateDisplayName(displayName);
         }
-        
+
         // Create user document in Firestore
         final user = User(
           id: credential.user!.uid,
@@ -204,19 +205,19 @@ class AuthService extends ChangeNotifier {
           lastSignIn: DateTime.now(),
           emailVerified: credential.user!.emailVerified,
         );
-        
+
         await _firebaseFirestore
             .collection('users')
             .doc(credential.user!.uid)
             .set(user.toJson());
-        
+
         _currentUser = user;
         notifyListeners();
-        
+
         // Send email verification
         await credential.user!.sendEmailVerification();
       }
-      
+
       _setLoading(false);
       return true;
     } on firebase.FirebaseAuthException catch (e) {
@@ -234,11 +235,11 @@ class AuthService extends ChangeNotifier {
   Future<void> signInAsGuest() async {
     _setLoading(true);
     _clearError();
-    
+
     try {
       // Generate a guest user ID
       final guestId = 'guest_${_uuid.v4()}';
-      
+
       // Create a guest user object
       _currentUser = User(
         id: guestId,
@@ -248,7 +249,7 @@ class AuthService extends ChangeNotifier {
         lastSignIn: DateTime.now(),
         emailVerified: false,
       );
-      
+
       _isGuestMode = true;
       _setLoading(false);
       notifyListeners();
@@ -257,7 +258,7 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
     }
   }
-  
+
   /// Toggle sync enabled/disabled (only for logged-in users)
   Future<void> setSyncEnabled(bool enabled) async {
     if (_isGuestMode) {
@@ -266,11 +267,11 @@ class AuthService extends ChangeNotifier {
     }
     await _saveSyncEnabled(enabled);
   }
-  
+
   /// Sign out the current user
   Future<void> signOut() async {
     _setLoading(true);
-    
+
     try {
       if (!_isGuestMode) {
         await _firebaseAuth.signOut();
@@ -281,7 +282,7 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       _setError('Sign out failed. Please try again.');
     }
-    
+
     _setLoading(false);
   }
 
@@ -289,7 +290,7 @@ class AuthService extends ChangeNotifier {
   Future<bool> resetPassword(String email) async {
     _setLoading(true);
     _clearError();
-    
+
     try {
       await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
       _setLoading(false);
@@ -322,10 +323,10 @@ class AuthService extends ChangeNotifier {
     String? photoUrl,
   }) async {
     if (_currentUser == null) return false;
-    
+
     _setLoading(true);
     _clearError();
-    
+
     try {
       // Update Firebase Auth profile
       if (displayName != null) {
@@ -334,23 +335,23 @@ class AuthService extends ChangeNotifier {
       if (photoUrl != null) {
         await _firebaseAuth.currentUser?.updatePhotoURL(photoUrl);
       }
-      
+
       // Update Firestore document
       final updates = <String, dynamic>{};
       if (displayName != null) updates['displayName'] = displayName;
       if (photoUrl != null) updates['photoUrl'] = photoUrl;
-      
+
       await _firebaseFirestore
           .collection('users')
           .doc(_currentUser!.id)
           .update(updates);
-      
+
       // Update local user
       _currentUser = _currentUser!.copyWith(
         displayName: displayName ?? _currentUser!.displayName,
         photoUrl: photoUrl ?? _currentUser!.photoUrl,
       );
-      
+
       notifyListeners();
       _setLoading(false);
       return true;
@@ -364,7 +365,7 @@ class AuthService extends ChangeNotifier {
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
-  
+
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
     if (firebaseUser != null && !_isGuestMode) {
@@ -380,10 +381,10 @@ class AuthService extends ChangeNotifier {
   Future<void> _loadUserData(String uid) async {
     try {
       final doc = await _firebaseFirestore.collection('users').doc(uid).get();
-      
+
       if (doc.exists) {
         _currentUser = User.fromJson(doc.data()!);
-        
+
         // Update last sign in
         await _firebaseFirestore.collection('users').doc(uid).update({
           'lastSignIn': DateTime.now().toIso8601String(),
@@ -400,11 +401,14 @@ class AuthService extends ChangeNotifier {
           lastSignIn: DateTime.now(),
           emailVerified: firebaseUser.emailVerified,
         );
-        
-        await _firebaseFirestore.collection('users').doc(uid).set(user.toJson());
+
+        await _firebaseFirestore
+            .collection('users')
+            .doc(uid)
+            .set(user.toJson());
         _currentUser = user;
       }
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading user data: $e');
@@ -459,6 +463,3 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-

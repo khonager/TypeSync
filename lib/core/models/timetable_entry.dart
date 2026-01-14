@@ -1,5 +1,5 @@
 /// Timetable Entry Model
-/// 
+///
 /// Represents a recurring class/subject in the weekly timetable.
 
 import 'package:equatable/equatable.dart';
@@ -19,25 +19,39 @@ enum Weekday {
 extension WeekdayExtension on Weekday {
   String get shortName {
     switch (this) {
-      case Weekday.monday: return 'Mon';
-      case Weekday.tuesday: return 'Tue';
-      case Weekday.wednesday: return 'Wed';
-      case Weekday.thursday: return 'Thu';
-      case Weekday.friday: return 'Fri';
-      case Weekday.saturday: return 'Sat';
-      case Weekday.sunday: return 'Sun';
+      case Weekday.monday:
+        return 'Mon';
+      case Weekday.tuesday:
+        return 'Tue';
+      case Weekday.wednesday:
+        return 'Wed';
+      case Weekday.thursday:
+        return 'Thu';
+      case Weekday.friday:
+        return 'Fri';
+      case Weekday.saturday:
+        return 'Sat';
+      case Weekday.sunday:
+        return 'Sun';
     }
   }
-  
+
   String get fullName {
     switch (this) {
-      case Weekday.monday: return 'Monday';
-      case Weekday.tuesday: return 'Tuesday';
-      case Weekday.wednesday: return 'Wednesday';
-      case Weekday.thursday: return 'Thursday';
-      case Weekday.friday: return 'Friday';
-      case Weekday.saturday: return 'Saturday';
-      case Weekday.sunday: return 'Sunday';
+      case Weekday.monday:
+        return 'Monday';
+      case Weekday.tuesday:
+        return 'Tuesday';
+      case Weekday.wednesday:
+        return 'Wednesday';
+      case Weekday.thursday:
+        return 'Thursday';
+      case Weekday.friday:
+        return 'Friday';
+      case Weekday.saturday:
+        return 'Saturday';
+      case Weekday.sunday:
+        return 'Sunday';
     }
   }
 }
@@ -74,10 +88,10 @@ class TimetableEntry extends Equatable {
     this.isDeleted = false,
   });
 
-  String get startTimeFormatted => 
+  String get startTimeFormatted =>
       '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
-  
-  String get endTimeFormatted => 
+
+  String get endTimeFormatted =>
       '${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')}';
 
   TimetableEntry copyWith({
@@ -113,39 +127,50 @@ class TimetableEntry extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'subject': subject,
-    'teacher': teacher,
-    'room': room,
-    'weekday': weekday.index,
-    'startHour': startHour,
-    'startMinute': startMinute,
-    'endHour': endHour,
-    'endMinute': endMinute,
-    'color': color,
-    'userId': userId,
-    'isDeleted': isDeleted,
-  };
+        'id': id,
+        'subject': subject,
+        'teacher': teacher,
+        'room': room,
+        'weekday': weekday.index,
+        'startHour': startHour,
+        'startMinute': startMinute,
+        'endHour': endHour,
+        'endMinute': endMinute,
+        'color': color,
+        'userId': userId,
+        'isDeleted': isDeleted,
+      };
 
   factory TimetableEntry.fromJson(Map<String, dynamic> json) => TimetableEntry(
-    id: json['id'] as String,
-    subject: json['subject'] as String,
-    teacher: json['teacher'] as String?,
-    room: json['room'] as String?,
-    weekday: Weekday.values[json['weekday'] as int],
-    startHour: json['startHour'] as int,
-    startMinute: json['startMinute'] as int,
-    endHour: json['endHour'] as int,
-    endMinute: json['endMinute'] as int,
-    color: json['color'] as String? ?? '#64D2FF',
-    userId: json['userId'] as String,
-    isDirty: false,
-    isDeleted: json['isDeleted'] as bool? ?? false,
-  );
+        id: json['id'] as String,
+        subject: json['subject'] as String,
+        teacher: json['teacher'] as String?,
+        room: json['room'] as String?,
+        weekday: Weekday.values[json['weekday'] as int],
+        startHour: json['startHour'] as int,
+        startMinute: json['startMinute'] as int,
+        endHour: json['endHour'] as int,
+        endMinute: json['endMinute'] as int,
+        color: json['color'] as String? ?? '#64D2FF',
+        userId: json['userId'] as String,
+        isDirty: false,
+        isDeleted: json['isDeleted'] as bool? ?? false,
+      );
 
   @override
   List<Object?> get props => [
-    id, subject, teacher, room, weekday, startHour, startMinute,
-    endHour, endMinute, color, userId, isDirty, isDeleted,
-  ];
+        id,
+        subject,
+        teacher,
+        room,
+        weekday,
+        startHour,
+        startMinute,
+        endHour,
+        endMinute,
+        color,
+        userId,
+        isDirty,
+        isDeleted,
+      ];
 }

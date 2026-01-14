@@ -1,5 +1,5 @@
 /// Homework Model
-/// 
+///
 /// Represents a homework task in the todo list.
 
 import 'package:equatable/equatable.dart';
@@ -82,41 +82,52 @@ class Homework extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'description': description,
-    'subject': subject,
-    'dueDate': dueDate?.toIso8601String(),
-    'priority': priority.index,
-    'isCompleted': isCompleted,
-    'noteId': noteId,
-    'userId': userId,
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'isDeleted': isDeleted,
-  };
+        'id': id,
+        'title': title,
+        'description': description,
+        'subject': subject,
+        'dueDate': dueDate?.toIso8601String(),
+        'priority': priority.index,
+        'isCompleted': isCompleted,
+        'noteId': noteId,
+        'userId': userId,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+        'isDeleted': isDeleted,
+      };
 
   factory Homework.fromJson(Map<String, dynamic> json) => Homework(
-    id: json['id'] as String,
-    title: json['title'] as String,
-    description: json['description'] as String?,
-    subject: json['subject'] as String?,
-    dueDate: json['dueDate'] != null 
-        ? DateTime.parse(json['dueDate'] as String)
-        : null,
-    priority: HomeworkPriority.values[json['priority'] as int? ?? 1],
-    isCompleted: json['isCompleted'] as bool? ?? false,
-    noteId: json['noteId'] as String?,
-    userId: json['userId'] as String,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    updatedAt: DateTime.parse(json['updatedAt'] as String),
-    isDirty: false,
-    isDeleted: json['isDeleted'] as bool? ?? false,
-  );
+        id: json['id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String?,
+        subject: json['subject'] as String?,
+        dueDate: json['dueDate'] != null
+            ? DateTime.parse(json['dueDate'] as String)
+            : null,
+        priority: HomeworkPriority.values[json['priority'] as int? ?? 1],
+        isCompleted: json['isCompleted'] as bool? ?? false,
+        noteId: json['noteId'] as String?,
+        userId: json['userId'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        isDirty: false,
+        isDeleted: json['isDeleted'] as bool? ?? false,
+      );
 
   @override
   List<Object?> get props => [
-    id, title, description, subject, dueDate, priority,
-    isCompleted, noteId, userId, createdAt, updatedAt, isDirty, isDeleted,
-  ];
+        id,
+        title,
+        description,
+        subject,
+        dueDate,
+        priority,
+        isCompleted,
+        noteId,
+        userId,
+        createdAt,
+        updatedAt,
+        isDirty,
+        isDeleted,
+      ];
 }

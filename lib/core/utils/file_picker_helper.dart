@@ -1,5 +1,5 @@
 /// File Picker Helper
-/// 
+///
 /// Provides cross-platform file and directory picking with Linux fallbacks
 /// when zenity is not available.
 
@@ -34,7 +34,7 @@ class FilePickerHelper {
       // If file_picker fails (e.g., zenity not found on Linux), use custom browser
       debugPrint('File picker failed: $e, using custom browser');
     }
-    
+
     // Use custom file browser as fallback
     return await FileBrowserDialog.show(
       context: context,
@@ -62,7 +62,7 @@ class FilePickerHelper {
       // If file_picker fails (e.g., zenity not found on Linux), use custom browser
       debugPrint('Directory picker failed: $e, using custom browser');
     }
-    
+
     // Use custom file browser as fallback
     return await FileBrowserDialog.show(
       context: context,
@@ -83,9 +83,7 @@ class FilePickerHelper {
       final result = await FilePicker.platform.saveFile(
         dialogTitle: dialogTitle,
         fileName: fileName,
-        type: fileExtension != null 
-            ? FileType.custom 
-            : FileType.any,
+        type: fileExtension != null ? FileType.custom : FileType.any,
         allowedExtensions: fileExtension != null ? [fileExtension] : null,
       );
 
@@ -96,18 +94,18 @@ class FilePickerHelper {
       // If file_picker fails (e.g., zenity not found on Linux), use custom browser
       debugPrint('Save file dialog failed: $e, using custom browser');
     }
-    
+
     // Use custom file browser to select directory, then append filename
     final directory = await FileBrowserDialog.show(
       context: context,
       selectDirectory: true,
       dialogTitle: dialogTitle ?? 'Select Save Location',
     );
-    
+
     if (directory != null && fileName != null) {
       return '$directory/$fileName';
     }
-    
+
     // Final fallback: text input
     return await _saveFileFallback(context, dialogTitle, fileName);
   }
@@ -119,7 +117,7 @@ class FilePickerHelper {
     List<String>? allowedExtensions,
   ) async {
     final controller = TextEditingController();
-    
+
     // Get default directory (home or documents)
     String? defaultPath;
     try {
@@ -146,7 +144,9 @@ class FilePickerHelper {
               controller: controller,
               autofocus: true,
               decoration: InputDecoration(
-                hintText: defaultPath != null ? '$defaultPath/example.pdf' : '/path/to/file',
+                hintText: defaultPath != null
+                    ? '$defaultPath/example.pdf'
+                    : '/path/to/file',
                 border: const OutlineInputBorder(),
               ),
               onSubmitted: (value) {
@@ -203,7 +203,7 @@ class FilePickerHelper {
     String? dialogTitle,
   ) async {
     final controller = TextEditingController();
-    
+
     // Get default directory (home)
     String? defaultPath;
     try {
@@ -281,7 +281,7 @@ class FilePickerHelper {
     String? fileName,
   ) async {
     final controller = TextEditingController(text: fileName);
-    
+
     // Get default directory (home or documents)
     String? defaultPath;
     try {
@@ -308,7 +308,9 @@ class FilePickerHelper {
               controller: controller,
               autofocus: true,
               decoration: InputDecoration(
-                hintText: defaultPath != null ? '$defaultPath/$fileName' : '/path/to/file',
+                hintText: defaultPath != null
+                    ? '$defaultPath/$fileName'
+                    : '/path/to/file',
                 border: const OutlineInputBorder(),
               ),
               onSubmitted: (value) {

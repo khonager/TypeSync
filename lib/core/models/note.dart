@@ -1,5 +1,5 @@
 /// Note Model
-/// 
+///
 /// Represents a note document in TypeSync. Contains the content,
 /// metadata, and sync information for each note.
 
@@ -13,57 +13,57 @@ enum NoteType {
 }
 
 /// Note model representing a single document
-/// 
+///
 /// Stores the note content, metadata, and synchronization state.
 class Note extends Equatable {
   /// Unique identifier for the note
   final String id;
-  
+
   /// Display title of the note
   final String title;
-  
+
   /// Raw content of the note (JSON for rich text, markdown string, etc.)
   final String content;
-  
+
   /// Type of note (text, markdown, pdf)
   final NoteType type;
-  
+
   /// Parent folder ID (null if in root)
   final String? folderId;
-  
+
   /// List of tag IDs associated with this note
   final List<String> tags;
-  
+
   /// Background color as hex string (e.g., '#1C1C1E')
   final String? backgroundColor;
-  
+
   /// Creation timestamp
   final DateTime createdAt;
-  
+
   /// Last modification timestamp
   final DateTime updatedAt;
-  
+
   /// Last sync timestamp with cloud
   final DateTime? syncedAt;
-  
+
   /// Whether note has unsynced changes
   final bool isDirty;
-  
+
   /// Whether note is marked as favorite
   final bool isFavorite;
-  
+
   /// Whether note is in trash
   final bool isDeleted;
-  
+
   /// Character count for the note content
   final int characterCount;
-  
+
   /// Line count for the note content
   final int lineCount;
-  
+
   /// User ID who owns this note
   final String userId;
-  
+
   /// PDF file path if type is pdf
   final String? pdfPath;
 
@@ -137,7 +137,9 @@ class Note extends Equatable {
       type: type ?? this.type,
       folderId: folderId ?? this.folderId,
       tags: tags ?? this.tags,
-      backgroundColor: backgroundColorSet ? backgroundColor : (backgroundColor ?? this.backgroundColor),
+      backgroundColor: backgroundColorSet
+          ? backgroundColor
+          : (backgroundColor ?? this.backgroundColor),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       syncedAt: syncedAt ?? this.syncedAt,
@@ -200,23 +202,22 @@ class Note extends Equatable {
 
   @override
   List<Object?> get props => [
-    id,
-    title,
-    content,
-    type,
-    folderId,
-    tags,
-    backgroundColor,
-    createdAt,
-    updatedAt,
-    syncedAt,
-    isDirty,
-    isFavorite,
-    isDeleted,
-    characterCount,
-    lineCount,
-    userId,
-    pdfPath,
-  ];
+        id,
+        title,
+        content,
+        type,
+        folderId,
+        tags,
+        backgroundColor,
+        createdAt,
+        updatedAt,
+        syncedAt,
+        isDirty,
+        isFavorite,
+        isDeleted,
+        characterCount,
+        lineCount,
+        userId,
+        pdfPath,
+      ];
 }
-

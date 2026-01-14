@@ -1,5 +1,5 @@
 /// TypeSync App Configuration
-/// 
+///
 /// Contains the main MaterialApp configuration including routing,
 /// theming, and global app settings.
 
@@ -12,7 +12,7 @@ import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
 
 /// Main app content widget that responds to theme changes
-/// 
+///
 /// Separates the MaterialApp from providers to allow theme
 /// changes to rebuild only the necessary widgets.
 class TypeSyncAppContent extends StatelessWidget {
@@ -23,29 +23,28 @@ class TypeSyncAppContent extends StatelessWidget {
     // Watch the theme service for changes
     final themeService = context.watch<ThemeService>();
     final authService = context.watch<AuthService>();
-    
+
     return MaterialApp(
       title: 'TypeSync',
       debugShowCheckedModeBanner: false,
-      
+
       // Theme configuration based on user preference or system setting
       theme: AppTheme.lightTheme(themeService.accentColor),
       darkTheme: AppTheme.darkTheme(themeService.accentColor),
       themeMode: themeService.themeMode,
-      
+
       // Named routes for navigation
       routes: AppRouter.routes,
-      
+
       // Initial route depends on authentication status
-      initialRoute: authService.isAuthenticated 
-          ? AppRouter.home 
-          : AppRouter.login,
-      
+      initialRoute:
+          authService.isAuthenticated ? AppRouter.home : AppRouter.login,
+
       // Handle unknown routes gracefully - redirect to home
       onUnknownRoute: (settings) => MaterialPageRoute(
         builder: (context) => AppRouter.routes[AppRouter.home]!(context),
       ),
-      
+
       // Global error handling for navigation
       builder: (context, child) {
         // Apply global text scaling limits for accessibility
@@ -61,6 +60,3 @@ class TypeSyncAppContent extends StatelessWidget {
     );
   }
 }
-
-
-

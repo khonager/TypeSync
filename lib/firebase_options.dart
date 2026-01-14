@@ -104,4 +104,3 @@ class DefaultFirebaseOptions {
     storageBucket: 'typesynced.firebasestorage.app',
   );
 }
-

@@ -1,5 +1,5 @@
 /// Login Screen
-/// 
+///
 /// User authentication screen with email/password login.
 
 import 'package:flutter/material.dart';
@@ -86,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  
+
                   // Title
                   Text(
                     'Welcome back',
@@ -97,22 +97,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'Sign in to continue',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey,
-                    ),
+                          color: Colors.grey,
+                        ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Error message (expandable)
                   if (authService.hasError)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
                       child: ExpandableError(
-                        message: authService.errorMessage ?? 'An error occurred',
+                        message:
+                            authService.errorMessage ?? 'An error occurred',
                         onDismiss: authService.clearError,
                       ),
                     ),
-                  
+
                   // Email field
                   AuthTextField(
                     controller: _emailController,
@@ -131,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Password field
                   AuthTextField(
                     controller: _passwordController,
@@ -141,8 +142,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     prefixIcon: Icons.lock_outline,
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword 
-                            ? Icons.visibility_outlined 
+                        _obscurePassword
+                            ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
                       ),
                       onPressed: () {
@@ -157,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Forgot password
                   Align(
                     alignment: Alignment.centerRight,
@@ -167,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // Login button
                   ElevatedButton(
                     onPressed: authService.isLoading ? null : _handleLogin,
@@ -180,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Sign In'),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Register link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -198,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Guest mode button
                   OutlinedButton(
                     onPressed: authService.isLoading ? null : _handleGuestMode,
@@ -208,8 +209,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'Use the app locally without an account',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey,
-                    ),
+                          color: Colors.grey,
+                        ),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -311,6 +312,3 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
     );
   }
 }
-
-
-

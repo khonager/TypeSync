@@ -1,5 +1,5 @@
 /// Theme Service
-/// 
+///
 /// Manages app-wide theming including dark mode, accent colors,
 /// and system theme synchronization.
 
@@ -8,7 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service for managing app theme and appearance
-/// 
+///
 /// Supports light mode, dark mode, and system-sync mode.
 /// Persists user preferences to SharedPreferences.
 class ThemeService extends ChangeNotifier {
@@ -16,12 +16,12 @@ class ThemeService extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _accentColor = const Color(0xFF64D2FF);
   bool _syncWithSystem = false;
-  
+
   // Keys for SharedPreferences
   static const String _themeModeKey = 'theme_mode';
   static const String _accentColorKey = 'accent_color';
   static const String _syncWithSystemKey = 'sync_with_system';
-  
+
   // Predefined accent colors
   static const List<Color> accentColors = [
     Color(0xFF64D2FF), // Cyan (default)
@@ -37,16 +37,17 @@ class ThemeService extends ChangeNotifier {
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   ThemeMode get themeMode => _syncWithSystem ? ThemeMode.system : _themeMode;
   Color get accentColor => _accentColor;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get syncWithSystem => _syncWithSystem;
-  
+
   /// Get the actual brightness based on current settings
   Brightness get currentBrightness {
     if (_syncWithSystem) {
-      final brightness = SchedulerBinding.instance.platformDispatcher.platformBrightness;
+      final brightness =
+          SchedulerBinding.instance.platformDispatcher.platformBrightness;
       return brightness;
     }
     return _themeMode == ThemeMode.dark ? Brightness.dark : Brightness.light;
@@ -55,7 +56,7 @@ class ThemeService extends ChangeNotifier {
   // ===========================================
   // CONSTRUCTOR
   // ===========================================
-  
+
   ThemeService() {
     _loadPreferences();
   }
@@ -63,10 +64,11 @@ class ThemeService extends ChangeNotifier {
   // ===========================================
   // PUBLIC METHODS
   // ===========================================
-  
+
   /// Toggle between light and dark mode
   void toggleTheme() {
-    _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    _themeMode =
+        _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     _syncWithSystem = false;
     _savePreferences();
     notifyListeners();
@@ -112,7 +114,7 @@ class ThemeService extends ChangeNotifier {
   static Color getContrastingTextColor(Color backgroundColor) {
     // Calculate relative luminance
     final double luminance = backgroundColor.computeLuminance();
-    
+
     // Use white text on dark backgrounds, black on light
     return luminance > 0.5 ? Colors.black : Colors.white;
   }
@@ -136,27 +138,27 @@ class ThemeService extends ChangeNotifier {
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
-  
+
   /// Load preferences from SharedPreferences
   Future<void> _loadPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Load theme mode
       final themeModeIndex = prefs.getInt(_themeModeKey);
       if (themeModeIndex != null && themeModeIndex < ThemeMode.values.length) {
         _themeMode = ThemeMode.values[themeModeIndex];
       }
-      
+
       // Load accent color
       final accentColorValue = prefs.getInt(_accentColorKey);
       if (accentColorValue != null) {
         _accentColor = Color(accentColorValue);
       }
-      
+
       // Load system sync preference
       _syncWithSystem = prefs.getBool(_syncWithSystemKey) ?? false;
-      
+
       notifyListeners();
     } catch (e) {
       // Use defaults if loading fails
@@ -168,7 +170,7 @@ class ThemeService extends ChangeNotifier {
   Future<void> _savePreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       await prefs.setInt(_themeModeKey, _themeMode.index);
       await prefs.setInt(_accentColorKey, _accentColor.value);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
@@ -177,6 +179,3 @@ class ThemeService extends ChangeNotifier {
     }
   }
 }
-
-
-

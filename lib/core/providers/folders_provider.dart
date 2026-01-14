@@ -1,5 +1,5 @@
 /// Folders Provider
-/// 
+///
 /// State management for folders including CRUD operations
 /// and hierarchical structure management.
 
@@ -14,36 +14,35 @@ import '../services/sync_service.dart';
 class FoldersProvider extends ChangeNotifier {
   // Local storage box
   Box<Folder>? _foldersBox;
-  
+
   // In-memory folders list
   List<Folder> _folders = [];
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // UUID generator
   final Uuid _uuid = const Uuid();
-  
+
   // Sync service reference
   SyncService? _syncService;
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
+
   List<Folder> get folders => _folders.where((f) => !f.isDeleted).toList();
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
+
   /// Get root level folders (no parent)
-  List<Folder> get rootFolders => _folders
-      .where((f) => !f.isDeleted && f.parentId == null)
-      .toList()
-    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-  
+  List<Folder> get rootFolders =>
+      _folders.where((f) => !f.isDeleted && f.parentId == null).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
   /// Get subfolders of a parent folder
   List<Folder> getSubfolders(String parentId) {
     return _folders
@@ -51,7 +50,7 @@ class FoldersProvider extends ChangeNotifier {
         .toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
-  
+
   /// Get folder by ID
   Folder? getFolderById(String id) {
     try {
@@ -60,14 +59,14 @@ class FoldersProvider extends ChangeNotifier {
       return null;
     }
   }
-  
+
   /// Get folder path (breadcrumb)
   List<Folder> getFolderPath(String? folderId) {
     if (folderId == null) return [];
-    
+
     final path = <Folder>[];
     String? currentId = folderId;
-    
+
     while (currentId != null) {
       final folder = getFolderById(currentId);
       if (folder != null) {
@@ -77,37 +76,37 @@ class FoldersProvider extends ChangeNotifier {
         break;
       }
     }
-    
+
     return path;
   }
-  
+
   /// Get dirty folders for sync
   List<Folder> get dirtyFolders => _folders.where((f) => f.isDirty).toList();
 
   // ===========================================
   // INITIALIZATION
   // ===========================================
-  
+
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
     // Defer notifyListeners to avoid calling during build
     Future.microtask(() => notifyListeners());
-    
+
     try {
       if (!Hive.isAdapterRegistered(2)) {
         Hive.registerAdapter(FolderAdapter());
       }
-      
+
       _foldersBox = await Hive.openBox<Folder>('folders_$userId');
       _folders = _foldersBox!.values.toList();
-      
+
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load folders';
       debugPrint('Folders initialization error: $e');
     }
-    
+
     _isLoading = false;
     Future.microtask(() => notifyListeners());
   }
@@ -120,7 +119,7 @@ class FoldersProvider extends ChangeNotifier {
   // ===========================================
   // CRUD OPERATIONS
   // ===========================================
-  
+
   /// Create a new folder
   Future<Folder?> createFolder({
     required String userId,
@@ -137,12 +136,12 @@ class FoldersProvider extends ChangeNotifier {
         subtitle: subtitle,
         parentId: parentId,
       ).copyWith(backgroundColor: backgroundColor);
-      
+
       await _foldersBox?.put(folder.id, folder);
       _folders.add(folder);
-      
+
       _syncService?.syncFolder(folder);
-      
+
       notifyListeners();
       return folder;
     } catch (e) {
@@ -159,16 +158,16 @@ class FoldersProvider extends ChangeNotifier {
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
+
       await _foldersBox?.put(updatedFolder.id, updatedFolder);
-      
+
       final index = _folders.indexWhere((f) => f.id == folder.id);
       if (index >= 0) {
         _folders[index] = updatedFolder;
       }
-      
+
       _syncService?.syncFolder(updatedFolder);
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -182,7 +181,7 @@ class FoldersProvider extends ChangeNotifier {
   Future<bool> renameFolder(String folderId, String newName) async {
     final folder = getFolderById(folderId);
     if (folder == null) return false;
-    
+
     return updateFolder(folder.copyWith(name: newName));
   }
 
@@ -191,18 +190,18 @@ class FoldersProvider extends ChangeNotifier {
     try {
       final index = _folders.indexWhere((f) => f.id == folderId);
       if (index < 0) return false;
-      
+
       final deletedFolder = _folders[index].copyWith(
         isDeleted: true,
         updatedAt: DateTime.now(),
         isDirty: true,
       );
-      
+
       _folders[index] = deletedFolder;
       await _foldersBox?.put(folderId, deletedFolder);
-      
+
       _syncService?.deleteFolder(folderId);
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -216,7 +215,7 @@ class FoldersProvider extends ChangeNotifier {
   Future<bool> moveFolder(String folderId, String? newParentId) async {
     final folder = getFolderById(folderId);
     if (folder == null) return false;
-    
+
     // Prevent moving folder into itself or its descendants
     if (newParentId != null) {
       final descendants = _getDescendantIds(folderId);
@@ -226,7 +225,7 @@ class FoldersProvider extends ChangeNotifier {
         return false;
       }
     }
-    
+
     return updateFolder(folder.copyWith(parentId: newParentId));
   }
 
@@ -234,7 +233,7 @@ class FoldersProvider extends ChangeNotifier {
   Future<bool> setFolderColor(String folderId, String? color) async {
     final folder = getFolderById(folderId);
     if (folder == null) return false;
-    
+
     return updateFolder(folder.copyWith(backgroundColor: color));
   }
 
@@ -251,16 +250,17 @@ class FoldersProvider extends ChangeNotifier {
   // ===========================================
   // SYNC OPERATIONS
   // ===========================================
-  
+
   /// Handle folders updated from cloud
   void handleCloudUpdate(List<Folder> cloudFolders) {
     for (final cloudFolder in cloudFolders) {
       final localIndex = _folders.indexWhere((f) => f.id == cloudFolder.id);
-      
+
       if (localIndex >= 0) {
         final localFolder = _folders[localIndex];
-        
-        if (!localFolder.isDirty || cloudFolder.updatedAt.isAfter(localFolder.updatedAt)) {
+
+        if (!localFolder.isDirty ||
+            cloudFolder.updatedAt.isAfter(localFolder.updatedAt)) {
           _folders[localIndex] = cloudFolder;
           _foldersBox?.put(cloudFolder.id, cloudFolder);
         }
@@ -269,24 +269,24 @@ class FoldersProvider extends ChangeNotifier {
         _foldersBox?.put(cloudFolder.id, cloudFolder);
       }
     }
-    
+
     notifyListeners();
   }
 
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
-  
+
   /// Get all descendant folder IDs
   Set<String> _getDescendantIds(String folderId) {
     final descendants = <String>{};
     final children = getSubfolders(folderId);
-    
+
     for (final child in children) {
       descendants.add(child.id);
       descendants.addAll(_getDescendantIds(child.id));
     }
-    
+
     return descendants;
   }
 
@@ -341,6 +341,3 @@ class FolderAdapter extends TypeAdapter<Folder> {
     writer.writeInt(obj.sortOrder);
   }
 }
-
-
-

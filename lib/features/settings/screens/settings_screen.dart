@@ -1,5 +1,5 @@
 /// Settings Screen
-/// 
+///
 /// App settings including theme, sync, and account options.
 
 import 'package:flutter/material.dart';
@@ -36,13 +36,13 @@ class SettingsScreen extends StatelessWidget {
         children: [
           // Appearance Section
           _SectionHeader(title: 'Appearance'),
-          
+
           // Dark mode toggle with long press for system sync
           _SettingsTile(
             icon: Icons.dark_mode_outlined,
             title: 'Dark Mode',
-            subtitle: themeService.syncWithSystem 
-                ? 'Synced with system' 
+            subtitle: themeService.syncWithSystem
+                ? 'Synced with system'
                 : (themeService.isDarkMode ? 'On' : 'Off'),
             trailing: Switch(
               value: themeService.isDarkMode,
@@ -54,8 +54,8 @@ class SettingsScreen extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    themeService.syncWithSystem 
-                        ? 'Theme synced with system' 
+                    themeService.syncWithSystem
+                        ? 'Theme synced with system'
                         : 'Manual theme mode',
                   ),
                   duration: const Duration(seconds: 2),
@@ -63,7 +63,7 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          
+
           // Accent color
           _SettingsTile(
             icon: Icons.palette_outlined,
@@ -79,38 +79,38 @@ class SettingsScreen extends StatelessWidget {
             ),
             onTap: () => _showColorPicker(context, themeService),
           ),
-          
+
           const Divider(),
-          
+
           // Account Section
           _SectionHeader(title: 'Account'),
-          
+
           _SettingsTile(
             icon: Icons.person_outline,
             title: 'Profile',
             subtitle: authService.currentUser?.email ?? 'Not signed in',
             onTap: () => AppRouter.navigateTo(context, AppRouter.profile),
           ),
-          
+
           _SettingsTile(
             icon: Icons.cloud_outlined,
             title: 'Storage & Subscription',
             subtitle: 'Manage your cloud storage',
             onTap: () => AppRouter.navigateTo(context, AppRouter.subscription),
           ),
-          
+
           const Divider(),
-          
+
           // Sync Section
           _SectionHeader(title: 'Sync'),
-          
+
           // Only show sync toggle for logged-in users (not guests)
           if (authService.isLoggedIn)
             _SettingsTile(
               icon: Icons.sync,
               title: 'Cloud Sync',
-              subtitle: authService.syncEnabled 
-                  ? 'Syncing with cloud enabled' 
+              subtitle: authService.syncEnabled
+                  ? 'Syncing with cloud enabled'
                   : 'Syncing with cloud disabled',
               trailing: Switch(
                 value: authService.syncEnabled,
@@ -124,7 +124,7 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
             ),
-          
+
           if (authService.isGuestMode)
             _SettingsTile(
               icon: Icons.cloud_off_outlined,
@@ -132,34 +132,34 @@ class SettingsScreen extends StatelessWidget {
               subtitle: 'Using app locally without sync',
               trailing: const Icon(Icons.info_outline, color: Colors.grey),
             ),
-          
+
           _SettingsTile(
             icon: Icons.wifi_off_outlined,
             title: 'Offline Mode',
             subtitle: 'Save data when offline',
             trailing: const Icon(Icons.check, color: Colors.green),
           ),
-          
+
           _SettingsTile(
             icon: Icons.sync,
             title: 'Local Folder Sync',
-            subtitle: localSyncService.syncFolder != null 
-                ? localSyncService.syncFolder!.path 
+            subtitle: localSyncService.syncFolder != null
+                ? localSyncService.syncFolder!.path
                 : 'Not configured',
             onTap: () => _showLocalFolderSync(context),
           ),
-          
+
           const Divider(),
-          
+
           // About Section
           _SectionHeader(title: 'About'),
-          
+
           _SettingsTile(
             icon: Icons.info_outline,
             title: 'Version',
             subtitle: '1.0.0',
           ),
-          
+
           _SettingsTile(
             icon: Icons.description_outlined,
             title: 'Licenses',
@@ -171,9 +171,9 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          
+
           const Divider(),
-          
+
           // Sign out
           _SettingsTile(
             icon: Icons.logout,
@@ -181,7 +181,7 @@ class SettingsScreen extends StatelessWidget {
             titleColor: Colors.red,
             onTap: () => _confirmSignOut(context, authService),
           ),
-          
+
           const SizedBox(height: 32),
         ],
       ),
@@ -209,11 +209,11 @@ class SettingsScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
-                  border: isSelected 
+                  border: isSelected
                       ? Border.all(color: Colors.white, width: 3)
                       : null,
                 ),
-                child: isSelected 
+                child: isSelected
                     ? const Icon(Icons.check, color: Colors.white)
                     : null,
               ),
@@ -248,53 +248,58 @@ class SettingsScreen extends StatelessWidget {
               ],
               ElevatedButton.icon(
                 onPressed: () async {
-                  final success = await syncService.chooseSyncFolder(context: context);
+                  final success =
+                      await syncService.chooseSyncFolder(context: context);
                   if (success && dialogContext.mounted) {
                     Navigator.pop(dialogContext);
                     _showLocalFolderSync(context); // Refresh
                   } else if (!success && dialogContext.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(syncService.errorMessage ?? 'Failed to choose folder'),
+                        content: Text(syncService.errorMessage ??
+                            'Failed to choose folder'),
                       ),
                     );
                   }
                 },
                 icon: const Icon(Icons.folder_open),
-                label: Text(syncService.syncFolder != null 
-                    ? 'Change Folder' 
+                label: Text(syncService.syncFolder != null
+                    ? 'Change Folder'
                     : 'Choose Folder'),
               ),
               if (syncService.syncFolder != null) ...[
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  onPressed: syncService.isSyncing ? null : () async {
-                    // Set up conflict handler
-                    syncService.onConflictsDetected = (conflicts) {
-                      Navigator.pop(dialogContext);
-                      _showConflictResolution(
-                        context,
-                        conflicts,
-                        syncService,
-                        notesProvider,
-                        foldersProvider,
-                        userId,
-                      );
-                    };
-                    
-                    await syncService.sync(
-                      notesProvider: notesProvider,
-                      foldersProvider: foldersProvider,
-                      userId: userId,
-                    );
-                    
-                    if (dialogContext.mounted && syncService.conflicts.isEmpty) {
-                      Navigator.pop(dialogContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Sync completed')),
-                      );
-                    }
-                  },
+                  onPressed: syncService.isSyncing
+                      ? null
+                      : () async {
+                          // Set up conflict handler
+                          syncService.onConflictsDetected = (conflicts) {
+                            Navigator.pop(dialogContext);
+                            _showConflictResolution(
+                              context,
+                              conflicts,
+                              syncService,
+                              notesProvider,
+                              foldersProvider,
+                              userId,
+                            );
+                          };
+
+                          await syncService.sync(
+                            notesProvider: notesProvider,
+                            foldersProvider: foldersProvider,
+                            userId: userId,
+                          );
+
+                          if (dialogContext.mounted &&
+                              syncService.conflicts.isEmpty) {
+                            Navigator.pop(dialogContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Sync completed')),
+                            );
+                          }
+                        },
                   icon: const Icon(Icons.sync),
                   label: const Text('Sync Now'),
                 ),
@@ -344,10 +349,13 @@ class SettingsScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.'),
+                Text(
+                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.'),
                 const SizedBox(height: 16),
-                Text('Local modified: ${_formatDateTime(conflict.localModified)}'),
-                Text('Cloud modified: ${_formatDateTime(conflict.cloudModified)}'),
+                Text(
+                    'Local modified: ${_formatDateTime(conflict.localModified)}'),
+                Text(
+                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}'),
                 const SizedBox(height: 16),
                 const Text('Choose which version to keep:'),
               ],
@@ -424,7 +432,7 @@ class SettingsScreen extends StatelessWidget {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   void _confirmSignOut(BuildContext context, AuthService authService) {
@@ -467,10 +475,10 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Colors.grey,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
-        ),
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
       ),
     );
   }
@@ -504,12 +512,10 @@ class _SettingsTile extends StatelessWidget {
         style: TextStyle(color: titleColor),
       ),
       subtitle: subtitle != null ? Text(subtitle!) : null,
-      trailing: trailing ?? (onTap != null ? const Icon(Icons.chevron_right) : null),
+      trailing:
+          trailing ?? (onTap != null ? const Icon(Icons.chevron_right) : null),
       onTap: onTap,
       onLongPress: onLongPress,
     );
   }
 }
-
-
-

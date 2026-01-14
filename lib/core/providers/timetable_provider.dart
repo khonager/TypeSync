@@ -1,5 +1,5 @@
 /// Timetable Provider
-/// 
+///
 /// State management for timetable entries including CRUD operations,
 /// filtering, and sync status tracking.
 
@@ -12,75 +12,75 @@ import '../models/timetable_entry.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing timetable entry state
-/// 
+///
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class TimetableProvider extends ChangeNotifier {
   // Local storage box
   Box<TimetableEntry>? _entriesBox;
-  
+
   // In-memory entries list
   List<TimetableEntry> _entries = [];
-  
+
   // Loading state
   bool _isLoading = false;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // UUID generator
   final Uuid _uuid = const Uuid();
-  
+
   // Sync service reference (set by parent)
   SyncService? _syncService;
 
   // ===========================================
   // GETTERS
   // ===========================================
-  
-  List<TimetableEntry> get entries => _entries.where((e) => !e.isDeleted).toList();
+
+  List<TimetableEntry> get entries =>
+      _entries.where((e) => !e.isDeleted).toList();
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  
+
   /// Get entries for a specific weekday
   List<TimetableEntry> getEntriesForDay(Weekday weekday) {
-    return _entries
-        .where((e) => !e.isDeleted && e.weekday == weekday)
-        .toList()
+    return _entries.where((e) => !e.isDeleted && e.weekday == weekday).toList()
       ..sort((a, b) {
         final aTime = a.startHour * 60 + a.startMinute;
         final bTime = b.startHour * 60 + b.startMinute;
         return aTime.compareTo(bTime);
       });
   }
-  
+
   /// Get entries with unsynced changes
-  List<TimetableEntry> get dirtyEntries => _entries.where((e) => e.isDirty).toList();
+  List<TimetableEntry> get dirtyEntries =>
+      _entries.where((e) => e.isDirty).toList();
 
   // ===========================================
   // INITIALIZATION
   // ===========================================
-  
+
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
     // Defer notifyListeners to avoid calling during build
     Future.microtask(() => notifyListeners());
-    
+
     try {
       if (!Hive.isAdapterRegistered(3)) {
         Hive.registerAdapter(TimetableEntryAdapter());
       }
-      
+
       _entriesBox = await Hive.openBox<TimetableEntry>('timetable_$userId');
       _entries = _entriesBox!.values.toList();
-      
+
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load timetable entries';
       debugPrint('Timetable initialization error: $e');
     }
-    
+
     _isLoading = false;
     Future.microtask(() => notifyListeners());
   }
@@ -93,7 +93,7 @@ class TimetableProvider extends ChangeNotifier {
   // ===========================================
   // CRUD OPERATIONS
   // ===========================================
-  
+
   /// Create a new timetable entry
   Future<TimetableEntry?> createEntry({
     required String userId,
@@ -121,12 +121,12 @@ class TimetableProvider extends ChangeNotifier {
         endMinute: endMinute,
         color: color ?? '#64D2FF',
       );
-      
+
       await _entriesBox?.put(entry.id, entry);
       _entries.add(entry);
-      
+
       _syncService?.syncTimetableEntry(entry.toJson());
-      
+
       notifyListeners();
       return entry;
     } catch (e) {
@@ -142,16 +142,16 @@ class TimetableProvider extends ChangeNotifier {
       final updatedEntry = entry.copyWith(
         isDirty: true,
       );
-      
+
       await _entriesBox?.put(updatedEntry.id, updatedEntry);
-      
+
       final index = _entries.indexWhere((e) => e.id == entry.id);
       if (index >= 0) {
         _entries[index] = updatedEntry;
       }
-      
+
       _syncService?.syncTimetableEntry(updatedEntry.toJson());
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -169,16 +169,16 @@ class TimetableProvider extends ChangeNotifier {
         isDeleted: true,
         isDirty: true,
       );
-      
+
       await _entriesBox?.put(deletedEntry.id, deletedEntry);
-      
+
       final index = _entries.indexWhere((e) => e.id == entryId);
       if (index >= 0) {
         _entries[index] = deletedEntry;
       }
-      
+
       _syncService?.syncTimetableEntry(deletedEntry.toJson());
-      
+
       notifyListeners();
       return true;
     } catch (e) {
@@ -200,12 +200,12 @@ class TimetableProvider extends ChangeNotifier {
   // ===========================================
   // SYNC OPERATIONS
   // ===========================================
-  
+
   /// Handle cloud update (called by SyncService)
   void handleCloudUpdate(List<TimetableEntry> cloudEntries) {
     for (final cloudEntry in cloudEntries) {
       final localIndex = _entries.indexWhere((e) => e.id == cloudEntry.id);
-      
+
       if (localIndex >= 0) {
         final localEntry = _entries[localIndex];
         // Only update if local entry is not dirty (no local changes)
@@ -219,7 +219,7 @@ class TimetableProvider extends ChangeNotifier {
         _entriesBox?.put(cloudEntry.id, cloudEntry);
       }
     }
-    
+
     notifyListeners();
   }
 }

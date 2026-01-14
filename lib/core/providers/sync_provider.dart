@@ -1,5 +1,5 @@
 /// Sync Provider
-/// 
+///
 /// Tracks synchronization state across the app for UI feedback.
 
 import 'package:flutter/foundation.dart';
@@ -61,6 +61,3 @@ class SyncProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-

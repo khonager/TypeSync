@@ -1,5 +1,5 @@
 /// TypeSync App Theme Configuration
-/// 
+///
 /// Defines the visual appearance of the app including colors,
 /// typography, and component styling for both light and dark modes.
 
@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// App-wide theme configuration
-/// 
+///
 /// Based on the design mockup with dark mode as primary theme.
 /// Features a sleek, modern UI with subtle gradients and accent colors.
 class AppTheme {
@@ -17,31 +17,31 @@ class AppTheme {
   // ===========================================
   // COLOR PALETTE
   // ===========================================
-  
+
   /// Primary dark background color (from design)
   static const Color darkBackground = Color(0xFF1C1C1E);
-  
+
   /// Secondary dark surface color (cards, dialogs)
   static const Color darkSurface = Color(0xFF2C2C2E);
-  
+
   /// Tertiary dark color (elevated surfaces)
   static const Color darkTertiary = Color(0xFF3A3A3C);
-  
+
   /// Light mode background
   static const Color lightBackground = Color(0xFFF2F2F7);
-  
+
   /// Light mode surface
   static const Color lightSurface = Color(0xFFFFFFFF);
-  
+
   /// Default accent color (teal from design)
   static const Color defaultAccent = Color(0xFF64D2FF);
-  
+
   /// Text colors
   static const Color darkTextPrimary = Color(0xFFFFFFFF);
   static const Color darkTextSecondary = Color(0xFF8E8E93);
   static const Color lightTextPrimary = Color(0xFF000000);
   static const Color lightTextSecondary = Color(0xFF6C6C70);
-  
+
   /// Folder colors from the design
   static const Color folderDefault = Color(0xFF48484A);
   static const Color folderHighlight = Color(0xFF636366);
@@ -49,15 +49,15 @@ class AppTheme {
   // ===========================================
   // THEME BUILDERS
   // ===========================================
-  
+
   /// Creates the dark theme with optional accent color override
   static ThemeData darkTheme([Color? accentColor]) {
     final Color accent = accentColor ?? defaultAccent;
-    
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      
+
       // Color scheme for dark mode
       colorScheme: ColorScheme.dark(
         primary: accent,
@@ -69,10 +69,10 @@ class AppTheme {
         onSurface: darkTextPrimary,
         onError: darkTextPrimary,
       ),
-      
+
       // Scaffold background
       scaffoldBackgroundColor: darkBackground,
-      
+
       // AppBar theme
       appBarTheme: AppBarTheme(
         backgroundColor: darkBackground,
@@ -85,7 +85,7 @@ class AppTheme {
           color: darkTextPrimary,
         ),
       ),
-      
+
       // Card theme (for folder/file cards)
       cardTheme: CardThemeData(
         color: darkSurface,
@@ -94,7 +94,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      
+
       // Elevated button theme
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -107,21 +107,21 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       // Text button theme
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accent,
         ),
       ),
-      
+
       // Icon button theme
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: darkTextSecondary,
         ),
       ),
-      
+
       // Input decoration theme
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -138,12 +138,13 @@ class AppTheme {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: accent, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         hintStyle: GoogleFonts.inter(
           color: darkTextSecondary,
         ),
       ),
-      
+
       // Bottom navigation bar theme
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: darkSurface,
@@ -152,7 +153,7 @@ class AppTheme {
         type: BottomNavigationBarType.fixed,
         elevation: 0,
       ),
-      
+
       // Floating action button theme
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: darkTertiary,
@@ -162,16 +163,16 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       // Divider theme
       dividerTheme: const DividerThemeData(
         color: darkTertiary,
         thickness: 1,
       ),
-      
+
       // Text theme using Google Fonts
       textTheme: _buildTextTheme(isDark: true),
-      
+
       // Dialog theme
       dialogTheme: DialogThemeData(
         backgroundColor: darkSurface,
@@ -179,7 +180,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       // Snackbar theme
       snackBarTheme: SnackBarThemeData(
         backgroundColor: darkTertiary,
@@ -195,11 +196,11 @@ class AppTheme {
   /// Creates the light theme with optional accent color override
   static ThemeData lightTheme([Color? accentColor]) {
     final Color accent = accentColor ?? const Color(0xFF007AFF);
-    
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      
+
       // Color scheme for light mode
       colorScheme: ColorScheme.light(
         primary: accent,
@@ -211,9 +212,9 @@ class AppTheme {
         onSurface: lightTextPrimary,
         onError: Colors.white,
       ),
-      
+
       scaffoldBackgroundColor: lightBackground,
-      
+
       appBarTheme: AppBarTheme(
         backgroundColor: lightBackground,
         foregroundColor: lightTextPrimary,
@@ -225,7 +226,7 @@ class AppTheme {
           color: lightTextPrimary,
         ),
       ),
-      
+
       cardTheme: CardThemeData(
         color: lightSurface,
         elevation: 1,
@@ -233,7 +234,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      
+
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
@@ -245,13 +246,13 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accent,
         ),
       ),
-      
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFE5E5EA),
@@ -267,9 +268,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: accent, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      
+
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: lightSurface,
         selectedItemColor: accent,
@@ -277,7 +279,7 @@ class AppTheme {
         type: BottomNavigationBarType.fixed,
         elevation: 0,
       ),
-      
+
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: accent,
         foregroundColor: Colors.white,
@@ -286,21 +288,21 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       dividerTheme: const DividerThemeData(
         color: Color(0xFFD1D1D6),
         thickness: 1,
       ),
-      
+
       textTheme: _buildTextTheme(isDark: false),
-      
+
       dialogTheme: DialogThemeData(
         backgroundColor: lightSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
       ),
-      
+
       snackBarTheme: SnackBarThemeData(
         backgroundColor: lightTextPrimary,
         contentTextStyle: GoogleFonts.inter(color: Colors.white),
@@ -315,8 +317,9 @@ class AppTheme {
   /// Builds the text theme using Google Fonts Inter
   static TextTheme _buildTextTheme({required bool isDark}) {
     final Color textColor = isDark ? darkTextPrimary : lightTextPrimary;
-    final Color secondaryColor = isDark ? darkTextSecondary : lightTextSecondary;
-    
+    final Color secondaryColor =
+        isDark ? darkTextSecondary : lightTextSecondary;
+
     return TextTheme(
       // Large display text
       displayLarge: GoogleFonts.inter(
@@ -334,7 +337,7 @@ class AppTheme {
         fontWeight: FontWeight.w400,
         color: textColor,
       ),
-      
+
       // Headlines
       headlineLarge: GoogleFonts.inter(
         fontSize: 32,
@@ -351,7 +354,7 @@ class AppTheme {
         fontWeight: FontWeight.w600,
         color: textColor,
       ),
-      
+
       // Titles
       titleLarge: GoogleFonts.inter(
         fontSize: 22,
@@ -368,7 +371,7 @@ class AppTheme {
         fontWeight: FontWeight.w500,
         color: textColor,
       ),
-      
+
       // Body text
       bodyLarge: GoogleFonts.inter(
         fontSize: 16,
@@ -385,7 +388,7 @@ class AppTheme {
         fontWeight: FontWeight.w400,
         color: secondaryColor,
       ),
-      
+
       // Labels
       labelLarge: GoogleFonts.inter(
         fontSize: 14,
@@ -405,4 +408,3 @@ class AppTheme {
     );
   }
 }
-

@@ -1,5 +1,5 @@
 /// Homework Screen
-/// 
+///
 /// Todo list for homework assignments.
 
 import 'package:flutter/material.dart';
@@ -52,9 +52,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _showCompleted 
-                  ? Icons.visibility 
-                  : Icons.visibility_off,
+              _showCompleted ? Icons.visibility : Icons.visibility_off,
             ),
             onPressed: () {
               setState(() {
@@ -117,14 +115,14 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
             title: Text(
               task.title,
               style: TextStyle(
-                decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                decoration:
+                    task.isCompleted ? TextDecoration.lineThrough : null,
               ),
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (task.subject != null)
-                  Text('Subject: ${task.subject}'),
+                if (task.subject != null) Text('Subject: ${task.subject}'),
                 if (task.dueDate != null)
                   Text(
                     'Due: ${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year}',
@@ -224,10 +222,18 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                           ),
                           value: selectedPriority,
                           items: const [
-                            DropdownMenuItem(value: HomeworkPriority.low, child: Text('Low')),
-                            DropdownMenuItem(value: HomeworkPriority.medium, child: Text('Medium')),
-                            DropdownMenuItem(value: HomeworkPriority.high, child: Text('High')),
-                            DropdownMenuItem(value: HomeworkPriority.urgent, child: Text('Urgent')),
+                            DropdownMenuItem(
+                                value: HomeworkPriority.low,
+                                child: Text('Low')),
+                            DropdownMenuItem(
+                                value: HomeworkPriority.medium,
+                                child: Text('Medium')),
+                            DropdownMenuItem(
+                                value: HomeworkPriority.high,
+                                child: Text('High')),
+                            DropdownMenuItem(
+                                value: HomeworkPriority.urgent,
+                                child: Text('Urgent')),
                           ],
                           onChanged: (value) {
                             if (value != null) {
@@ -244,9 +250,11 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
-                              initialDate: DateTime.now().add(const Duration(days: 1)),
+                              initialDate:
+                                  DateTime.now().add(const Duration(days: 1)),
                               firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              lastDate:
+                                  DateTime.now().add(const Duration(days: 365)),
                             );
                             if (date != null) {
                               setModalState(() {
@@ -291,7 +299,8 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                     onPressed: () async {
                       if (taskController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please enter a task title')),
+                          const SnackBar(
+                              content: Text('Please enter a task title')),
                         );
                         return;
                       }
@@ -301,13 +310,17 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                       if (userId == null) return;
 
                       await context.read<HomeworkProvider>().createHomework(
-                        userId: userId,
-                        title: taskController.text,
-                        subject: subjectController.text.isEmpty ? null : subjectController.text,
-                        description: descriptionController.text.isEmpty ? null : descriptionController.text,
-                        dueDate: selectedDueDate,
-                        priority: selectedPriority,
-                      );
+                            userId: userId,
+                            title: taskController.text,
+                            subject: subjectController.text.isEmpty
+                                ? null
+                                : subjectController.text,
+                            description: descriptionController.text.isEmpty
+                                ? null
+                                : descriptionController.text,
+                            dueDate: selectedDueDate,
+                            priority: selectedPriority,
+                          );
 
                       if (mounted) {
                         Navigator.pop(context);

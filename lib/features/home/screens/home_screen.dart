@@ -1,5 +1,5 @@
 /// Home Screen
-/// 
+///
 /// Main screen showing folders and files in a grid view.
 /// Based on the design mockup with dark theme.
 
@@ -29,7 +29,7 @@ import '../widgets/home_bottom_bar.dart';
 import '../widgets/sync_status_indicator.dart';
 
 /// Home screen with folder/file browser
-/// 
+///
 /// Displays a grid of folders and files matching the design.
 /// Supports navigation into folders and creating new items.
 class HomeScreen extends StatefulWidget {
@@ -42,10 +42,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // Current folder being viewed (null = root)
   String? _currentFolderId;
-  
+
   // View mode (grid or list)
   bool _isGridView = true;
-  
+
   // Drag and drop state
   bool _isDragging = false;
 
@@ -61,27 +61,27 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
-    
+
     if (userId != null) {
       // Initialize local file service
       await LocalFileService.instance.initialize(userId);
-      
+
       // Initialize providers with user ID (works for both logged-in and guest users)
       await context.read<NotesProvider>().initialize(userId);
       await context.read<FoldersProvider>().initialize(userId);
-      
+
       // Sync the sync service with auth preferences
       final syncService = context.read<SyncService>();
       syncService.setSyncEnabled(authService.syncEnabled);
-      
+
       // Only start sync if user is logged in (not guest) and sync is enabled
       if (authService.isLoggedIn && authService.syncEnabled) {
         syncService.startListening(userId);
-        
+
         // Connect providers to sync service
         context.read<NotesProvider>().setSyncService(syncService);
         context.read<FoldersProvider>().setSyncService(syncService);
-        
+
         // Set up sync callbacks
         syncService.onNotesUpdated = (notes) {
           context.read<NotesProvider>().handleCloudUpdate(notes);
@@ -101,16 +101,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
-    
+
     // Get current folder for title
-    final currentFolder = _currentFolderId != null 
+    final currentFolder = _currentFolderId != null
         ? foldersProvider.getFolderById(_currentFolderId!)
         : null;
-    
+
     // Get folders and notes for current view
     final folders = (_currentFolderId == null
-        ? foldersProvider.rootFolders
-        : foldersProvider.getSubfolders(_currentFolderId!)).cast<Folder>();
+            ? foldersProvider.rootFolders
+            : foldersProvider.getSubfolders(_currentFolderId!))
+        .cast<Folder>();
     final notes = notesProvider.getNotesInFolder(_currentFolderId).cast<Note>();
 
     return Scaffold(
@@ -127,14 +128,14 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           // Sync status indicator
           const SyncStatusIndicator(),
-          
+
           // View toggle
           IconButton(
             icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
             onPressed: () => setState(() => _isGridView = !_isGridView),
             tooltip: _isGridView ? 'List view' : 'Grid view',
           ),
-          
+
           // Settings
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -142,16 +143,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      
+
       body: _buildBody(folders, notes, foldersProvider, notesProvider),
-      
+
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
         currentFolderId: _currentFolderId,
         onNewNote: _showCreateOptions,
         onNewFolder: _showCreateOptions,
       ),
-      
+
       // FAB for quick note creation
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateOptions,
@@ -199,83 +200,83 @@ class _HomeScreenState extends State<HomeScreen> {
             onRefresh: _initializeData,
             child: CustomScrollView(
               slivers: [
-          // Breadcrumb navigation
-          if (_currentFolderId != null)
-            SliverToBoxAdapter(
-              child: _buildBreadcrumb(foldersProvider),
-            ),
-          
-          // Folders section
-          if (folders.isNotEmpty) ...[
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  'Folders',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
+                // Breadcrumb navigation
+                if (_currentFolderId != null)
+                  SliverToBoxAdapter(
+                    child: _buildBreadcrumb(foldersProvider),
                   ),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: _isGridView
-                  ? FolderGrid(
-                      folders: folders,
-                      onFolderTap: _navigateToFolder,
-                      onFolderLongPress: _showFolderOptions,
-                      onNoteDropped: _handleNoteDroppedOnFolder,
-                      onFolderDropped: _handleFolderDroppedOnFolder,
-                    )
-                  : FolderList(
-                      folders: folders,
-                      onFolderTap: _navigateToFolder,
-                      onFolderLongPress: _showFolderOptions,
+
+                // Folders section
+                if (folders.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Text(
+                        'Folders',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
                     ),
-            ),
-          ],
-          
-          // Files section
-          if (notes.isNotEmpty) ...[
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  'Files',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
                   ),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: _isGridView
-                  ? FileGrid(
-                      notes: notes,
-                      onNoteTap: _openNote,
-                      onNoteLongPress: _showNoteOptions,
-                    )
-                  : FileList(
-                      notes: notes,
-                      onNoteTap: _openNote,
-                      onNoteLongPress: _showNoteOptions,
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: _isGridView
+                        ? FolderGrid(
+                            folders: folders,
+                            onFolderTap: _navigateToFolder,
+                            onFolderLongPress: _showFolderOptions,
+                            onNoteDropped: _handleNoteDroppedOnFolder,
+                            onFolderDropped: _handleFolderDroppedOnFolder,
+                          )
+                        : FolderList(
+                            folders: folders,
+                            onFolderTap: _navigateToFolder,
+                            onFolderLongPress: _showFolderOptions,
+                          ),
+                  ),
+                ],
+
+                // Files section
+                if (notes.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Text(
+                        'Files',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
                     ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: _isGridView
+                        ? FileGrid(
+                            notes: notes,
+                            onNoteTap: _openNote,
+                            onNoteLongPress: _showNoteOptions,
+                          )
+                        : FileList(
+                            notes: notes,
+                            onNoteTap: _openNote,
+                            onNoteLongPress: _showNoteOptions,
+                          ),
+                  ),
+                ],
+
+                // Bottom padding
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 100),
+                ),
+              ],
             ),
-          ],
-          
-          // Bottom padding
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 100),
           ),
-        ],
-      ),
-    ),
           // Drag overlay
           if (_isDragging)
             Container(
@@ -326,12 +327,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            _currentFolderId == null 
-                ? 'No notes yet' 
-                : 'This folder is empty',
+            _currentFolderId == null ? 'No notes yet' : 'This folder is empty',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.grey,
-            ),
+                  color: Colors.grey,
+                ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -345,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBreadcrumb(FoldersProvider foldersProvider) {
     final path = foldersProvider.getFolderPath(_currentFolderId);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: SingleChildScrollView(
@@ -369,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text(
                   folder.name,
                   style: TextStyle(
-                    color: folder.id == _currentFolderId 
+                    color: folder.id == _currentFolderId
                         ? Theme.of(context).colorScheme.primary
                         : Colors.grey,
                   ),
@@ -446,15 +445,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
     if (userId == null) return;
-    
+
     final notesProvider = context.read<NotesProvider>();
     final note = await notesProvider.createNote(
       userId: userId,
       folderId: _currentFolderId,
     );
-    
+
     if (note != null && mounted) {
-      AppRouter.openEditor(context, noteId: note.id, folderId: _currentFolderId);
+      AppRouter.openEditor(context,
+          noteId: note.id, folderId: _currentFolderId);
     }
   }
 
@@ -463,17 +463,17 @@ class _HomeScreenState extends State<HomeScreen> {
       title: 'New Folder',
       hint: 'Folder name',
     );
-    
+
     if (name != null && name.isNotEmpty) {
       final authService = context.read<AuthService>();
       final userId = authService.userId;
       if (userId == null) return;
-      
+
       await context.read<FoldersProvider>().createFolder(
-        userId: userId,
-        name: name,
-        parentId: _currentFolderId,
-      );
+            userId: userId,
+            name: name,
+            parentId: _currentFolderId,
+          );
     }
   }
 
@@ -483,7 +483,7 @@ class _HomeScreenState extends State<HomeScreen> {
         context: context,
         dialogTitle: 'Select Document',
       );
-      
+
       if (filePath != null) {
         final file = File(filePath);
         final fileName = file.path.split(Platform.pathSeparator).last;
@@ -518,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
     if (userId == null) return;
-    
+
     try {
       final file = File(filePath);
       if (!await file.exists()) {
@@ -529,23 +529,27 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         return;
       }
-      
+
       final fileExtension = fileName.split('.').last.toLowerCase();
       String content = '';
       String noteType = 'text';
-      
+
       // Read file content based on type
-      if (fileExtension == 'txt' || fileExtension == 'md' || fileExtension == 'markdown') {
+      if (fileExtension == 'txt' ||
+          fileExtension == 'md' ||
+          fileExtension == 'markdown') {
         // Text files - read content
         content = await file.readAsString();
-        noteType = fileExtension == 'md' || fileExtension == 'markdown' ? 'markdown' : 'text';
+        noteType = fileExtension == 'md' || fileExtension == 'markdown'
+            ? 'markdown'
+            : 'text';
       } else if (fileExtension == 'pdf') {
         // PDF files - copy to app storage and create PDF note
         final storedPath = await LocalFileService.instance.copyFileToStorage(
           filePath,
           fileName: fileName,
         );
-        
+
         if (storedPath != null) {
           content = ''; // Empty content for PDFs
           noteType = 'pdf';
@@ -557,7 +561,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           return;
         }
-      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(fileExtension)) {
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp']
+          .contains(fileExtension)) {
         // Image files - create note with image reference
         content = '[Image file: $fileName]';
         noteType = 'text';
@@ -566,18 +571,18 @@ class _HomeScreenState extends State<HomeScreen> {
         content = '[File: $fileName]';
         noteType = 'text';
       }
-      
+
       final notesProvider = context.read<NotesProvider>();
       final note = await notesProvider.createNote(
         userId: userId,
         folderId: _currentFolderId,
         title: fileName,
         content: content,
-        type: noteType == 'pdf' 
-            ? NoteType.pdf 
+        type: noteType == 'pdf'
+            ? NoteType.pdf
             : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
       );
-      
+
       // Store PDF path if it's a PDF (use stored path, not original)
       if (noteType == 'pdf' && note != null) {
         final storedPath = await LocalFileService.instance.copyFileToStorage(
@@ -589,11 +594,12 @@ class _HomeScreenState extends State<HomeScreen> {
           await notesProvider.updateNote(updatedNote);
         }
       }
-      
+
       if (note != null && mounted) {
         // Open the note with the imported content
-        AppRouter.openEditor(context, noteId: note.id, folderId: _currentFolderId);
-        
+        AppRouter.openEditor(context,
+            noteId: note.id, folderId: _currentFolderId);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Imported $fileName')),
         );
@@ -613,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String? initialValue,
   }) async {
     final controller = TextEditingController(text: initialValue);
-    
+
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -654,14 +660,20 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Rename'),
               onTap: () async {
                 Navigator.pop(context);
-                final folder = this.context.read<FoldersProvider>().getFolderById(folderId);
+                final folder = this
+                    .context
+                    .read<FoldersProvider>()
+                    .getFolderById(folderId);
                 final newName = await _showTextInputDialog(
                   title: 'Rename Folder',
                   hint: 'New name',
                   initialValue: folder?.name,
                 );
                 if (newName != null && newName.isNotEmpty) {
-                  await this.context.read<FoldersProvider>().renameFolder(folderId, newName);
+                  await this
+                      .context
+                      .read<FoldersProvider>()
+                      .renameFolder(folderId, newName);
                 }
               },
             ),
@@ -700,31 +712,31 @@ class _HomeScreenState extends State<HomeScreen> {
     final notesProvider = context.read<NotesProvider>();
     final folder = foldersProvider.getFolderById(folderId);
     if (folder == null) return;
-    
+
     try {
       // Use file picker to choose export directory (with Linux fallback)
       final directory = await FilePickerHelper.pickDirectory(
         context: context,
         dialogTitle: 'Export folder to',
       );
-      
+
       if (directory == null) return;
-      
+
       final exportDir = Directory('$directory/${folder.name}');
       if (!await exportDir.exists()) {
         await exportDir.create(recursive: true);
       }
-      
+
       // Export all notes in this folder
       final notes = notesProvider.getNotesInFolder(folderId);
       int exportedCount = 0;
-      
+
       for (final note in notes) {
         try {
           String fileName = note.title;
           String extension = '.txt';
           String content = '';
-          
+
           if (note.type == NoteType.pdf && note.pdfPath != null) {
             final pdfFile = File(note.pdfPath!);
             if (await pdfFile.exists()) {
@@ -745,7 +757,7 @@ class _HomeScreenState extends State<HomeScreen> {
               content = note.content;
             }
           }
-          
+
           final file = File('${exportDir.path}/$fileName$extension');
           await file.writeAsString(content);
           exportedCount++;
@@ -753,13 +765,13 @@ class _HomeScreenState extends State<HomeScreen> {
           debugPrint('Failed to export note ${note.id}: $e');
         }
       }
-      
+
       // Export subfolders recursively
       final subfolders = foldersProvider.getSubfolders(folderId);
       for (final subfolder in subfolders) {
         await _exportFolderRecursive(subfolder.id, exportDir.path);
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Exported $exportedCount items from folder')),
@@ -779,12 +791,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final notesProvider = context.read<NotesProvider>();
     final folder = foldersProvider.getFolderById(folderId);
     if (folder == null) return;
-    
+
     final folderDir = Directory('$basePath/${folder.name}');
     if (!await folderDir.exists()) {
       await folderDir.create(recursive: true);
     }
-    
+
     // Export notes in this folder
     final notes = notesProvider.getNotesInFolder(folderId);
     for (final note in notes) {
@@ -792,7 +804,7 @@ class _HomeScreenState extends State<HomeScreen> {
         String fileName = note.title;
         String extension = '.txt';
         String content = '';
-        
+
         if (note.type == NoteType.pdf && note.pdfPath != null) {
           final pdfFile = File(note.pdfPath!);
           if (await pdfFile.exists()) {
@@ -812,14 +824,14 @@ class _HomeScreenState extends State<HomeScreen> {
             content = note.content;
           }
         }
-        
+
         final file = File('${folderDir.path}/$fileName$extension');
         await file.writeAsString(content);
       } catch (e) {
         debugPrint('Failed to export note ${note.id}: $e');
       }
     }
-    
+
     // Export subfolders
     final subfolders = foldersProvider.getSubfolders(folderId);
     for (final subfolder in subfolders) {
@@ -829,7 +841,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showNoteOptions(String noteId) {
     final note = context.read<NotesProvider>().getNoteById(noteId);
-    
+
     showModalBottomSheet(
       context: context,
       builder: (bottomSheetContext) => SafeArea(
@@ -837,11 +849,10 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(note?.isFavorite == true 
-                  ? Icons.star 
-                  : Icons.star_outline),
-              title: Text(note?.isFavorite == true 
-                  ? 'Remove from favorites' 
+              leading: Icon(
+                  note?.isFavorite == true ? Icons.star : Icons.star_outline),
+              title: Text(note?.isFavorite == true
+                  ? 'Remove from favorites'
                   : 'Add to favorites'),
               onTap: () {
                 Navigator.pop(bottomSheetContext);
@@ -893,12 +904,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _exportNote(String noteId) async {
     final note = context.read<NotesProvider>().getNoteById(noteId);
     if (note == null) return;
-    
+
     try {
       String fileName = note.title;
       String extension = '.txt';
       String content = '';
-      
+
       if (note.type == NoteType.pdf && note.pdfPath != null) {
         // Export PDF file
         final pdfFile = File(note.pdfPath!);
@@ -910,15 +921,15 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           return;
         }
-        
-      // Use file picker to choose export location (with Linux fallback)
-      final savePath = await FilePickerHelper.saveFile(
-        context: context,
-        dialogTitle: 'Export PDF',
-        fileName: '$fileName.pdf',
-        fileExtension: 'pdf',
-      );
-        
+
+        // Use file picker to choose export location (with Linux fallback)
+        final savePath = await FilePickerHelper.saveFile(
+          context: context,
+          dialogTitle: 'Export PDF',
+          fileName: '$fileName.pdf',
+          fileExtension: 'pdf',
+        );
+
         if (savePath != null) {
           await pdfFile.copy(savePath);
           if (mounted) {
@@ -944,7 +955,7 @@ class _HomeScreenState extends State<HomeScreen> {
           content = note.content;
         }
       }
-      
+
       // Use file picker to choose export location (with Linux fallback)
       final savePath = await FilePickerHelper.saveFile(
         context: context,
@@ -952,7 +963,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fileName: '$fileName$extension',
         fileExtension: extension.substring(1),
       );
-      
+
       if (savePath != null) {
         final file = File(savePath);
         await file.writeAsString(content);
@@ -973,7 +984,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showNoteColorPicker(String noteId) {
     if (!mounted) return;
-    
+
     final note = context.read<NotesProvider>().getNoteById(noteId);
     final currentColor = note?.backgroundColor;
 
@@ -992,14 +1003,16 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _ColorOption(
                   color: Colors.transparent,
-                  onTap: () => _setNoteBackgroundColor(noteId, null, dialogContext),
+                  onTap: () =>
+                      _setNoteBackgroundColor(noteId, null, dialogContext),
                   isSelected: currentColor == null,
                   label: 'None',
                 ),
-                ...AppColorPalette.noteBackgroundColors.map((colorOption) => 
-                  _ColorOption(
+                ...AppColorPalette.noteBackgroundColors.map(
+                  (colorOption) => _ColorOption(
                     color: colorOption.color,
-                    onTap: () => _setNoteBackgroundColor(noteId, colorOption.hex, dialogContext),
+                    onTap: () => _setNoteBackgroundColor(
+                        noteId, colorOption.hex, dialogContext),
                     isSelected: currentColor == colorOption.hex,
                   ),
                 ),
@@ -1017,14 +1030,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _setNoteBackgroundColor(String noteId, String? color, BuildContext dialogContext) {
+  void _setNoteBackgroundColor(
+      String noteId, String? color, BuildContext dialogContext) {
     Navigator.pop(dialogContext);
     context.read<NotesProvider>().setBackgroundColor(noteId, color);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(color == null 
-              ? 'Background color removed' 
+          content: Text(color == null
+              ? 'Background color removed'
               : 'Background color set'),
         ),
       );
@@ -1045,9 +1059,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(newParentId == null 
-              ? 'Folder moved to root' 
-              : 'Folder moved'),
+          content: Text(
+              newParentId == null ? 'Folder moved to root' : 'Folder moved'),
         ),
       );
     }
@@ -1082,8 +1095,8 @@ class _ColorOption extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.grey,
                 width: isSelected ? 3 : 1,
               ),
@@ -1098,8 +1111,8 @@ class _ColorOption extends StatelessWidget {
               label!,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.grey,
               ),
             ),
@@ -1109,4 +1122,3 @@ class _ColorOption extends StatelessWidget {
     );
   }
 }
-

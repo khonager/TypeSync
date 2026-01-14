@@ -1,5 +1,5 @@
 /// User Provider
-/// 
+///
 /// Manages user profile and preferences state.
 
 import 'package:flutter/foundation.dart';
@@ -44,6 +44,3 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
-
-
-

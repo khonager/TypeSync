@@ -1,5 +1,5 @@
 /// File Grid Widget
-/// 
+///
 /// Displays notes/files in a grid layout.
 
 import 'package:flutter/material.dart';
@@ -75,7 +75,7 @@ class FileGridItem extends StatelessWidget {
     final bgColor = note.backgroundColor != null
         ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
-    
+
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
 
@@ -107,7 +107,8 @@ class FileGridItem extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: note.backgroundColor != null
-                        ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
+                        ? Color(int.parse(
+                            note.backgroundColor!.replaceFirst('#', '0xFF')))
                         : AppTheme.darkSurface,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -143,8 +144,8 @@ class FileGridItem extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: textColor,
-                ),
+                      color: textColor,
+                    ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -162,7 +163,8 @@ class FileGridItem extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   color: note.backgroundColor != null
-                      ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
+                      ? Color(int.parse(
+                          note.backgroundColor!.replaceFirst('#', '0xFF')))
                       : AppTheme.darkSurface,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -198,8 +200,8 @@ class FileGridItem extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: textColor,
-              ),
+                    color: textColor,
+                  ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -253,7 +255,7 @@ class FileListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('MMM d, y');
-    
+
     IconData icon;
     switch (note.type) {
       case NoteType.pdf:
@@ -269,7 +271,7 @@ class FileListItem extends StatelessWidget {
     final bgColor = note.backgroundColor != null
         ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
-    
+
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
 
@@ -309,9 +311,12 @@ class FileListItem extends StatelessWidget {
                           Expanded(
                             child: Text(
                               note.title,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: textColor,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color: textColor,
+                                  ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -328,8 +333,8 @@ class FileListItem extends StatelessWidget {
                       Text(
                         dateFormat.format(note.updatedAt),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: textColor.withOpacity(0.7),
-                        ),
+                              color: textColor.withOpacity(0.7),
+                            ),
                       ),
                     ],
                   ),
@@ -342,6 +347,3 @@ class FileListItem extends StatelessWidget {
     );
   }
 }
-
-
-

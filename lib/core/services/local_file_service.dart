@@ -1,5 +1,5 @@
 /// Local File Service
-/// 
+///
 /// Manages local file storage for PDFs and other files.
 /// Handles copying files to app storage directory and provides file access.
 
@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
 /// Service for managing local file storage
-/// 
+///
 /// Handles copying files to app storage and managing file paths.
 class LocalFileService {
   static LocalFileService? _instance;
@@ -29,12 +29,13 @@ class LocalFileService {
 
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      _appFilesDirectory = Directory(path.join(appDir.path, 'typesync_files', userId));
-      
+      _appFilesDirectory =
+          Directory(path.join(appDir.path, 'typesync_files', userId));
+
       if (!await _appFilesDirectory!.exists()) {
         await _appFilesDirectory!.create(recursive: true);
       }
-      
+
       _initialized = true;
     } catch (e) {
       debugPrint('Failed to initialize LocalFileService: $e');
@@ -46,11 +47,12 @@ class LocalFileService {
   String? get filesDirectoryPath => _appFilesDirectory?.path;
 
   /// Copy a file to app storage and return the new path
-  /// 
+  ///
   /// [sourcePath] - Path to the source file
   /// [fileName] - Optional custom file name, otherwise uses source file name
   /// Returns the new file path in app storage, or null if failed
-  Future<String?> copyFileToStorage(String sourcePath, {String? fileName}) async {
+  Future<String?> copyFileToStorage(String sourcePath,
+      {String? fileName}) async {
     if (!_initialized || _appFilesDirectory == null) {
       debugPrint('LocalFileService not initialized');
       return null;
@@ -90,7 +92,7 @@ class LocalFileService {
   }
 
   /// Get file path in app storage
-  /// 
+  ///
   /// Returns the full path if file exists, null otherwise
   Future<String?> getFileInStorage(String fileName) async {
     if (!_initialized || _appFilesDirectory == null) {
@@ -99,11 +101,11 @@ class LocalFileService {
 
     final filePath = path.join(_appFilesDirectory!.path, fileName);
     final file = File(filePath);
-    
+
     if (await file.exists()) {
       return filePath;
     }
-    
+
     return null;
   }
 
@@ -116,12 +118,12 @@ class LocalFileService {
     try {
       final filePath = path.join(_appFilesDirectory!.path, fileName);
       final file = File(filePath);
-      
+
       if (await file.exists()) {
         await file.delete();
         return true;
       }
-      
+
       return false;
     } catch (e) {
       debugPrint('Failed to delete file from storage: $e');
@@ -130,7 +132,7 @@ class LocalFileService {
   }
 
   /// Export a file to a destination path
-  /// 
+  ///
   /// [sourceFileName] - Name of the file in app storage
   /// [destinationPath] - Full path where to export the file
   Future<bool> exportFile(String sourceFileName, String destinationPath) async {
@@ -141,7 +143,7 @@ class LocalFileService {
     try {
       final sourcePath = path.join(_appFilesDirectory!.path, sourceFileName);
       final sourceFile = File(sourcePath);
-      
+
       if (!await sourceFile.exists()) {
         debugPrint('Source file does not exist: $sourcePath');
         return false;
@@ -149,7 +151,7 @@ class LocalFileService {
 
       final destFile = File(destinationPath);
       final destDir = destFile.parent;
-      
+
       if (!await destDir.exists()) {
         await destDir.create(recursive: true);
       }
@@ -171,11 +173,11 @@ class LocalFileService {
     try {
       final filePath = path.join(_appFilesDirectory!.path, fileName);
       final file = File(filePath);
-      
+
       if (await file.exists()) {
         return await file.length();
       }
-      
+
       return null;
     } catch (e) {
       debugPrint('Failed to get file size: $e');
@@ -203,7 +205,7 @@ class LocalFileService {
     try {
       final files = <String>[];
       final dir = _appFilesDirectory!;
-      
+
       if (await dir.exists()) {
         await for (final entity in dir.list()) {
           if (entity is File) {
@@ -211,7 +213,7 @@ class LocalFileService {
           }
         }
       }
-      
+
       return files;
     } catch (e) {
       debugPrint('Failed to list files: $e');

@@ -1,16 +1,16 @@
 /// User Model
-/// 
+///
 /// Represents a TypeSync user with profile information,
 /// subscription status, and storage quota.
 
 import 'package:equatable/equatable.dart';
 
 /// Subscription tier enum
-/// 
+///
 /// Defines the available storage plans:
 /// - free: 1GB storage included
 /// - basic: 5GB for €1.99/month
-/// - standard: 50GB for €4.99/month  
+/// - standard: 50GB for €4.99/month
 /// - premium: 200GB for €9.99/month
 enum SubscriptionTier {
   free,
@@ -34,7 +34,7 @@ extension SubscriptionTierExtension on SubscriptionTier {
         return 200 * 1024 * 1024 * 1024; // 200GB
     }
   }
-  
+
   /// Storage limit formatted as string
   String get storageLimitFormatted {
     switch (this) {
@@ -48,7 +48,7 @@ extension SubscriptionTierExtension on SubscriptionTier {
         return '200 GB';
     }
   }
-  
+
   /// Monthly price in euros
   double get priceEuros {
     switch (this) {
@@ -62,7 +62,7 @@ extension SubscriptionTierExtension on SubscriptionTier {
         return 9.99;
     }
   }
-  
+
   /// Display name for the tier
   String get displayName {
     switch (this) {
@@ -82,31 +82,31 @@ extension SubscriptionTierExtension on SubscriptionTier {
 class User extends Equatable {
   /// Firebase user ID
   final String id;
-  
+
   /// User email address
   final String email;
-  
+
   /// Display name
   final String? displayName;
-  
+
   /// Profile picture URL
   final String? photoUrl;
-  
+
   /// Current subscription tier
   final SubscriptionTier subscriptionTier;
-  
+
   /// Current storage used in bytes
   final int storageUsedBytes;
-  
+
   /// Account creation date
   final DateTime createdAt;
-  
+
   /// Last sign in date
   final DateTime? lastSignIn;
-  
+
   /// Whether email is verified
   final bool emailVerified;
-  
+
   /// Subscription expiry date (null for free tier)
   final DateTime? subscriptionExpiresAt;
 
@@ -124,22 +124,23 @@ class User extends Equatable {
   });
 
   /// Checks if user has exceeded their storage limit
-  bool get isStorageFull => storageUsedBytes >= subscriptionTier.storageLimitBytes;
-  
+  bool get isStorageFull =>
+      storageUsedBytes >= subscriptionTier.storageLimitBytes;
+
   /// Gets remaining storage in bytes
-  int get storageRemainingBytes => 
+  int get storageRemainingBytes =>
       subscriptionTier.storageLimitBytes - storageUsedBytes;
-  
+
   /// Gets storage usage percentage (0.0 to 1.0)
-  double get storageUsagePercent => 
+  double get storageUsagePercent =>
       storageUsedBytes / subscriptionTier.storageLimitBytes;
-  
+
   /// Formats storage used as human-readable string
   String get storageUsedFormatted => _formatBytes(storageUsedBytes);
-  
+
   /// Formats storage remaining as human-readable string
   String get storageRemainingFormatted => _formatBytes(storageRemainingBytes);
-  
+
   /// Helper to format bytes as human-readable
   static String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -173,7 +174,8 @@ class User extends Equatable {
       createdAt: createdAt ?? this.createdAt,
       lastSignIn: lastSignIn ?? this.lastSignIn,
       emailVerified: emailVerified ?? this.emailVerified,
-      subscriptionExpiresAt: subscriptionExpiresAt ?? this.subscriptionExpiresAt,
+      subscriptionExpiresAt:
+          subscriptionExpiresAt ?? this.subscriptionExpiresAt,
     );
   }
 
@@ -200,7 +202,8 @@ class User extends Equatable {
       email: json['email'] as String,
       displayName: json['displayName'] as String?,
       photoUrl: json['photoUrl'] as String?,
-      subscriptionTier: SubscriptionTier.values[json['subscriptionTier'] as int? ?? 0],
+      subscriptionTier:
+          SubscriptionTier.values[json['subscriptionTier'] as int? ?? 0],
       storageUsedBytes: json['storageUsedBytes'] as int? ?? 0,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastSignIn: json['lastSignIn'] != null
@@ -215,18 +218,15 @@ class User extends Equatable {
 
   @override
   List<Object?> get props => [
-    id,
-    email,
-    displayName,
-    photoUrl,
-    subscriptionTier,
-    storageUsedBytes,
-    createdAt,
-    lastSignIn,
-    emailVerified,
-    subscriptionExpiresAt,
-  ];
+        id,
+        email,
+        displayName,
+        photoUrl,
+        subscriptionTier,
+        storageUsedBytes,
+        createdAt,
+        lastSignIn,
+        emailVerified,
+        subscriptionExpiresAt,
+      ];
 }
-
-
-

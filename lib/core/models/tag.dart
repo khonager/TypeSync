@@ -1,5 +1,5 @@
 /// Tag Model
-/// 
+///
 /// Represents a tag that can be attached to notes for organization.
 
 import 'package:equatable/equatable.dart';
@@ -56,21 +56,21 @@ class Tag extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'color': color,
-    'userId': userId,
-    'createdAt': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'name': name,
+        'color': color,
+        'userId': userId,
+        'createdAt': createdAt.toIso8601String(),
+      };
 
   factory Tag.fromJson(Map<String, dynamic> json) => Tag(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    color: json['color'] as String,
-    userId: json['userId'] as String,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    isDirty: false,
-  );
+        id: json['id'] as String,
+        name: json['name'] as String,
+        color: json['color'] as String,
+        userId: json['userId'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        isDirty: false,
+      );
 
   @override
   List<Object?> get props => [id, name, color, userId, createdAt, isDirty];

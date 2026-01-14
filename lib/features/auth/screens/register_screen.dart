@@ -1,5 +1,5 @@
 /// Register Screen
-/// 
+///
 /// User registration screen with email/password signup.
 
 import 'package:flutter/material.dart';
@@ -43,7 +43,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final success = await authService.register(
       email: _emailController.text,
       password: _passwordController.text,
-      displayName: _nameController.text.isNotEmpty ? _nameController.text : null,
+      displayName:
+          _nameController.text.isNotEmpty ? _nameController.text : null,
     );
 
     if (success && mounted) {
@@ -86,7 +87,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onDismiss: authService.clearError,
                     ),
                   ),
-                
+
                 // Name field (optional)
                 AuthTextField(
                   controller: _nameController,
@@ -95,7 +96,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   prefixIcon: Icons.person_outline,
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Email field
                 AuthTextField(
                   controller: _emailController,
@@ -114,7 +115,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Password field
                 AuthTextField(
                   controller: _passwordController,
@@ -124,8 +125,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   prefixIcon: Icons.lock_outline,
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword 
-                          ? Icons.visibility_outlined 
+                      _obscurePassword
+                          ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
                     ),
                     onPressed: () {
@@ -143,7 +144,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Confirm password field
                 AuthTextField(
                   controller: _confirmPasswordController,
@@ -153,8 +154,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   prefixIcon: Icons.lock_outline,
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureConfirm 
-                          ? Icons.visibility_outlined 
+                      _obscureConfirm
+                          ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
                     ),
                     onPressed: () {
@@ -172,7 +173,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Password requirements hint
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -186,8 +187,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       Text(
                         'Password requirements:',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -198,7 +199,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Register button
                 ElevatedButton(
                   onPressed: authService.isLoading ? null : _handleRegister,
@@ -211,7 +212,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       : const Text('Create Account'),
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Terms text
                 Text(
                   'By creating an account, you agree to our Terms of Service and Privacy Policy.',
@@ -226,6 +227,3 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
-
-
-
