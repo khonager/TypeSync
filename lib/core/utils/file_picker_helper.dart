@@ -4,9 +4,12 @@
 /// when zenity is not available.
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+
+import '../widgets/file_browser_dialog.dart';
 
 /// Helper class for file picking with Linux fallbacks
 class FilePickerHelper {
@@ -16,6 +19,7 @@ class FilePickerHelper {
     String? dialogTitle,
     List<String>? allowedExtensions,
   }) async {
+    // Try native file picker first
     try {
       final result = await FilePicker.platform.pickFiles(
         type: allowedExtensions != null ? FileType.custom : FileType.any,
@@ -27,13 +31,17 @@ class FilePickerHelper {
         return result.files.single.path;
       }
     } catch (e) {
-      // If file_picker fails (e.g., zenity not found on Linux), use fallback
-      if (Platform.isLinux) {
-        return await _pickFileFallback(context, dialogTitle, allowedExtensions);
-      }
-      rethrow;
+      // If file_picker fails (e.g., zenity not found on Linux), use custom browser
+      debugPrint('File picker failed: $e, using custom browser');
     }
-    return null;
+    
+    // Use custom file browser as fallback
+    return await FileBrowserDialog.show(
+      context: context,
+      selectDirectory: false,
+      dialogTitle: dialogTitle ?? 'Select File',
+      allowedExtensions: allowedExtensions,
+    );
   }
 
   /// Pick a directory with fallback for Linux
@@ -41,6 +49,7 @@ class FilePickerHelper {
     required BuildContext context,
     String? dialogTitle,
   }) async {
+    // Try native directory picker first
     try {
       final result = await FilePicker.platform.getDirectoryPath(
         dialogTitle: dialogTitle,
@@ -50,13 +59,16 @@ class FilePickerHelper {
         return result;
       }
     } catch (e) {
-      // If file_picker fails (e.g., zenity not found on Linux), use fallback
-      if (Platform.isLinux) {
-        return await _pickDirectoryFallback(context, dialogTitle);
-      }
-      rethrow;
+      // If file_picker fails (e.g., zenity not found on Linux), use custom browser
+      debugPrint('Directory picker failed: $e, using custom browser');
     }
-    return null;
+    
+    // Use custom file browser as fallback
+    return await FileBrowserDialog.show(
+      context: context,
+      selectDirectory: true,
+      dialogTitle: dialogTitle ?? 'Select Directory',
+    );
   }
 
   /// Save a file with fallback for Linux
@@ -66,6 +78,7 @@ class FilePickerHelper {
     String? fileName,
     String? fileExtension,
   }) async {
+    // Try native save dialog first
     try {
       final result = await FilePicker.platform.saveFile(
         dialogTitle: dialogTitle,
@@ -80,13 +93,23 @@ class FilePickerHelper {
         return result;
       }
     } catch (e) {
-      // If file_picker fails (e.g., zenity not found on Linux), use fallback
-      if (Platform.isLinux) {
-        return await _saveFileFallback(context, dialogTitle, fileName);
-      }
-      rethrow;
+      // If file_picker fails (e.g., zenity not found on Linux), use custom browser
+      debugPrint('Save file dialog failed: $e, using custom browser');
     }
-    return null;
+    
+    // Use custom file browser to select directory, then append filename
+    final directory = await FileBrowserDialog.show(
+      context: context,
+      selectDirectory: true,
+      dialogTitle: dialogTitle ?? 'Select Save Location',
+    );
+    
+    if (directory != null && fileName != null) {
+      return '$directory/$fileName';
+    }
+    
+    // Final fallback: text input
+    return await _saveFileFallback(context, dialogTitle, fileName);
   }
 
   /// Fallback file picker using text input dialog
