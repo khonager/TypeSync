@@ -1,6 +1,7 @@
 /// Editor Toolbar Widget
 ///
 /// Floating draggable toolbar with formatting options.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -20,9 +21,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
 
   const EditorToolbar({
-    super.key,
-    required this.controller,
-    required this.onInsertPdf,
+    required this.controller, required this.onInsertPdf, super.key,
   });
 
   @override
@@ -110,7 +109,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     //   bottom = bodyHeight - toolbarHeight (toolbar top at top of body)
     // - minBottom: 0 (toolbar at bottom of body)
     final maxBottom = bodyHeight - toolbarHeight;
-    final minBottom = 0.0;
+    const minBottom = 0.0;
     // Ensure maxBottom is valid (at least 0)
     final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
     final bottom = _position.dy.clamp(minBottom, clampedMaxBottom);
@@ -136,7 +135,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
               // maxBottom: when toolbar top edge is at top of body
               // bottom = bodyHeight - currentHeight
               final maxBottom = bodyHeight - currentHeight;
-              final minBottom = 0.0; // Can go all the way to bottom
+              const minBottom = 0.0; // Can go all the way to bottom
               final clampedMaxBottom =
                   maxBottom > minBottom ? maxBottom : minBottom;
 

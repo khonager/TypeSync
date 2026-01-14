@@ -2,6 +2,7 @@
 ///
 /// Error message that expands on tap to show more details.
 /// Simple view by default for users, detailed view on tap.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -15,8 +16,7 @@ class ExpandableError extends StatefulWidget {
   final VoidCallback? onDismiss;
 
   const ExpandableError({
-    super.key,
-    required this.message,
+    required this.message, super.key,
     this.details,
     this.onDismiss,
   });

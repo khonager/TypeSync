@@ -2,6 +2,7 @@
 ///
 /// State management for folders including CRUD operations
 /// and hierarchical structure management.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';

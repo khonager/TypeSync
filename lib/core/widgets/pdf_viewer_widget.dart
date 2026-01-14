@@ -2,9 +2,9 @@
 ///
 /// A custom PDF viewer that works on all platforms by rendering
 /// PDF pages as images using the pdf package.
+library;
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:printing/printing.dart';
@@ -15,8 +15,7 @@ class PdfViewerWidget extends StatefulWidget {
   final File pdfFile;
 
   const PdfViewerWidget({
-    super.key,
-    required this.pdfFile,
+    required this.pdfFile, super.key,
   });
 
   @override
@@ -148,7 +147,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
       } else if (Platform.isWindows) {
         // Use start on Windows
         await Process.run('start', [widget.pdfFile.absolute.path],
-            runInShell: true);
+            runInShell: true,);
       } else {
         // Try url_launcher for mobile
         if (await canLaunchUrl(uri)) {

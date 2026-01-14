@@ -2,6 +2,7 @@
 ///
 /// State management for notes including CRUD operations,
 /// filtering, and sync status tracking.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -69,7 +70,7 @@ class NotesProvider extends ChangeNotifier {
         .where((n) =>
             !n.isDeleted &&
             (n.title.toLowerCase().contains(lowerQuery) ||
-                n.content.toLowerCase().contains(lowerQuery)))
+                n.content.toLowerCase().contains(lowerQuery)),)
         .toList();
   }
 
@@ -163,7 +164,7 @@ class NotesProvider extends ChangeNotifier {
       );
 
       debugPrint(
-          'updateNote: Updating note ${note.id}, backgroundColor: ${updatedNote.backgroundColor}');
+          'updateNote: Updating note ${note.id}, backgroundColor: ${updatedNote.backgroundColor}',);
 
       // Update locally
       await _notesBox?.put(updatedNote.id, updatedNote);
@@ -172,7 +173,7 @@ class NotesProvider extends ChangeNotifier {
       if (index >= 0) {
         _notes[index] = updatedNote;
         debugPrint(
-            'updateNote: Updated note at index $index, new backgroundColor: ${_notes[index].backgroundColor}');
+            'updateNote: Updated note at index $index, new backgroundColor: ${_notes[index].backgroundColor}',);
       } else {
         debugPrint('updateNote: Note ${note.id} not found in list');
       }
@@ -281,7 +282,7 @@ class NotesProvider extends ChangeNotifier {
     final note = _notes[index];
     await updateNote(note.copyWith(
       tags: note.tags.where((t) => t != tagId).toList(),
-    ));
+    ),);
   }
 
   /// Set note background color
@@ -296,14 +297,14 @@ class NotesProvider extends ChangeNotifier {
     final updatedNote =
         note.copyWith(backgroundColor: color, backgroundColorSet: true);
     debugPrint(
-        'setBackgroundColor: Updating note ${note.id} from ${note.backgroundColor} to $color');
+        'setBackgroundColor: Updating note ${note.id} from ${note.backgroundColor} to $color',);
     final success = await updateNote(updatedNote);
     if (success) {
       // Verify the update
       final verifyIndex = _notes.indexWhere((n) => n.id == noteId);
       if (verifyIndex >= 0) {
         debugPrint(
-            'setBackgroundColor: Verified update - note backgroundColor is now ${_notes[verifyIndex].backgroundColor}');
+            'setBackgroundColor: Verified update - note backgroundColor is now ${_notes[verifyIndex].backgroundColor}',);
       }
     } else {
       debugPrint('setBackgroundColor: Update failed');

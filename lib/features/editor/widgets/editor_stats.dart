@@ -1,6 +1,7 @@
 /// Editor Stats Widget
 ///
 /// Displays line and character count in the editor header.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -12,9 +13,7 @@ class EditorStats extends StatelessWidget {
   final int characterCount;
 
   const EditorStats({
-    super.key,
-    required this.lineCount,
-    required this.characterCount,
+    required this.lineCount, required this.characterCount, super.key,
   });
 
   @override

@@ -76,15 +76,9 @@ class TimetableEntry extends Equatable {
   const TimetableEntry({
     required this.id,
     required this.subject,
-    this.teacher,
+    required this.weekday, required this.startHour, required this.startMinute, required this.endHour, required this.endMinute, required this.userId, this.teacher,
     this.room,
-    required this.weekday,
-    required this.startHour,
-    required this.startMinute,
-    required this.endHour,
-    required this.endMinute,
     this.color = '#64D2FF',
-    required this.userId,
     this.isDirty = true,
     this.isDeleted = false,
   });

@@ -114,11 +114,10 @@ class User extends Equatable {
   const User({
     required this.id,
     required this.email,
-    this.displayName,
+    required this.createdAt, this.displayName,
     this.photoUrl,
     this.subscriptionTier = SubscriptionTier.free,
     this.storageUsedBytes = 0,
-    required this.createdAt,
     this.lastSignIn,
     this.emailVerified = false,
     this.subscriptionExpiresAt,

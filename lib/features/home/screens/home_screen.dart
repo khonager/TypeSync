@@ -2,13 +2,12 @@
 ///
 /// Main screen showing folders and files in a grid view.
 /// Based on the design mockup with dark theme.
+library;
 
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -454,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (note != null && mounted) {
       AppRouter.openEditor(context,
-          noteId: note.id, folderId: _currentFolderId);
+          noteId: note.id, folderId: _currentFolderId,);
     }
   }
 
@@ -598,7 +597,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (note != null && mounted) {
         // Open the note with the imported content
         AppRouter.openEditor(context,
-            noteId: note.id, folderId: _currentFolderId);
+            noteId: note.id, folderId: _currentFolderId,);
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Imported $fileName')),
@@ -733,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       for (final note in notes) {
         try {
-          String fileName = note.title;
+          final String fileName = note.title;
           String extension = '.txt';
           String content = '';
 
@@ -801,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final notes = notesProvider.getNotesInFolder(folderId);
     for (final note in notes) {
       try {
-        String fileName = note.title;
+        final String fileName = note.title;
         String extension = '.txt';
         String content = '';
 
@@ -850,13 +849,13 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             ListTile(
               leading: Icon(
-                  note?.isFavorite == true ? Icons.star : Icons.star_outline),
+                  note?.isFavorite == true ? Icons.star : Icons.star_outline,),
               title: Text(note?.isFavorite == true
                   ? 'Remove from favorites'
-                  : 'Add to favorites'),
+                  : 'Add to favorites',),
               onTap: () {
                 Navigator.pop(bottomSheetContext);
-                this.context.read<NotesProvider>().toggleFavorite(noteId);
+                context.read<NotesProvider>().toggleFavorite(noteId);
               },
             ),
             ListTile(
@@ -892,7 +891,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Delete', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
-                this.context.read<NotesProvider>().deleteNote(noteId);
+                context.read<NotesProvider>().deleteNote(noteId);
               },
             ),
           ],
@@ -906,7 +905,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (note == null) return;
 
     try {
-      String fileName = note.title;
+      final String fileName = note.title;
       String extension = '.txt';
       String content = '';
 
@@ -934,7 +933,7 @@ class _HomeScreenState extends State<HomeScreen> {
           await pdfFile.copy(savePath);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('PDF exported successfully')),
+              const SnackBar(content: Text('PDF exported successfully')),
             );
           }
         }
@@ -969,7 +968,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await file.writeAsString(content);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Note exported successfully')),
+            const SnackBar(content: Text('Note exported successfully')),
           );
         }
       }
@@ -1012,7 +1011,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   (colorOption) => _ColorOption(
                     color: colorOption.color,
                     onTap: () => _setNoteBackgroundColor(
-                        noteId, colorOption.hex, dialogContext),
+                        noteId, colorOption.hex, dialogContext,),
                     isSelected: currentColor == colorOption.hex,
                   ),
                 ),
@@ -1031,7 +1030,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _setNoteBackgroundColor(
-      String noteId, String? color, BuildContext dialogContext) {
+      String noteId, String? color, BuildContext dialogContext,) {
     Navigator.pop(dialogContext);
     context.read<NotesProvider>().setBackgroundColor(noteId, color);
     if (mounted) {
@@ -1039,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text(color == null
               ? 'Background color removed'
-              : 'Background color set'),
+              : 'Background color set',),
         ),
       );
     }
@@ -1060,7 +1059,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              newParentId == null ? 'Folder moved to root' : 'Folder moved'),
+              newParentId == null ? 'Folder moved to root' : 'Folder moved',),
         ),
       );
     }

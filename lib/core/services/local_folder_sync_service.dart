@@ -2,12 +2,11 @@
 ///
 /// Manages synchronization between a local folder on disk and the app's data.
 /// Handles conflict resolution when files differ between local and cloud storage.
+library;
 
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
 import '../utils/file_picker_helper.dart';
@@ -48,7 +47,7 @@ class LocalFolderSyncService extends ChangeNotifier {
   Directory? _syncFolder;
   bool _isSyncing = false;
   String? _errorMessage;
-  List<ConflictInfo> _conflicts = [];
+  final List<ConflictInfo> _conflicts = [];
   bool _isInitialized = false;
 
   // Callbacks for conflict resolution UI
@@ -259,7 +258,7 @@ class LocalFolderSyncService extends ChangeNotifier {
             localModified: localModified,
             cloudModified: cloudModified,
             isNote: true,
-          ));
+          ),);
         }
       }
     }
@@ -282,7 +281,7 @@ class LocalFolderSyncService extends ChangeNotifier {
             localModified: localModified,
             cloudModified: cloudModified,
             isNote: false,
-          ));
+          ),);
         }
       }
     }

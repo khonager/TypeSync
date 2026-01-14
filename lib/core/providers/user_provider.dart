@@ -1,6 +1,7 @@
 /// User Provider
 ///
 /// Manages user profile and preferences state.
+library;
 
 import 'package:flutter/foundation.dart';
 

@@ -52,16 +52,13 @@ class Folder extends Equatable {
   const Folder({
     required this.id,
     required this.name,
-    this.subtitle,
+    required this.createdAt, required this.updatedAt, required this.userId, this.subtitle,
     this.parentId,
     this.backgroundColor,
     this.icon = 'folder',
-    required this.createdAt,
-    required this.updatedAt,
     this.syncedAt,
     this.isDirty = true,
     this.isDeleted = false,
-    required this.userId,
     this.sortOrder = 0,
   });
 

@@ -1,6 +1,7 @@
 /// Login Screen
 ///
 /// User authentication screen with email/password login.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

@@ -32,15 +32,12 @@ class Homework extends Equatable {
   const Homework({
     required this.id,
     required this.title,
-    this.description,
+    required this.userId, required this.createdAt, required this.updatedAt, this.description,
     this.subject,
     this.dueDate,
     this.priority = HomeworkPriority.medium,
     this.isCompleted = false,
     this.noteId,
-    required this.userId,
-    required this.createdAt,
-    required this.updatedAt,
     this.isDirty = true,
     this.isDeleted = false,
   });

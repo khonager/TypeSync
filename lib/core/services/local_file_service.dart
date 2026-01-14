@@ -2,6 +2,7 @@
 ///
 /// Manages local file storage for PDFs and other files.
 /// Handles copying files to app storage directory and provides file access.
+library;
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -52,7 +53,7 @@ class LocalFileService {
   /// [fileName] - Optional custom file name, otherwise uses source file name
   /// Returns the new file path in app storage, or null if failed
   Future<String?> copyFileToStorage(String sourcePath,
-      {String? fileName}) async {
+      {String? fileName,}) async {
     if (!_initialized || _appFilesDirectory == null) {
       debugPrint('LocalFileService not initialized');
       return null;
@@ -193,7 +194,7 @@ class LocalFileService {
 
     final filePath = path.join(_appFilesDirectory!.path, fileName);
     final file = File(filePath);
-    return await file.exists();
+    return file.exists();
   }
 
   /// Get all files in app storage

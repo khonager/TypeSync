@@ -2,6 +2,7 @@
 ///
 /// Handles real-time synchronization of notes and folders between
 /// local storage and Firebase. Supports offline-first with background sync.
+library;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -239,7 +240,7 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('notes').doc(noteId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
+          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
       return true;
     } catch (e) {
       _setError('Failed to delete note: $e');
@@ -253,7 +254,7 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('folders').doc(folderId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
+          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
       return true;
     } catch (e) {
       _setError('Failed to delete folder: $e');
@@ -315,7 +316,7 @@ class SyncService extends ChangeNotifier {
 
     try {
       await _firebaseFirestore.collection('homework').doc(homeworkId).update(
-          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()});
+          {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},);
       return true;
     } catch (e) {
       _setError('Failed to delete homework: $e');
@@ -390,7 +391,7 @@ class SyncService extends ChangeNotifier {
                   syncedAt: DateTime.now(),
                 )
                 .toJson(),
-            SetOptions(merge: true));
+            SetOptions(merge: true),);
       }
 
       for (final folder in dirtyFolders) {
@@ -403,7 +404,7 @@ class SyncService extends ChangeNotifier {
                   syncedAt: DateTime.now(),
                 )
                 .toJson(),
-            SetOptions(merge: true));
+            SetOptions(merge: true),);
       }
 
       await batch.commit();

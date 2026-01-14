@@ -2,6 +2,7 @@
 ///
 /// State management for homework tasks including CRUD operations,
 /// filtering, and sync status tracking.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';

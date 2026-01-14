@@ -2,6 +2,7 @@
 ///
 /// Note editing screen with rich text support, line/character count,
 /// and real-time sync. Based on the bottom-right design mockup.
+library;
 
 import 'dart:async';
 import 'dart:convert';
@@ -482,7 +483,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     (colorOption) => _ColorOption(
                       color: colorOption.color,
                       onTap: () => _setNoteBackgroundColor(
-                          colorOption.hex, dialogContext),
+                          colorOption.hex, dialogContext,),
                       isSelected: currentColor == colorOption.hex,
                     ),
                   ),
@@ -501,8 +502,8 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  void _setNoteBackgroundColor(
-      String? color, BuildContext dialogContext) async {
+  Future<void> _setNoteBackgroundColor(
+      String? color, BuildContext dialogContext,) async {
     if (_note == null) return;
 
     Navigator.pop(dialogContext);
@@ -521,7 +522,7 @@ class _EditorScreenState extends State<EditorScreen> {
         SnackBar(
           content: Text(color == null
               ? 'Background color removed'
-              : 'Background color set'),
+              : 'Background color set',),
         ),
       );
     }
@@ -541,7 +542,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     try {
       // Determine export file name and extension
-      String fileName = _note!.title;
+      final String fileName = _note!.title;
       String extension = '.txt';
       String content = '';
 
@@ -678,7 +679,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                             content:
-                                Text('Unable to open PDF in external viewer')),
+                                Text('Unable to open PDF in external viewer'),),
                       );
                     }
                   }

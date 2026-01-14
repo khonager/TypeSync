@@ -1,6 +1,7 @@
 /// Settings Screen
 ///
 /// App settings including theme, sync, and account options.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -35,7 +36,7 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         children: [
           // Appearance Section
-          _SectionHeader(title: 'Appearance'),
+          const _SectionHeader(title: 'Appearance'),
 
           // Dark mode toggle with long press for system sync
           _SettingsTile(
@@ -83,7 +84,7 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
 
           // Account Section
-          _SectionHeader(title: 'Account'),
+          const _SectionHeader(title: 'Account'),
 
           _SettingsTile(
             icon: Icons.person_outline,
@@ -102,7 +103,7 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
 
           // Sync Section
-          _SectionHeader(title: 'Sync'),
+          const _SectionHeader(title: 'Sync'),
 
           // Only show sync toggle for logged-in users (not guests)
           if (authService.isLoggedIn)
@@ -126,18 +127,18 @@ class SettingsScreen extends StatelessWidget {
             ),
 
           if (authService.isGuestMode)
-            _SettingsTile(
+            const _SettingsTile(
               icon: Icons.cloud_off_outlined,
               title: 'Guest Mode',
               subtitle: 'Using app locally without sync',
-              trailing: const Icon(Icons.info_outline, color: Colors.grey),
+              trailing: Icon(Icons.info_outline, color: Colors.grey),
             ),
 
-          _SettingsTile(
+          const _SettingsTile(
             icon: Icons.wifi_off_outlined,
             title: 'Offline Mode',
             subtitle: 'Save data when offline',
-            trailing: const Icon(Icons.check, color: Colors.green),
+            trailing: Icon(Icons.check, color: Colors.green),
           ),
 
           _SettingsTile(
@@ -152,9 +153,9 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
 
           // About Section
-          _SectionHeader(title: 'About'),
+          const _SectionHeader(title: 'About'),
 
-          _SettingsTile(
+          const _SettingsTile(
             icon: Icons.info_outline,
             title: 'Version',
             subtitle: '1.0.0',
@@ -257,7 +258,7 @@ class SettingsScreen extends StatelessWidget {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(syncService.errorMessage ??
-                            'Failed to choose folder'),
+                            'Failed to choose folder',),
                       ),
                     );
                   }
@@ -265,7 +266,7 @@ class SettingsScreen extends StatelessWidget {
                 icon: const Icon(Icons.folder_open),
                 label: Text(syncService.syncFolder != null
                     ? 'Change Folder'
-                    : 'Choose Folder'),
+                    : 'Choose Folder',),
               ),
               if (syncService.syncFolder != null) ...[
                 const SizedBox(height: 16),
@@ -350,12 +351,12 @@ class SettingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.'),
+                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',),
                 const SizedBox(height: 16),
                 Text(
-                    'Local modified: ${_formatDateTime(conflict.localModified)}'),
+                    'Local modified: ${_formatDateTime(conflict.localModified)}',),
                 Text(
-                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}'),
+                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',),
                 const SizedBox(height: 16),
                 const Text('Choose which version to keep:'),
               ],

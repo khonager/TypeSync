@@ -1,6 +1,7 @@
 /// Sync Status Indicator Widget
 ///
 /// Shows the current sync status with a visual indicator.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

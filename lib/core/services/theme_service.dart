@@ -2,6 +2,7 @@
 ///
 /// Manages app-wide theming including dark mode, accent colors,
 /// and system theme synchronization.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';

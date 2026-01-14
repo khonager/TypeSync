@@ -2,6 +2,7 @@
 ///
 /// Handles user authentication via Firebase Auth including
 /// login, registration, password reset, and session management.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -103,7 +104,7 @@ class AuthService extends ChangeNotifier {
       // Silently handle - app can run in offline mode
       if (kDebugMode) {
         debugPrint(
-            'Firebase Auth not available: ${e.toString().split(':').first}');
+            'Firebase Auth not available: ${e.toString().split(':').first}',);
       }
     }
   }

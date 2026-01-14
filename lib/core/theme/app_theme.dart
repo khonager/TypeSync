@@ -2,6 +2,7 @@
 ///
 /// Defines the visual appearance of the app including colors,
 /// typography, and component styling for both light and dark modes.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -87,10 +88,10 @@ class AppTheme {
       ),
 
       // Card theme (for folder/file cards)
-      cardTheme: CardThemeData(
+      cardTheme: const CardThemeData(
         color: darkSurface,
         elevation: 0,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
@@ -174,9 +175,9 @@ class AppTheme {
       textTheme: _buildTextTheme(isDark: true),
 
       // Dialog theme
-      dialogTheme: DialogThemeData(
+      dialogTheme: const DialogThemeData(
         backgroundColor: darkSurface,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),
@@ -227,10 +228,10 @@ class AppTheme {
         ),
       ),
 
-      cardTheme: CardThemeData(
+      cardTheme: const CardThemeData(
         color: lightSurface,
         elevation: 1,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
@@ -296,9 +297,9 @@ class AppTheme {
 
       textTheme: _buildTextTheme(isDark: false),
 
-      dialogTheme: DialogThemeData(
+      dialogTheme: const DialogThemeData(
         backgroundColor: lightSurface,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),

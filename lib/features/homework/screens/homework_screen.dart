@@ -1,6 +1,7 @@
 /// Homework Screen
 ///
 /// Todo list for homework assignments.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -220,20 +221,20 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                           decoration: const InputDecoration(
                             labelText: 'Priority',
                           ),
-                          value: selectedPriority,
+                          initialValue: selectedPriority,
                           items: const [
                             DropdownMenuItem(
                                 value: HomeworkPriority.low,
-                                child: Text('Low')),
+                                child: Text('Low'),),
                             DropdownMenuItem(
                                 value: HomeworkPriority.medium,
-                                child: Text('Medium')),
+                                child: Text('Medium'),),
                             DropdownMenuItem(
                                 value: HomeworkPriority.high,
-                                child: Text('High')),
+                                child: Text('High'),),
                             DropdownMenuItem(
                                 value: HomeworkPriority.urgent,
-                                child: Text('Urgent')),
+                                child: Text('Urgent'),),
                           ],
                           onChanged: (value) {
                             if (value != null) {
@@ -300,7 +301,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                       if (taskController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please enter a task title')),
+                              content: Text('Please enter a task title'),),
                         );
                         return;
                       }

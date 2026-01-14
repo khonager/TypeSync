@@ -37,9 +37,8 @@ class CalendarEvent extends Equatable {
   const CalendarEvent({
     required this.id,
     required this.title,
-    this.description,
+    required this.startTime, required this.userId, required this.createdAt, this.description,
     this.type = EventType.reminder,
-    required this.startTime,
     this.endTime,
     this.subject,
     this.location,
@@ -47,8 +46,6 @@ class CalendarEvent extends Equatable {
     this.hasReminder = true,
     this.reminderMinutesBefore = 30,
     this.noteId,
-    required this.userId,
-    required this.createdAt,
     this.isDirty = true,
     this.isDeleted = false,
   });

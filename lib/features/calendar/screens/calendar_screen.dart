@@ -1,6 +1,7 @@
 /// Calendar Screen
 ///
 /// Calendar view with test reminders and events.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -165,7 +166,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     height: double.infinity,
                     color: event.color != null
                         ? Color(
-                            int.parse(event.color!.replaceFirst('#', '0xFF')))
+                            int.parse(event.color!.replaceFirst('#', '0xFF')),)
                         : Theme.of(context).colorScheme.primary,
                   ),
                   title: Text(event.title),
@@ -186,11 +187,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _getEventTypeIcon(event.type),
                     color: event.color != null
                         ? Color(
-                            int.parse(event.color!.replaceFirst('#', '0xFF')))
+                            int.parse(event.color!.replaceFirst('#', '0xFF')),)
                         : null,
                   ),
                 ),
-              )),
+              ),),
       ],
     );
   }
@@ -252,22 +253,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Event Type',
                     ),
-                    value: selectedType,
+                    initialValue: selectedType,
                     items: const [
                       DropdownMenuItem(
-                          value: EventType.test, child: Text('Test')),
+                          value: EventType.test, child: Text('Test'),),
                       DropdownMenuItem(
-                          value: EventType.exam, child: Text('Exam')),
+                          value: EventType.exam, child: Text('Exam'),),
                       DropdownMenuItem(
                           value: EventType.assignment,
-                          child: Text('Assignment')),
+                          child: Text('Assignment'),),
                       DropdownMenuItem(
-                          value: EventType.reminder, child: Text('Reminder')),
+                          value: EventType.reminder, child: Text('Reminder'),),
                       DropdownMenuItem(
                           value: EventType.classEvent,
-                          child: Text('Class Event')),
+                          child: Text('Class Event'),),
                       DropdownMenuItem(
-                          value: EventType.other, child: Text('Other')),
+                          value: EventType.other, child: Text('Other'),),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -377,7 +378,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       if (titleController.text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please enter an event title')),
+                              content: Text('Please enter an event title'),),
                         );
                         return;
                       }
@@ -385,7 +386,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       if (selectedDate == null || selectedTime == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('Please select date and time')),
+                              content: Text('Please select date and time'),),
                         );
                         return;
                       }

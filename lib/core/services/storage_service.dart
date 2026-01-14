@@ -2,6 +2,7 @@
 ///
 /// Manages cloud storage quota and subscription tiers.
 /// Handles file uploads to Firebase Storage with size tracking.
+library;
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -68,21 +69,21 @@ class StorageService extends ChangeNotifier {
 
   /// Get all available subscription tiers with pricing
   static List<SubscriptionInfo> get subscriptionPlans => [
-        SubscriptionInfo(
+        const SubscriptionInfo(
           tier: SubscriptionTier.free,
           name: 'Free',
           storage: '1 GB',
           priceEuros: 0,
           features: ['Basic sync', '1 GB storage', 'All core features'],
         ),
-        SubscriptionInfo(
+        const SubscriptionInfo(
           tier: SubscriptionTier.basic,
           name: 'Basic',
           storage: '5 GB',
           priceEuros: 1.99,
           features: ['Everything in Free', '5 GB storage', 'Priority sync'],
         ),
-        SubscriptionInfo(
+        const SubscriptionInfo(
           tier: SubscriptionTier.standard,
           name: 'Standard',
           storage: '50 GB',
@@ -90,10 +91,10 @@ class StorageService extends ChangeNotifier {
           features: [
             'Everything in Basic',
             '50 GB storage',
-            'Advanced features'
+            'Advanced features',
           ],
         ),
-        SubscriptionInfo(
+        const SubscriptionInfo(
           tier: SubscriptionTier.premium,
           name: 'Premium',
           storage: '200 GB',
@@ -101,7 +102,7 @@ class StorageService extends ChangeNotifier {
           features: [
             'Everything in Standard',
             '200 GB storage',
-            'Priority support'
+            'Priority support',
           ],
         ),
       ];
@@ -240,7 +241,7 @@ class StorageService extends ChangeNotifier {
   /// Note: In production, this would integrate with a payment provider
   /// like Stripe or Google Play Billing.
   Future<bool> upgradeSubscription(
-      String userId, SubscriptionTier newTier) async {
+      String userId, SubscriptionTier newTier,) async {
     _isLoading = true;
     notifyListeners();
 

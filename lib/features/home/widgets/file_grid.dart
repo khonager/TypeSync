@@ -1,6 +1,7 @@
 /// File Grid Widget
 ///
 /// Displays notes/files in a grid layout.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -16,10 +17,7 @@ class FileGrid extends StatelessWidget {
   final Function(String) onNoteLongPress;
 
   const FileGrid({
-    super.key,
-    required this.notes,
-    required this.onNoteTap,
-    required this.onNoteLongPress,
+    required this.notes, required this.onNoteTap, required this.onNoteLongPress, super.key,
   });
 
   @override
@@ -51,10 +49,7 @@ class FileGridItem extends StatelessWidget {
   final VoidCallback onLongPress;
 
   const FileGridItem({
-    super.key,
-    required this.note,
-    required this.onTap,
-    required this.onLongPress,
+    required this.note, required this.onTap, required this.onLongPress, super.key,
   });
 
   @override
@@ -108,7 +103,7 @@ class FileGridItem extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: note.backgroundColor != null
                         ? Color(int.parse(
-                            note.backgroundColor!.replaceFirst('#', '0xFF')))
+                            note.backgroundColor!.replaceFirst('#', '0xFF'),),)
                         : AppTheme.darkSurface,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -164,7 +159,7 @@ class FileGridItem extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: note.backgroundColor != null
                       ? Color(int.parse(
-                          note.backgroundColor!.replaceFirst('#', '0xFF')))
+                          note.backgroundColor!.replaceFirst('#', '0xFF'),),)
                       : AppTheme.darkSurface,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -218,10 +213,7 @@ class FileList extends StatelessWidget {
   final Function(String) onNoteLongPress;
 
   const FileList({
-    super.key,
-    required this.notes,
-    required this.onNoteTap,
-    required this.onNoteLongPress,
+    required this.notes, required this.onNoteTap, required this.onNoteLongPress, super.key,
   });
 
   @override
@@ -246,10 +238,7 @@ class FileListItem extends StatelessWidget {
   final VoidCallback onLongPress;
 
   const FileListItem({
-    super.key,
-    required this.note,
-    required this.onTap,
-    required this.onLongPress,
+    required this.note, required this.onTap, required this.onLongPress, super.key,
   });
 
   @override

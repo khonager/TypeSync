@@ -2,8 +2,8 @@
 ///
 /// State management for timetable entries including CRUD operations,
 /// filtering, and sync status tracking.
+library;
 
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -98,13 +98,8 @@ class TimetableProvider extends ChangeNotifier {
   Future<TimetableEntry?> createEntry({
     required String userId,
     required String subject,
-    String? teacher,
+    required Weekday weekday, required int startHour, required int startMinute, required int endHour, required int endMinute, String? teacher,
     String? room,
-    required Weekday weekday,
-    required int startHour,
-    required int startMinute,
-    required int endHour,
-    required int endMinute,
     String? color,
   }) async {
     try {

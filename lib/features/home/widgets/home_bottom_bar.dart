@@ -1,6 +1,7 @@
 /// Home Bottom Bar Widget
 ///
 /// Bottom navigation bar matching the design mockup.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -15,10 +16,8 @@ class HomeBottomBar extends StatelessWidget {
   final VoidCallback onNewFolder;
 
   const HomeBottomBar({
-    super.key,
+    required this.onNewNote, required this.onNewFolder, super.key,
     this.currentFolderId,
-    required this.onNewNote,
-    required this.onNewFolder,
   });
 
   @override

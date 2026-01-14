@@ -1,6 +1,7 @@
 /// Profile Screen
 ///
 /// User profile management screen.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

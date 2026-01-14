@@ -2,12 +2,11 @@
 ///
 /// Provides cross-platform file and directory picking with Linux fallbacks
 /// when zenity is not available.
+library;
 
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../widgets/file_browser_dialog.dart';
 
@@ -36,7 +35,7 @@ class FilePickerHelper {
     }
 
     // Use custom file browser as fallback
-    return await FileBrowserDialog.show(
+    return FileBrowserDialog.show(
       context: context,
       selectDirectory: false,
       dialogTitle: dialogTitle ?? 'Select File',
@@ -64,7 +63,7 @@ class FilePickerHelper {
     }
 
     // Use custom file browser as fallback
-    return await FileBrowserDialog.show(
+    return FileBrowserDialog.show(
       context: context,
       selectDirectory: true,
       dialogTitle: dialogTitle ?? 'Select Directory',
@@ -107,7 +106,7 @@ class FilePickerHelper {
     }
 
     // Final fallback: text input
-    return await _saveFileFallback(context, dialogTitle, fileName);
+    return _saveFileFallback(context, dialogTitle, fileName);
   }
 
   /// Fallback file picker using text input dialog

@@ -66,6 +66,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   material_design_icons_flutter: ^7.0.7296
 
+  url_launcher: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,6 +1,7 @@
 /// Sync Provider
 ///
 /// Tracks synchronization state across the app for UI feedback.
+library;
 
 import 'package:flutter/foundation.dart';
 

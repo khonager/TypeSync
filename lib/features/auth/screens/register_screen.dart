@@ -1,6 +1,7 @@
 /// Register Screen
 ///
 /// User registration screen with email/password signup.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

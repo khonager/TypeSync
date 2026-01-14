@@ -2,6 +2,7 @@
 ///
 /// State management for calendar events including CRUD operations,
 /// filtering, and sync status tracking.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -48,7 +49,7 @@ class CalendarProvider extends ChangeNotifier {
             !e.isDeleted &&
             e.startTime.year == date.year &&
             e.startTime.month == date.month &&
-            e.startTime.day == date.day)
+            e.startTime.day == date.day,)
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
@@ -106,9 +107,8 @@ class CalendarProvider extends ChangeNotifier {
   Future<CalendarEvent?> createEvent({
     required String userId,
     required String title,
-    String? description,
+    required DateTime startTime, String? description,
     EventType type = EventType.reminder,
-    required DateTime startTime,
     DateTime? endTime,
     String? subject,
     String? location,

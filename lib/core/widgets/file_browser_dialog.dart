@@ -2,6 +2,7 @@
 ///
 /// A cross-platform file and directory browser dialog that works
 /// on all platforms without requiring zenity or other external tools.
+library;
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -196,7 +197,7 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      child: Container(
+      child: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
         height: MediaQuery.of(context).size.height * 0.8,
         child: Column(
@@ -250,10 +251,10 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                   Expanded(
                     child: TextField(
                       controller: _pathController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         hintText: 'Enter path...',
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
                         ),
@@ -358,7 +359,7 @@ class _FileBrowserDialogState extends State<FileBrowserDialog> {
                               onTap: isSelectable
                                   ? () => _selectItem(item)
                                   : isDirectory
-                                      ? () => _navigateTo(item as Directory)
+                                      ? () => _navigateTo(item)
                                       : null,
                             );
                           },

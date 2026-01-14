@@ -1,6 +1,7 @@
 /// Subscription Screen
 ///
 /// Storage plan management and upgrade options.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -106,7 +107,7 @@ class SubscriptionScreen extends StatelessWidget {
                   ? null
                   : () {
                       _showUpgradeDialog(
-                          context, plan, authService, storageService);
+                          context, plan, authService, storageService,);
                     },
             );
           }),
@@ -145,7 +146,7 @@ class SubscriptionScreen extends StatelessWidget {
         builder: (context) => AlertDialog(
           title: const Text('Login Required'),
           content: const Text(
-              'Please log in to upgrade your subscription. Guest mode only supports local storage.'),
+              'Please log in to upgrade your subscription. Guest mode only supports local storage.',),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -190,7 +191,7 @@ class SubscriptionScreen extends StatelessWidget {
                       Text(f),
                     ],
                   ),
-                )),
+                ),),
           ],
         ),
         actions: [
@@ -221,7 +222,7 @@ class SubscriptionScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                          'Failed to upgrade subscription. Please try again.'),
+                          'Failed to upgrade subscription. Please try again.',),
                     ),
                   );
                 }

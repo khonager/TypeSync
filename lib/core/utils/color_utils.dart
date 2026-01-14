@@ -2,6 +2,7 @@
 ///
 /// Provides a unified color palette system that works well
 /// in both dark and light modes, with proper contrast ratios.
+library;
 
 import 'package:flutter/material.dart';
 

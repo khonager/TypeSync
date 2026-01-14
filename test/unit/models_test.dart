@@ -12,9 +12,9 @@ void main() {
       expect(SubscriptionTier.free.storageLimitBytes, 1 * 1024 * 1024 * 1024);
       expect(SubscriptionTier.basic.storageLimitBytes, 5 * 1024 * 1024 * 1024);
       expect(
-          SubscriptionTier.standard.storageLimitBytes, 50 * 1024 * 1024 * 1024);
+          SubscriptionTier.standard.storageLimitBytes, 50 * 1024 * 1024 * 1024,);
       expect(
-          SubscriptionTier.premium.storageLimitBytes, 200 * 1024 * 1024 * 1024);
+          SubscriptionTier.premium.storageLimitBytes, 200 * 1024 * 1024 * 1024,);
     });
 
     test('price returns correct values for each tier', () {

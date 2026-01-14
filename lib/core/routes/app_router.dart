@@ -2,6 +2,7 @@
 ///
 /// Defines all named routes and navigation helpers for the app.
 /// Centralizes route management for easier maintenance.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -81,13 +82,13 @@ class AppRouter {
 
   /// Navigate to a named route
   static Future<T?> navigateTo<T>(BuildContext context, String routeName,
-      {Object? arguments}) {
+      {Object? arguments,}) {
     return Navigator.pushNamed<T>(context, routeName, arguments: arguments);
   }
 
   /// Navigate to a route and remove all previous routes
   static Future<T?> navigateAndClearStack<T>(
-      BuildContext context, String routeName) {
+      BuildContext context, String routeName,) {
     return Navigator.pushNamedAndRemoveUntil<T>(
       context,
       routeName,
@@ -97,7 +98,7 @@ class AppRouter {
 
   /// Navigate to the editor with a specific note
   static Future<void> openEditor(BuildContext context,
-      {String? noteId, String? folderId}) {
+      {String? noteId, String? folderId,}) {
     return Navigator.push(
       context,
       MaterialPageRoute(

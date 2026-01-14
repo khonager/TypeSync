@@ -1,6 +1,7 @@
 /// Auth Text Field Widget
 ///
 /// Styled text field for authentication forms.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -16,9 +17,7 @@ class AuthTextField extends StatelessWidget {
   final String? Function(String?)? validator;
 
   const AuthTextField({
-    super.key,
-    required this.controller,
-    required this.label,
+    required this.controller, required this.label, super.key,
     this.hint,
     this.obscureText = false,
     this.keyboardType,
