@@ -45,11 +45,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       
-      - name: Check formatting
+      - name: Format code
+        run: dart format lib test
+      
+      - name: Auto-fix issues
+        run: dart fix --apply
+        continue-on-error: true
+      
+      - name: Check for formatting changes
         run: |
-          dart format lib test
           if [ -n "$(git status --porcelain lib test)" ]; then
-            echo "::error::Code is not properly formatted. Please run 'dart format lib test' and commit the changes."
+            echo "::error::Code formatting or lint fixes were applied. Please commit these changes:"
             git diff lib test
             exit 1
           fi

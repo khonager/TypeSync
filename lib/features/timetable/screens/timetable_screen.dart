@@ -290,7 +290,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Day',
                   ),
-                  value: _selectedWeekday,
+                  initialValue: _selectedWeekday,
                   items: Weekday.values.map((day) {
                     return DropdownMenuItem(
                       value: day,
@@ -313,7 +313,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Hour',
                         ),
-                        value: _startHour,
+                        initialValue: _startHour,
                         items: List.generate(14, (i) => i + 7).map((hour) {
                           return DropdownMenuItem(
                             value: hour,
@@ -335,7 +335,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Minute',
                         ),
-                        value: _startMinute,
+                        initialValue: _startMinute,
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,
@@ -363,7 +363,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Hour',
                         ),
-                        value: _endHour,
+                        initialValue: _endHour,
                         items: List.generate(14, (i) => i + 7).map((hour) {
                           return DropdownMenuItem(
                             value: hour,
@@ -385,7 +385,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Minute',
                         ),
-                        value: _endMinute,
+                        initialValue: _endMinute,
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,

@@ -221,7 +221,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                           decoration: const InputDecoration(
                             labelText: 'Priority',
                           ),
-                          value: selectedPriority,
+                          initialValue: selectedPriority,
                           items: const [
                             DropdownMenuItem(
                               value: HomeworkPriority.low,
