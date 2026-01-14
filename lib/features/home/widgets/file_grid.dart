@@ -70,6 +70,10 @@ class FileGridItem extends StatelessWidget {
         icon = Icons.description_outlined;
     }
 
+    final bgColor = note.backgroundColor != null
+        ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
+        : AppTheme.darkSurface;
+
     return Draggable<String>(
       data: 'note:${note.id}',
       feedback: Material(
@@ -79,7 +83,7 @@ class FileGridItem extends StatelessWidget {
           width: 100,
           height: 100,
           decoration: BoxDecoration(
-            color: AppTheme.darkSurface,
+            color: bgColor,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, size: 48, color: Colors.white54),
@@ -150,7 +154,9 @@ class FileGridItem extends StatelessWidget {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppTheme.darkSurface,
+                  color: note.backgroundColor != null
+                      ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
+                      : AppTheme.darkSurface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Stack(
