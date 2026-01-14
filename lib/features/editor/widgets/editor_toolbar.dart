@@ -355,18 +355,46 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _setTextColor(String color) {
     Navigator.pop(context);
     // Use Quill's built-in color attribute
-    // In flutter_quill, attributes with values are created by calling them with the value
-    widget.controller.formatSelection(
-      Attribute.color(color),
-    );
+    // Format the selection using the document's format method
+    final selection = widget.controller.selection;
+    if (selection.isValid && !selection.isCollapsed) {
+      widget.controller.document.format(
+        selection.start,
+        selection.end - selection.start,
+        Attribute.color.key,
+        color,
+      );
+    } else if (selection.isValid) {
+      // If collapsed, format at cursor position (will apply to next typed text)
+      widget.controller.document.format(
+        selection.start,
+        0,
+        Attribute.color.key,
+        color,
+      );
+    }
   }
 
   void _setMarkerColor(String color) {
     Navigator.pop(context);
     // Use Quill's built-in background attribute for marker/highlight effect
-    widget.controller.formatSelection(
-      Attribute.background(color),
-    );
+    final selection = widget.controller.selection;
+    if (selection.isValid && !selection.isCollapsed) {
+      widget.controller.document.format(
+        selection.start,
+        selection.end - selection.start,
+        Attribute.background.key,
+        color,
+      );
+    } else if (selection.isValid) {
+      // If collapsed, format at cursor position (will apply to next typed text)
+      widget.controller.document.format(
+        selection.start,
+        0,
+        Attribute.background.key,
+        color,
+      );
+    }
   }
 }
 
