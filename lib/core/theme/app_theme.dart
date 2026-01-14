@@ -88,10 +88,10 @@ class AppTheme {
       ),
 
       // Card theme (for folder/file cards)
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: darkSurface,
         elevation: 0,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
@@ -175,9 +175,9 @@ class AppTheme {
       textTheme: _buildTextTheme(isDark: true),
 
       // Dialog theme
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: darkSurface,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),
@@ -228,10 +228,10 @@ class AppTheme {
         ),
       ),
 
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: lightSurface,
         elevation: 1,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(12)),
         ),
       ),
@@ -297,9 +297,9 @@ class AppTheme {
 
       textTheme: _buildTextTheme(isDark: false),
 
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: lightSurface,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
       ),

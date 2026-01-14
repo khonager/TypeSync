@@ -101,8 +101,10 @@ class _FolderGridItemState extends State<FolderGridItem> {
         child: _buildFolderContent(bgColor),
       ),
       child: DragTarget<String>(
-        onWillAcceptWithDetails: (data) => data != 'folder:${widget.folder.id}',
-        onAcceptWithDetails: (data) {
+        onWillAcceptWithDetails: (details) =>
+            details.data != 'folder:${widget.folder.id}',
+        onAcceptWithDetails: (details) {
+          final data = details.data;
           if (data.startsWith('note:')) {
             final noteId = data.substring(5);
             widget.onNoteDropped?.call(noteId, widget.folder.id);
