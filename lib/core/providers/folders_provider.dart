@@ -91,7 +91,8 @@ class FoldersProvider extends ChangeNotifier {
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
-    notifyListeners();
+    // Defer notifyListeners to avoid calling during build
+    Future.microtask(() => notifyListeners());
     
     try {
       if (!Hive.isAdapterRegistered(2)) {
@@ -108,7 +109,7 @@ class FoldersProvider extends ChangeNotifier {
     }
     
     _isLoading = false;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 
   /// Set sync service reference (null to disable sync)

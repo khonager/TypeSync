@@ -91,7 +91,8 @@ class NotesProvider extends ChangeNotifier {
   /// Initialize the provider and load local data
   Future<void> initialize(String userId) async {
     _isLoading = true;
-    notifyListeners();
+    // Defer notifyListeners to avoid calling during build
+    Future.microtask(() => notifyListeners());
     
     try {
       // Open Hive box for notes
@@ -112,7 +113,7 @@ class NotesProvider extends ChangeNotifier {
     }
     
     _isLoading = false;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 
   /// Set sync service reference (null to disable sync)

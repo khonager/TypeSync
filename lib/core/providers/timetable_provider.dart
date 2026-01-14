@@ -3,6 +3,7 @@
 /// State management for timetable entries including CRUD operations,
 /// filtering, and sync status tracking.
 
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -63,13 +64,12 @@ class TimetableProvider extends ChangeNotifier {
   /// Initialize the provider
   Future<void> initialize(String userId) async {
     _isLoading = true;
-    notifyListeners();
+    // Defer notifyListeners to avoid calling during build
+    Future.microtask(() => notifyListeners());
     
     try {
       if (!Hive.isAdapterRegistered(3)) {
-        // Register adapter if needed
-        // Note: You may need to create a TimetableEntryAdapter similar to NoteAdapter
-        // For now, we'll use a simple approach
+        Hive.registerAdapter(TimetableEntryAdapter());
       }
       
       _entriesBox = await Hive.openBox<TimetableEntry>('timetable_$userId');
@@ -82,7 +82,7 @@ class TimetableProvider extends ChangeNotifier {
     }
     
     _isLoading = false;
-    notifyListeners();
+    Future.microtask(() => notifyListeners());
   }
 
   /// Set sync service reference (null to disable sync)
@@ -221,5 +221,53 @@ class TimetableProvider extends ChangeNotifier {
     }
     
     notifyListeners();
+  }
+}
+
+// Hive type adapter for TimetableEntry
+class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
+  @override
+  final int typeId = 3;
+
+  @override
+  TimetableEntry read(BinaryReader reader) {
+    return TimetableEntry(
+      id: reader.readString(),
+      subject: reader.readString(),
+      teacher: reader.readBool() ? reader.readString() : null,
+      room: reader.readBool() ? reader.readString() : null,
+      weekday: Weekday.values[reader.readInt()],
+      startHour: reader.readInt(),
+      startMinute: reader.readInt(),
+      endHour: reader.readInt(),
+      endMinute: reader.readInt(),
+      color: reader.readString(),
+      userId: reader.readString(),
+      isDirty: reader.readBool(),
+      isDeleted: reader.readBool(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, TimetableEntry obj) {
+    writer.writeString(obj.id);
+    writer.writeString(obj.subject);
+    writer.writeBool(obj.teacher != null);
+    if (obj.teacher != null) {
+      writer.writeString(obj.teacher!);
+    }
+    writer.writeBool(obj.room != null);
+    if (obj.room != null) {
+      writer.writeString(obj.room!);
+    }
+    writer.writeInt(obj.weekday.index);
+    writer.writeInt(obj.startHour);
+    writer.writeInt(obj.startMinute);
+    writer.writeInt(obj.endHour);
+    writer.writeInt(obj.endMinute);
+    writer.writeString(obj.color);
+    writer.writeString(obj.userId);
+    writer.writeBool(obj.isDirty);
+    writer.writeBool(obj.isDeleted);
   }
 }

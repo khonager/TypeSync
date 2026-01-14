@@ -45,7 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeData();
+    // Defer initialization until after the first frame to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
   }
 
   Future<void> _initializeData() async {

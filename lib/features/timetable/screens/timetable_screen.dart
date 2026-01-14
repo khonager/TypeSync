@@ -32,7 +32,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeData();
+    // Defer initialization until after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
   }
 
   Future<void> _initializeData() async {
