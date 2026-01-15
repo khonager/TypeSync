@@ -60,8 +60,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     setState(() => _isVerifying = false);
 
-
-
     if (!mounted) return;
 
     if (success) {
@@ -92,8 +90,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final success = await storage.verifyPatreon(userId);
 
     setState(() => _isVerifying = false);
-
-
 
     if (!mounted) return;
 
@@ -213,11 +209,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     child: FilledButton(
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
-                      : () => _verifyLicense(
-                          context,
-                          storageService,
-                          authService,
-                        ),
+                          : () => _verifyLicense(
+                                context,
+                                storageService,
+                                authService,
+                              ),
                       child: _isVerifying
                           ? const SizedBox(
                               height: 20,
@@ -274,10 +270,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
                           : () => _verifyPatreon(
-                              context,
-                              storageService,
-                              authService,
-                            ),
+                                context,
+                                storageService,
+                                authService,
+                              ),
                       child: const Text('Verify Patreon Subscription'),
                     ),
                   ),
@@ -309,8 +305,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       ),
     );
   }
-
-
 }
 
 /// Individual plan card widget
