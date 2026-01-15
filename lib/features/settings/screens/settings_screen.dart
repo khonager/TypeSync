@@ -254,7 +254,9 @@ class SettingsScreen extends StatelessWidget {
                   if (success && dialogContext.mounted && context.mounted) {
                     Navigator.pop(dialogContext);
                     _showLocalFolderSync(context); // Refresh
-                  } else if (!success && dialogContext.mounted && context.mounted) {
+                  } else if (!success &&
+                      dialogContext.mounted &&
+                      context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(

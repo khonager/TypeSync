@@ -117,8 +117,6 @@ class FilePickerHelper {
     return _saveFileFallback(context, dialogTitle, fileName);
   }
 
-
-
   /// Fallback save file using text input dialog
   static Future<String?> _saveFileFallback(
     BuildContext context,
