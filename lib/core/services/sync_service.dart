@@ -65,7 +65,7 @@ class SyncService extends ChangeNotifier {
   /// Set whether sync is enabled
   void setSyncEnabled(bool enabled) {
     if (!enabled) {
-      _stopListening();
+      stopListening();
     }
     _syncEnabled = enabled;
     notifyListeners();
@@ -129,7 +129,7 @@ class SyncService extends ChangeNotifier {
 
   /// Start listening to real-time updates for a user
   void startListening(String userId) {
-    _stopListening();
+    stopListening();
     _currentUserId = userId;
 
     if (!_syncEnabled) {
@@ -181,7 +181,7 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Stop listening to real-time updates
-  void _stopListening() {
+  void stopListening() {
     _notesSubscription?.cancel();
     _foldersSubscription?.cancel();
   }
@@ -488,7 +488,7 @@ class SyncService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _stopListening();
+    stopListening();
     _connectivitySubscription?.cancel();
     _syncSubject.close();
     super.dispose();

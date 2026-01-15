@@ -10,6 +10,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/expandable_error.dart';
+import 'magic_link_dialog.dart';
 
 /// Login screen with email/password authentication
 class LoginScreen extends StatefulWidget {
@@ -48,11 +49,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleGuestMode() async {
     final authService = context.read<AuthService>();
-    await authService.signInAsGuest();
+    authService.enterGuestMode();
 
     if (mounted) {
       AppRouter.navigateAndClearStack(context, AppRouter.home);
     }
+  }
+
+  Future<void> _handleMagicLink() async {
+    showDialog(
+      context: context,
+      builder: (context) => MagicLinkDialog(),
+    );
   }
 
   @override
@@ -96,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign in to continue',
+                    'Sign in to sync your notes',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.grey,
                         ),
@@ -183,6 +191,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  // Magic Link Login Button
+                  OutlinedButton.icon(
+                    onPressed: authService.isLoading ? null : _handleMagicLink,
+                    icon: const Icon(Icons.auto_fix_high),
+                    label: const Text('Sign In with Magic Link'),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: Theme.of(context).primaryColor.withOpacity(0.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
                   // Register link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -200,17 +221,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  
+                  const Divider(),
+                  const SizedBox(height: 16),
 
                   // Guest mode button
-                  OutlinedButton(
+                  TextButton.icon(
                     onPressed: authService.isLoading ? null : _handleGuestMode,
-                    child: const Text('Continue as Guest'),
+                    icon: const Icon(Icons.person_outline),
+                    label: const Text('Continue as Guest'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey,
+                    ),
                   ),
-                  const SizedBox(height: 8),
                   Text(
-                    'Use the app locally without an account',
+                    'Use nicely offline',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.grey,
+                          fontSize: 10,
                         ),
                     textAlign: TextAlign.center,
                   ),

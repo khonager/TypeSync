@@ -139,7 +139,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
             Icon(
               Icons.schedule,
               size: 64,
-              color: Colors.grey.withOpacity(0.5),
+              color: Colors.grey.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -165,7 +165,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           child: ListTile(
             contentPadding: const EdgeInsets.all(16),
             leading: Container(
@@ -287,71 +287,95 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<Weekday>(
+                InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Day',
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
-                  value: _selectedWeekday,
-                  items: Weekday.values.map((day) {
-                    return DropdownMenuItem(
-                      value: day,
-                      child: Text(day.fullName),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _selectedWeekday = value;
-                      });
-                    }
-                  },
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<Weekday>(
+                      value: _selectedWeekday,
+                      isDense: true,
+                      items: Weekday.values.map((day) {
+                        return DropdownMenuItem(
+                          value: day,
+                          child: Text(day.fullName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedWeekday = value;
+                          });
+                        }
+                      },
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<int>(
+                      child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'Start Hour',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
-                        value: _startHour,
-                        items: List.generate(14, (i) => i + 7).map((hour) {
-                          return DropdownMenuItem(
-                            value: hour,
-                            child: Text('$hour:00'),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _startHour = value;
-                            });
-                          }
-                        },
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: _startHour,
+                            isDense: true,
+                            items: List.generate(14, (i) => i + 7).map((hour) {
+                              return DropdownMenuItem(
+                                value: hour,
+                                child: Text('$hour:00'),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _startHour = value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: DropdownButtonFormField<int>(
+                      child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'Start Minute',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
-                        value: _startMinute,
-                        items: [0, 15, 30, 45].map((minute) {
-                          return DropdownMenuItem(
-                            value: minute,
-                            child: Text(
-                              ':$minute${minute.toString().padLeft(2, '0')}',
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _startMinute = value;
-                            });
-                          }
-                        },
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: _startMinute,
+                            isDense: true,
+                            items: [0, 15, 30, 45].map((minute) {
+                              return DropdownMenuItem(
+                                value: minute,
+                                child: Text(
+                                  ':$minute${minute.toString().padLeft(2, '0')}',
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _startMinute = value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -360,48 +384,64 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<int>(
+                      child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'End Hour',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
-                        value: _endHour,
-                        items: List.generate(14, (i) => i + 7).map((hour) {
-                          return DropdownMenuItem(
-                            value: hour,
-                            child: Text('$hour:00'),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _endHour = value;
-                            });
-                          }
-                        },
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: _endHour,
+                            isDense: true,
+                            items: List.generate(14, (i) => i + 7).map((hour) {
+                              return DropdownMenuItem(
+                                value: hour,
+                                child: Text('$hour:00'),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _endHour = value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: DropdownButtonFormField<int>(
+                      child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'End Minute',
+                          border: OutlineInputBorder(),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
-                        value: _endMinute,
-                        items: [0, 15, 30, 45].map((minute) {
-                          return DropdownMenuItem(
-                            value: minute,
-                            child: Text(
-                              ':$minute${minute.toString().padLeft(2, '0')}',
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _endMinute = value;
-                            });
-                          }
-                        },
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: _endMinute,
+                            isDense: true,
+                            items: [0, 15, 30, 45].map((minute) {
+                              return DropdownMenuItem(
+                                value: minute,
+                                child: Text(
+                                  ':$minute${minute.toString().padLeft(2, '0')}',
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _endMinute = value;
+                                });
+                              }
+                            },
+                          ),
+                        ),
                       ),
                     ),
                   ],

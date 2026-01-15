@@ -86,19 +86,33 @@ class SettingsScreen extends StatelessWidget {
           // Account Section
           const _SectionHeader(title: 'Account'),
 
-          _SettingsTile(
-            icon: Icons.person_outline,
-            title: 'Profile',
-            subtitle: authService.currentUser?.email ?? 'Not signed in',
-            onTap: () => AppRouter.navigateTo(context, AppRouter.profile),
-          ),
-
-          _SettingsTile(
-            icon: Icons.cloud_outlined,
-            title: 'Storage & Subscription',
-            subtitle: 'Manage your cloud storage',
-            onTap: () => AppRouter.navigateTo(context, AppRouter.subscription),
-          ),
+          if (authService.isGuestMode)
+            _SettingsTile(
+              icon: Icons.login,
+              title: 'Sign In to Sync',
+              subtitle: 'Create an account to backup your notes',
+              onTap: () {
+                // Navigate to login screen
+                // We use push because we want to come back to settings if they cancel
+                // But actually, successful login will likely redirect to home.
+                AppRouter.navigateTo(context, AppRouter.login);
+              },
+            )
+          else ...[
+            _SettingsTile(
+              icon: Icons.person_outline,
+              title: 'Profile',
+              subtitle: authService.currentUser?.email ?? 'Not signed in',
+              onTap: () => AppRouter.navigateTo(context, AppRouter.profile),
+            ),
+            _SettingsTile(
+              icon: Icons.cloud_outlined,
+              title: 'Storage & Subscription',
+              subtitle: 'Manage your cloud storage',
+              onTap: () =>
+                  AppRouter.navigateTo(context, AppRouter.subscription),
+            ),
+          ],
 
           const Divider(),
 
@@ -198,7 +212,7 @@ class SettingsScreen extends StatelessWidget {
           spacing: 12,
           runSpacing: 12,
           children: ThemeService.accentColors.map((color) {
-            final isSelected = color.value == themeService.accentColor.value;
+            final isSelected = color == themeService.accentColor;
             return GestureDetector(
               onTap: () {
                 themeService.setAccentColor(color);

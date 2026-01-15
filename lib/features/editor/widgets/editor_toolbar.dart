@@ -158,12 +158,15 @@ class _EditorToolbarState extends State<EditorToolbar> {
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.3),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -471,7 +474,7 @@ class _ToolbarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: isActive
-          ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(

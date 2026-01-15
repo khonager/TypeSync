@@ -6,6 +6,7 @@ library;
 
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
@@ -70,6 +71,12 @@ class LocalFolderSyncService extends ChangeNotifier {
 
   /// Set the sync folder path
   Future<bool> setSyncFolder(String folderPath) async {
+    if (kIsWeb) {
+      _errorMessage = 'Local folder sync is not supported on Web';
+      notifyListeners();
+      return false;
+    }
+
     try {
       final dir = Directory(folderPath);
       if (!await dir.exists()) {

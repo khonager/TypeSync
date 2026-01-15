@@ -62,7 +62,7 @@ class AppTheme {
       // Color scheme for dark mode
       colorScheme: ColorScheme.dark(
         primary: accent,
-        secondary: accent.withOpacity(0.7),
+        secondary: accent.withValues(alpha: 0.7),
         surface: darkSurface,
         error: const Color(0xFFFF6B6B),
         onPrimary: darkBackground,
@@ -88,7 +88,7 @@ class AppTheme {
       ),
 
       // Card theme (for folder/file cards)
-      cardTheme: const CardTheme(
+      cardTheme: const CardThemeData(
         color: darkSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -175,7 +175,7 @@ class AppTheme {
       textTheme: _buildTextTheme(isDark: true),
 
       // Dialog theme
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         backgroundColor: darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -205,7 +205,7 @@ class AppTheme {
       // Color scheme for light mode
       colorScheme: ColorScheme.light(
         primary: accent,
-        secondary: accent.withOpacity(0.7),
+        secondary: accent.withValues(alpha: 0.7),
         surface: lightSurface,
         error: const Color(0xFFFF3B30),
         onPrimary: Colors.white,
@@ -228,7 +228,7 @@ class AppTheme {
         ),
       ),
 
-      cardTheme: const CardTheme(
+      cardTheme: const CardThemeData(
         color: lightSurface,
         elevation: 1,
         shape: RoundedRectangleBorder(
@@ -297,7 +297,7 @@ class AppTheme {
 
       textTheme: _buildTextTheme(isDark: false),
 
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         backgroundColor: lightSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),

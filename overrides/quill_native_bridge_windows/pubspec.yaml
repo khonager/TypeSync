@@ -1,0 +1,15 @@
+name: quill_native_bridge_windows
+version: 0.0.2
+description: Temporary override to fix Linux build
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+flutter:
+  plugin:
+    platforms:
+      windows:
+        pluginClass: QuillNativeBridgeWindows
+        dartPluginClass: QuillNativeBridgeWindows
+dependencies:
+  flutter:
+    sdk: flutter
+  quill_native_bridge_platform_interface: any

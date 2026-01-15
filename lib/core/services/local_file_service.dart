@@ -28,6 +28,12 @@ class LocalFileService {
   Future<void> initialize(String userId) async {
     if (_initialized) return;
 
+    // Local file storage is not supported on Web in the same way
+    if (kIsWeb) {
+      _initialized = true;
+      return;
+    }
+
     try {
       final appDir = await getApplicationDocumentsDirectory();
       _appFilesDirectory =

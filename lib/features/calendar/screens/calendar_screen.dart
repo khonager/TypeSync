@@ -86,7 +86,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
             },
             calendarStyle: CalendarStyle(
               todayDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               selectedDecoration: BoxDecoration(
@@ -94,7 +97,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 shape: BoxShape.circle,
               ),
               weekendTextStyle: TextStyle(
-                color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+                color:
+                    Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
               ),
             ),
             headerStyle: HeaderStyle(
@@ -147,7 +151,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Icon(
                   Icons.event_available,
                   size: 48,
-                  color: Colors.grey.withOpacity(0.5),
+                  color: Colors.grey.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -253,44 +257,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<EventType>(
+                  InputDecorator(
                     decoration: const InputDecoration(
                       labelText: 'Event Type',
+                      border: OutlineInputBorder(),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    value: selectedType,
-                    items: const [
-                      DropdownMenuItem(
-                        value: EventType.test,
-                        child: Text('Test'),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<EventType>(
+                        value: selectedType,
+                        isDense: true,
+                        items: const [
+                          DropdownMenuItem(
+                            value: EventType.test,
+                            child: Text('Test'),
+                          ),
+                          DropdownMenuItem(
+                            value: EventType.exam,
+                            child: Text('Exam'),
+                          ),
+                          DropdownMenuItem(
+                            value: EventType.assignment,
+                            child: Text('Assignment'),
+                          ),
+                          DropdownMenuItem(
+                            value: EventType.reminder,
+                            child: Text('Reminder'),
+                          ),
+                          DropdownMenuItem(
+                            value: EventType.classEvent,
+                            child: Text('Class Event'),
+                          ),
+                          DropdownMenuItem(
+                            value: EventType.other,
+                            child: Text('Other'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() {
+                              selectedType = value;
+                            });
+                          }
+                        },
                       ),
-                      DropdownMenuItem(
-                        value: EventType.exam,
-                        child: Text('Exam'),
-                      ),
-                      DropdownMenuItem(
-                        value: EventType.assignment,
-                        child: Text('Assignment'),
-                      ),
-                      DropdownMenuItem(
-                        value: EventType.reminder,
-                        child: Text('Reminder'),
-                      ),
-                      DropdownMenuItem(
-                        value: EventType.classEvent,
-                        child: Text('Class Event'),
-                      ),
-                      DropdownMenuItem(
-                        value: EventType.other,
-                        child: Text('Other'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setModalState(() {
-                          selectedType = value;
-                        });
-                      }
-                    },
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(

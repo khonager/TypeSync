@@ -129,7 +129,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
         builder: (context, candidateData, rejectedData) {
           return _buildFolderContent(
             _isDragOver
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
                 : bgColor,
             showBorder: _isDragOver,
           );
@@ -260,7 +260,7 @@ class FolderListItem extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(

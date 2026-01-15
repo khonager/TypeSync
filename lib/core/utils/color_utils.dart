@@ -268,7 +268,7 @@ class ColorOption {
   /// Get the color with opacity applied (for markers)
   Color get colorWithOpacity {
     if (opacity != null) {
-      return color.withOpacity(opacity!);
+      return color.withValues(alpha: opacity!);
     }
     return color;
   }
@@ -279,22 +279,20 @@ extension ColorExtensions on Color {
   /// Lighten a color by a factor (0.0 to 1.0)
   Color lighten(double factor) {
     assert(factor >= 0.0 && factor <= 1.0);
-    return Color.fromARGB(
-      alpha,
-      (red + (255 - red) * factor).round().clamp(0, 255),
-      (green + (255 - green) * factor).round().clamp(0, 255),
-      (blue + (255 - blue) * factor).round().clamp(0, 255),
+    return withValues(
+      red: (r + (1.0 - r) * factor).clamp(0.0, 1.0),
+      green: (g + (1.0 - g) * factor).clamp(0.0, 1.0),
+      blue: (b + (1.0 - b) * factor).clamp(0.0, 1.0),
     );
   }
 
   /// Darken a color by a factor (0.0 to 1.0)
   Color darken(double factor) {
     assert(factor >= 0.0 && factor <= 1.0);
-    return Color.fromARGB(
-      alpha,
-      (red * (1 - factor)).round().clamp(0, 255),
-      (green * (1 - factor)).round().clamp(0, 255),
-      (blue * (1 - factor)).round().clamp(0, 255),
+    return withValues(
+      red: (r * (1.0 - factor)).clamp(0.0, 1.0),
+      green: (g * (1.0 - factor)).clamp(0.0, 1.0),
+      blue: (b * (1.0 - factor)).clamp(0.0, 1.0),
     );
   }
 }

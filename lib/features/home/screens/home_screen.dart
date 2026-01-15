@@ -19,6 +19,7 @@ import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/migration_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
@@ -61,41 +62,100 @@ class _HomeScreenState extends State<HomeScreen> {
     final authService = context.read<AuthService>();
     final userId = authService.userId;
 
-    if (userId != null) {
-      // Initialize local file service
-      await LocalFileService.instance.initialize(userId);
+    // Use 'guest' ID if not logged in (Guest Mode)
+    final effectiveUserId = userId ?? 'guest';
 
-      if (!mounted) return;
+    // Initialize local file service
+    await LocalFileService.instance.initialize(effectiveUserId);
 
-      // Initialize providers with user ID (works for both logged-in and guest users)
-      await context.read<NotesProvider>().initialize(userId);
-      if (!mounted) return;
-      await context.read<FoldersProvider>().initialize(userId);
-      if (!mounted) return;
+    if (!mounted) return;
 
-      // Sync the sync service with auth preferences
-      final syncService = context.read<SyncService>();
-      syncService.setSyncEnabled(authService.syncEnabled);
+    // Initialize providers with user ID
+    // Note: Guests use 'guest' as ID, so their data is stored in 'notes_guest' box
+    await context.read<NotesProvider>().initialize(effectiveUserId);
+    if (!mounted) return;
+    await context.read<FoldersProvider>().initialize(effectiveUserId);
+    if (!mounted) return;
 
-      // Only start sync if user is logged in (not guest) and sync is enabled
-      if (authService.isLoggedIn && authService.syncEnabled) {
-        syncService.startListening(userId);
+    // Sync the sync service with auth preferences
+    final syncService = context.read<SyncService>();
+    syncService.setSyncEnabled(authService.syncEnabled);
 
-        // Connect providers to sync service
-        context.read<NotesProvider>().setSyncService(syncService);
-        context.read<FoldersProvider>().setSyncService(syncService);
+    // Only start sync if user is logged in (not guest) and sync is enabled
+    // We check actual userId (not effective) to determine if we can sync
+    if (userId != null && authService.isLoggedIn && authService.syncEnabled) {
+      syncService.startListening(userId);
 
-        // Set up sync callbacks
-        syncService.onNotesUpdated = (notes) {
-          context.read<NotesProvider>().handleCloudUpdate(notes);
-        };
-        syncService.onFoldersUpdated = (folders) {
-          context.read<FoldersProvider>().handleCloudUpdate(folders);
-        };
-      } else {
-        // For guests or when sync is disabled, don't set up sync service
-        context.read<NotesProvider>().setSyncService(null);
-        context.read<FoldersProvider>().setSyncService(null);
+      // Connect providers to sync service
+      context.read<NotesProvider>().setSyncService(syncService);
+      context.read<FoldersProvider>().setSyncService(syncService);
+
+      // Set up sync callbacks
+      syncService.onNotesUpdated = (notes) {
+        context.read<NotesProvider>().handleCloudUpdate(notes);
+      };
+      syncService.onFoldersUpdated = (folders) {
+        context.read<FoldersProvider>().handleCloudUpdate(folders);
+      };
+      
+      // Check for data migration (Guest/Local -> User)
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _checkDataMigration(userId);
+        });
+      }
+    } else {
+      // For guests or when sync is disabled, don't set up sync service
+      context.read<NotesProvider>().setSyncService(null);
+      context.read<FoldersProvider>().setSyncService(null);
+    }
+  }
+
+  Future<void> _checkDataMigration(String userId) async {
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final migrationService = MigrationService();
+
+    if (migrationService.needsMigration(
+      currentUserId: userId,
+      notesProvider: notesProvider,
+    )) {
+      // Ask user to migrate
+      final shouldMigrate = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Sync Local Notes?'),
+          content: const Text(
+            'We found notes created locally. Do you want to add them to your account account?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false), // No, keep local (actually separate)
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true), // Yes, migrate
+              child: const Text('Merge'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldMigrate == true && mounted) {
+        final count = await migrationService.migrateData(
+          newUserId: userId,
+          notesProvider: notesProvider,
+          foldersProvider: foldersProvider,
+          keepLocal: false,
+        );
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Migrated $count items to your account')),
+        );
+        
+        // Trigger sync immediately
+        context.read<SyncService>().triggerSync();
       }
     }
   }
@@ -283,7 +343,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // Drag overlay
           if (_isDragging)
             Container(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.all(32),
@@ -326,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(
             Icons.folder_open_outlined,
             size: 64,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(

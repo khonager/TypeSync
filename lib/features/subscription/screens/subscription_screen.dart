@@ -164,7 +164,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: storageService.usagePercent,
-                      backgroundColor: Colors.grey.withOpacity(0.3),
+                      backgroundColor: Colors.grey.withValues(alpha: 0.3),
                       minHeight: 8,
                     ),
                   ),

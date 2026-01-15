@@ -34,10 +34,10 @@ class _ExpandableErrorState extends State<ExpandableError> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.1),
+        color: Colors.red.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.red.withOpacity(0.3),
+          color: Colors.red.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -71,13 +71,13 @@ class _ExpandableErrorState extends State<ExpandableError> {
                     // Expand indicator
                     Icon(
                       _isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.red.withOpacity(0.7),
+                      color: Colors.red.withValues(alpha: 0.7),
                     ),
                     if (widget.onDismiss != null)
                       IconButton(
                         icon: const Icon(Icons.close, size: 16),
                         onPressed: widget.onDismiss,
-                        color: Colors.red.withOpacity(0.7),
+                        color: Colors.red.withValues(alpha: 0.7),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
@@ -91,7 +91,7 @@ class _ExpandableErrorState extends State<ExpandableError> {
                   Text(
                     widget.details ?? _getDetailedMessage(),
                     style: TextStyle(
-                      color: Colors.red.withOpacity(0.8),
+                      color: Colors.red.withValues(alpha: 0.8),
                       fontSize: 12,
                     ),
                   ),
@@ -99,7 +99,7 @@ class _ExpandableErrorState extends State<ExpandableError> {
                   Text(
                     'Tap to collapse',
                     style: TextStyle(
-                      color: Colors.red.withOpacity(0.5),
+                      color: Colors.red.withValues(alpha: 0.5),
                       fontSize: 10,
                       fontStyle: FontStyle.italic,
                     ),
