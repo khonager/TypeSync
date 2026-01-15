@@ -80,6 +80,8 @@ dev_dependencies:
 
 dependency_overrides:
   intl: any
+  quill_native_bridge_windows:
+    path: overrides/quill_native_bridge_windows
 
 flutter:
   uses-material-design: true
