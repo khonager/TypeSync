@@ -290,7 +290,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Day',
                   ),
-                  initialValue: _selectedWeekday,
+                  value: _selectedWeekday,
                   items: Weekday.values.map((day) {
                     return DropdownMenuItem(
                       value: day,
@@ -335,7 +335,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Minute',
                         ),
-                        initialValue: _startMinute,
+                        value: _startMinute,
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,
@@ -385,7 +385,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Minute',
                         ),
-                        initialValue: _endMinute,
+                        value: _endMinute,
                         items: [0, 15, 30, 45].map((minute) {
                           return DropdownMenuItem(
                             value: minute,

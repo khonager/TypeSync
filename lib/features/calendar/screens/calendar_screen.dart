@@ -257,7 +257,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Event Type',
                     ),
-                    initialValue: selectedType,
+                    value: selectedType,
                     items: const [
                       DropdownMenuItem(
                         value: EventType.test,
