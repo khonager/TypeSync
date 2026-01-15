@@ -70,6 +70,12 @@ class LocalFolderSyncService extends ChangeNotifier {
 
   /// Set the sync folder path
   Future<bool> setSyncFolder(String folderPath) async {
+    if (kIsWeb) {
+      _errorMessage = 'Local folder sync is not supported on Web';
+      notifyListeners();
+      return false;
+    }
+
     try {
       final dir = Directory(folderPath);
       if (!await dir.exists()) {
