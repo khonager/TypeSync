@@ -198,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: const Text('Sign In with Magic Link'),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(
-                        color: Theme.of(context).primaryColor.withOpacity(0.5),
+                        color: Theme.of(context).primaryColor.withValues(alpha: 0.5),
                       ),
                     ),
                   ),

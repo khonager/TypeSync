@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import '../providers/notes_provider.dart';
 import '../providers/folders_provider.dart';
 

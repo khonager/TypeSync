@@ -9,7 +9,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/user.dart';
 
@@ -49,8 +48,6 @@ class AuthService extends ChangeNotifier {
   String? _errorMessage;
   bool _hasError = false;
 
-  // UUID generator for guest IDs
-  final Uuid _uuid = const Uuid();
 
   // ===========================================
   // GETTERS
@@ -292,7 +289,7 @@ class AuthService extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? email = prefs.getString('emailLinkUserEmail');
+      final String? email = prefs.getString('emailLinkUserEmail');
 
       // If email is not saved locally, ask user for it (UI should handle this flow)
       if (email == null) {

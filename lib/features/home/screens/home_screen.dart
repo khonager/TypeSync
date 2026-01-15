@@ -131,8 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(
-                  context, false), // No, keep local (actually separate)
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('No'),
             ),
             ElevatedButton(
@@ -150,6 +149,8 @@ class _HomeScreenState extends State<HomeScreen> {
           foldersProvider: foldersProvider,
           keepLocal: false,
         );
+
+        if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Migrated $count items to your account')),
