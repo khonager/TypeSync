@@ -59,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleMagicLink() async {
     showDialog(
       context: context,
-      builder: (context) => _MagicLinkDialog(),
+      builder: (context) => MagicLinkDialog(),
     );
   }
 

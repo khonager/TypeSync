@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
-class _MagicLinkDialog extends StatefulWidget {
+class MagicLinkDialog extends StatefulWidget {
   @override
-  State<_MagicLinkDialog> createState() => _MagicLinkDialogState();
+  State<MagicLinkDialog> createState() => _MagicLinkDialogState();
 }
 
-class _MagicLinkDialogState extends State<_MagicLinkDialog> {
+class _MagicLinkDialogState extends State<MagicLinkDialog> {
   final _emailController = TextEditingController();
   bool _sent = false;
 
