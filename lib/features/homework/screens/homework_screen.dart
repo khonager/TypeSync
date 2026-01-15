@@ -217,36 +217,43 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<HomeworkPriority>(
+                        child: InputDecorator(
                           decoration: const InputDecoration(
                             labelText: 'Priority',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
-                          value: selectedPriority,
-                          items: const [
-                            DropdownMenuItem(
-                              value: HomeworkPriority.low,
-                              child: Text('Low'),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<HomeworkPriority>(
+                              value: selectedPriority,
+                              isDense: true,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: HomeworkPriority.low,
+                                  child: Text('Low'),
+                                ),
+                                DropdownMenuItem(
+                                  value: HomeworkPriority.medium,
+                                  child: Text('Medium'),
+                                ),
+                                DropdownMenuItem(
+                                  value: HomeworkPriority.high,
+                                  child: Text('High'),
+                                ),
+                                DropdownMenuItem(
+                                  value: HomeworkPriority.urgent,
+                                  child: Text('Urgent'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    selectedPriority = value;
+                                  });
+                                }
+                              },
                             ),
-                            DropdownMenuItem(
-                              value: HomeworkPriority.medium,
-                              child: Text('Medium'),
-                            ),
-                            DropdownMenuItem(
-                              value: HomeworkPriority.high,
-                              child: Text('High'),
-                            ),
-                            DropdownMenuItem(
-                              value: HomeworkPriority.urgent,
-                              child: Text('Urgent'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            if (value != null) {
-                              setModalState(() {
-                                selectedPriority = value;
-                              });
-                            }
-                          },
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
