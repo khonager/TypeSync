@@ -578,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen> {
         noteType = 'text';
       }
 
-      }
+
 
       if (!mounted) return;
       final notesProvider = context.read<NotesProvider>();

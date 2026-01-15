@@ -394,9 +394,11 @@ class SettingsScreen extends StatelessWidget {
                   foldersProvider: foldersProvider,
                   userId: userId,
                 );
-                Navigator.pop(dialogContext);
-                currentIndex++;
-                showNextConflict();
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                  currentIndex++;
+                  showNextConflict();
+                }
               },
               child: const Text('Use Cloud'),
             ),
@@ -409,9 +411,11 @@ class SettingsScreen extends StatelessWidget {
                   foldersProvider: foldersProvider,
                   userId: userId,
                 );
-                Navigator.pop(dialogContext);
-                currentIndex++;
-                showNextConflict();
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                  currentIndex++;
+                  showNextConflict();
+                }
               },
               child: const Text('Keep Both'),
             ),
@@ -424,9 +428,11 @@ class SettingsScreen extends StatelessWidget {
                   foldersProvider: foldersProvider,
                   userId: userId,
                 );
-                Navigator.pop(dialogContext);
-                currentIndex++;
-                showNextConflict();
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                  currentIndex++;
+                  showNextConflict();
+                }
               },
               child: const Text('Skip'),
             ),

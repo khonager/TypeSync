@@ -229,6 +229,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     );
 
     if (confirmed == true) {
+      if (!mounted) return;
       await context.read<TimetableProvider>().deleteEntry(entryId);
     }
   }
