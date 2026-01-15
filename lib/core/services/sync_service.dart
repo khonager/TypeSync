@@ -48,16 +48,16 @@ class SyncService extends ChangeNotifier {
   bool _isOnline = true;
 
   // Stream subscriptions for real-time updates
-  StreamSubscription? _notesSubscription;
-  StreamSubscription? _foldersSubscription;
-  StreamSubscription? _connectivitySubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Debounce subject for batching sync operations
   final _syncSubject = BehaviorSubject<void>();
 
   // Callbacks for data updates
-  Function(List<Note>)? onNotesUpdated;
-  Function(List<Folder>)? onFoldersUpdated;
+  void Function(List<Note>)? onNotesUpdated;
+  void Function(List<Folder>)? onFoldersUpdated;
 
   // Sync enabled flag (set by AuthService)
   bool _syncEnabled = true;
@@ -148,7 +148,7 @@ class SyncService extends ChangeNotifier {
           _lastSyncTime = DateTime.now();
           notifyListeners();
         },
-        onError: (error) {
+        onError: (Object error) {
           _setError('Failed to sync notes: $error');
         },
       );
@@ -165,7 +165,7 @@ class SyncService extends ChangeNotifier {
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
         },
-        onError: (error) {
+        onError: (Object error) {
           _setError('Failed to sync folders: $error');
         },
       );

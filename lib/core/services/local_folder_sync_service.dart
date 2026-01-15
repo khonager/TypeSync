@@ -51,8 +51,8 @@ class LocalFolderSyncService extends ChangeNotifier {
   bool _isInitialized = false;
 
   // Callbacks for conflict resolution UI
-  Function(List<ConflictInfo>)? onConflictsDetected;
-  Function(ConflictInfo, ConflictResolution)? onConflictResolved;
+  void Function(List<ConflictInfo>)? onConflictsDetected;
+  void Function(ConflictInfo, ConflictResolution)? onConflictResolved;
 
   // ===========================================
   // GETTERS
@@ -413,7 +413,7 @@ class LocalFolderSyncService extends ChangeNotifier {
         } else {
           // Convert Quill Delta to plain text
           try {
-            final jsonData = jsonDecode(note.content) as List<dynamic>;
+            jsonDecode(note.content) as List<dynamic>;
             // For now, just use plain text - would need Document import
             content = note.content;
           } catch (e) {

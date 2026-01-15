@@ -88,7 +88,7 @@ class AppTheme {
       ),
 
       // Card theme (for folder/file cards)
-      cardTheme: const CardThemeData(
+      cardTheme: const CardTheme(
         color: darkSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -175,7 +175,7 @@ class AppTheme {
       textTheme: _buildTextTheme(isDark: true),
 
       // Dialog theme
-      dialogTheme: const DialogThemeData(
+      dialogTheme: const DialogTheme(
         backgroundColor: darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -228,7 +228,7 @@ class AppTheme {
         ),
       ),
 
-      cardTheme: const CardThemeData(
+      cardTheme: const CardTheme(
         color: lightSurface,
         elevation: 1,
         shape: RoundedRectangleBorder(
@@ -297,7 +297,7 @@ class AppTheme {
 
       textTheme: _buildTextTheme(isDark: false),
 
-      dialogTheme: const DialogThemeData(
+      dialogTheme: const DialogTheme(
         backgroundColor: lightSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),

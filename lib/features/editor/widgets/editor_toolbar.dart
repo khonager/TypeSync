@@ -295,7 +295,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     );
   }
 
-  bool _hasFormat(Attribute attribute) {
+  bool _hasFormat(Attribute<dynamic> attribute) {
     try {
       final format = widget.controller.getSelectionStyle();
       return format.containsKey(attribute.key);
@@ -330,7 +330,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final colorAttr = currentStyle.attributes[Attribute.color.key];
     final currentColor = colorAttr?.value as String?;
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Text Color'),
@@ -369,7 +369,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final bgAttr = currentStyle.attributes[Attribute.background.key];
     final currentBgColor = bgAttr?.value as String?;
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Marker Color'),

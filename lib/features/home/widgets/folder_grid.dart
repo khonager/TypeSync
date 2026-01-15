@@ -11,10 +11,10 @@ import '../../../core/theme/app_theme.dart';
 /// Grid view for folders
 class FolderGrid extends StatelessWidget {
   final List<Folder> folders;
-  final Function(String) onFolderTap;
-  final Function(String) onFolderLongPress;
-  final Function(String noteId, String folderId)? onNoteDropped;
-  final Function(String folderId, String? newParentId)? onFolderDropped;
+  final void Function(String) onFolderTap;
+  final void Function(String) onFolderLongPress;
+  final void Function(String noteId, String folderId)? onNoteDropped;
+  final void Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGrid({
     required this.folders,
@@ -53,8 +53,8 @@ class FolderGridItem extends StatefulWidget {
   final Folder folder;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
-  final Function(String noteId, String folderId)? onNoteDropped;
-  final Function(String folderId, String? newParentId)? onFolderDropped;
+  final void Function(String noteId, String folderId)? onNoteDropped;
+  final void Function(String folderId, String? newParentId)? onFolderDropped;
 
   const FolderGridItem({
     required this.folder,
@@ -198,8 +198,8 @@ class _FolderGridItemState extends State<FolderGridItem> {
 /// List view for folders
 class FolderList extends StatelessWidget {
   final List<Folder> folders;
-  final Function(String) onFolderTap;
-  final Function(String) onFolderLongPress;
+  final void Function(String) onFolderTap;
+  final void Function(String) onFolderLongPress;
 
   const FolderList({
     required this.folders,

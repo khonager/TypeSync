@@ -13,8 +13,8 @@ import '../../../core/utils/color_utils.dart';
 /// Grid view for files/notes
 class FileGrid extends StatelessWidget {
   final List<Note> notes;
-  final Function(String) onNoteTap;
-  final Function(String) onNoteLongPress;
+  final void Function(String) onNoteTap;
+  final void Function(String) onNoteLongPress;
 
   const FileGrid({
     required this.notes,
@@ -221,8 +221,8 @@ class FileGridItem extends StatelessWidget {
 /// List view for files/notes
 class FileList extends StatelessWidget {
   final List<Note> notes;
-  final Function(String) onNoteTap;
-  final Function(String) onNoteLongPress;
+  final void Function(String) onNoteTap;
+  final void Function(String) onNoteLongPress;
 
   const FileList({
     required this.notes,

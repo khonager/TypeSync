@@ -313,7 +313,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Hour',
                         ),
-                        initialValue: _startHour,
+                        value: _startHour,
                         items: List.generate(14, (i) => i + 7).map((hour) {
                           return DropdownMenuItem(
                             value: hour,
@@ -363,7 +363,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Hour',
                         ),
-                        initialValue: _endHour,
+                        value: _endHour,
                         items: List.generate(14, (i) => i + 7).map((hour) {
                           return DropdownMenuItem(
                             value: hour,
