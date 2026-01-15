@@ -1,0 +1,14 @@
+╔═══════════════════════════════════════════════════════════╗
+║           TypeSync Development Environment                ║
+╠═══════════════════════════════════════════════════════════╣
+║  Flutter: 3.38.5                                       ║
+║  Android SDK: /nix/store/h5hwxal6nka5dpcy8xf76wsiwna5ddkr-android-sdk-env/share/android-sdk                               ║
+╠═══════════════════════════════════════════════════════════╣
+║  Commands:                                                ║
+║    flutter pub get         - Install dependencies        ║
+║    flutter run -d linux    - Run on Linux                ║
+║    flutter run -d android  - Run on Android              ║
+║    flutter build apk       - Build Android APK           ║
+║    flutter build linux     - Build Linux app             ║
+║    firebase deploy         - Deploy Firebase services    ║
+╚═══════════════════════════════════════════════════════════╝
