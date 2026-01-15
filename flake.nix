@@ -205,6 +205,7 @@
           
           # Add any additional build configuration here
           targetFlutterPlatform = "linux";
+          pubspecLock = pkgs.lib.importJSON ./pubspec.lock.json;
         };
       }
     );
