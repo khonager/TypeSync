@@ -454,7 +454,7 @@ class SyncService extends ChangeNotifier {
         startListening(_currentUserId!);
       } else {
         debugPrint(
-            'Cannot restart listeners: userId unknown. Just triggering push sync.');
+            'Cannot restart listeners: userId unknown. Just triggering push sync.',);
         triggerSync();
       }
 
