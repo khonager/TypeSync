@@ -37,7 +37,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _verifyLicense(
-    BuildContext context,
     StorageService storage,
     AuthService auth,
   ) async {
@@ -78,7 +77,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Future<void> _verifyPatreon(
-    BuildContext context,
     StorageService storage,
     AuthService auth,
   ) async {
@@ -210,7 +208,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
                           : () => _verifyLicense(
-                                context,
                                 storageService,
                                 authService,
                               ),
@@ -270,7 +267,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
                           : () => _verifyPatreon(
-                                context,
                                 storageService,
                                 authService,
                               ),
