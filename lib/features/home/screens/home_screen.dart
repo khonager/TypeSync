@@ -69,7 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Initialize providers with user ID (works for both logged-in and guest users)
       await context.read<NotesProvider>().initialize(userId);
+      if (!mounted) return;
       await context.read<FoldersProvider>().initialize(userId);
+      if (!mounted) return;
 
       // Sync the sync service with auth preferences
       final syncService = context.read<SyncService>();
@@ -937,6 +939,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           return;
         }
+
+        if (!mounted) return;
 
         // Use file picker to choose export location (with Linux fallback)
         final savePath = await FilePickerHelper.saveFile(

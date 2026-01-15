@@ -379,9 +379,11 @@ class SettingsScreen extends StatelessWidget {
                   foldersProvider: foldersProvider,
                   userId: userId,
                 );
-                Navigator.pop(dialogContext);
-                currentIndex++;
-                showNextConflict();
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                  currentIndex++;
+                  showNextConflict();
+                }
               },
               child: const Text('Use Local'),
             ),
