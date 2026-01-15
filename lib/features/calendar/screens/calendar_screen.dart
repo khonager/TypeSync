@@ -86,7 +86,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
             },
             calendarStyle: CalendarStyle(
               todayDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               selectedDecoration: BoxDecoration(
@@ -94,7 +97,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 shape: BoxShape.circle,
               ),
               weekendTextStyle: TextStyle(
-                color: Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
+                color:
+                    Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
               ),
             ),
             headerStyle: HeaderStyle(
@@ -257,7 +261,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Event Type',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<EventType>(

@@ -291,7 +291,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Day',
                     border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<Weekday>(
@@ -321,7 +322,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Hour',
                           border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
@@ -350,7 +352,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Start Minute',
                           border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
@@ -385,7 +388,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Hour',
                           border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
@@ -414,7 +418,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         decoration: const InputDecoration(
                           labelText: 'End Minute',
                           border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(

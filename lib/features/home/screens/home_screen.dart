@@ -283,7 +283,8 @@ class _HomeScreenState extends State<HomeScreen> {
           // Drag overlay
           if (_isDragging)
             Container(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.all(32),
