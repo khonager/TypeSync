@@ -93,7 +93,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     setState(() => _isVerifying = false);
 
-    setState(() => _isVerifying = false);
+
 
     if (!mounted) return;
 
