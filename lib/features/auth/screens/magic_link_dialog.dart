@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// Magic Link Login Dialog
+import '../../../core/services/auth_service.dart';
 class _MagicLinkDialog extends StatefulWidget {
   @override
   State<_MagicLinkDialog> createState() => _MagicLinkDialogState();
