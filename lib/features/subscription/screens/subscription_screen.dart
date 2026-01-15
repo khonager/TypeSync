@@ -52,7 +52,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (userId == null) return;
 
     setState(() => _isVerifying = true);
-    
+
     final success = await storage.verifyLicenseKey(
       userId,
       _licenseController.text.trim(),
@@ -176,14 +176,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
 
           const SizedBox(height: 24),
-          
+
           // Unlock Section
           Text(
             'Unlock Premium',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 16),
-          
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -224,8 +224,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   Center(
                     child: TextButton(
                       onPressed: () {
-                         const url = 'https://khonager.gumroad.com/l/ixufbj';
-                         launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                        const url = 'https://khonager.gumroad.com/l/ixufbj';
+                        launchUrl(Uri.parse(url),
+                            mode: LaunchMode.externalApplication);
                       },
                       child: const Text('Buy License on Gumroad'),
                     ),
@@ -234,9 +235,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -272,7 +273,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
 
           Text(
@@ -288,7 +289,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             return _PlanCard(
               plan: plan,
               isCurrentPlan: isCurrentPlan,
-              onSelect: null, // Disable selection, buying is done via Key/Patreon
+              onSelect:
+                  null, // Disable selection, buying is done via Key/Patreon
             );
           }),
         ],
@@ -302,8 +304,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     AuthService authService,
     StorageService storageService,
   ) {
-      // Deprecated in favor of Gumroad/Patreon direct actions
-      // Keeping empty or removing
+    // Deprecated in favor of Gumroad/Patreon direct actions
+    // Keeping empty or removing
   }
 }
 

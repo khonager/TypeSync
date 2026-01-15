@@ -442,30 +442,31 @@ class SyncService extends ChangeNotifier {
   /// Force a refresh of the sync connection
   void refresh() {
     _setStatus(SyncStatus.syncing);
-    
+
     // Trigger immediate sync attempt
     if (_syncEnabled && _isOnline) {
-       // Reset error status
-       _errorMessage = null;
+      // Reset error status
+      _errorMessage = null;
 
-       // If we assume the issue might be a broken stream, let's restart listeners if we can
-       if (_currentUserId != null) {
-         debugPrint('Restarting sync listeners for user: $_currentUserId');
-         startListening(_currentUserId!);
-       } else {
-         debugPrint('Cannot restart listeners: userId unknown. Just triggering push sync.');
-         triggerSync();
-       }
-       
-       notifyListeners();
+      // If we assume the issue might be a broken stream, let's restart listeners if we can
+      if (_currentUserId != null) {
+        debugPrint('Restarting sync listeners for user: $_currentUserId');
+        startListening(_currentUserId!);
+      } else {
+        debugPrint(
+            'Cannot restart listeners: userId unknown. Just triggering push sync.');
+        triggerSync();
+      }
+
+      notifyListeners();
     } else {
-       // If offline, just show offline status
-       if (!_isOnline) {
-         _status = SyncStatus.offline;
-       } else {
-         _status = SyncStatus.idle;
-       }
-       notifyListeners();
+      // If offline, just show offline status
+      if (!_isOnline) {
+        _status = SyncStatus.offline;
+      } else {
+        _status = SyncStatus.idle;
+      }
+      notifyListeners();
     }
   }
 

@@ -57,7 +57,8 @@ class SyncStatusIndicator extends StatelessWidget {
     }
 
     return Tooltip(
-      message: '$tooltip${syncService.status == SyncStatus.error ? '\nTap to retry' : '\nTap to refresh'}',
+      message:
+          '$tooltip${syncService.status == SyncStatus.error ? '\nTap to retry' : '\nTap to refresh'}',
       child: InkWell(
         onTap: () {
           syncService.refresh();
