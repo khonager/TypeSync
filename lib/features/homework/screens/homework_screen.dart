@@ -84,7 +84,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
             Icon(
               Icons.check_circle_outline,
               size: 64,
-              color: Colors.grey.withOpacity(0.5),
+              color: Colors.grey.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             const Text(

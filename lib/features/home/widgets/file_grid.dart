@@ -301,8 +301,8 @@ class FileListItem extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     color: note.backgroundColor != null
-                        ? Colors.white.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.1),
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(icon, color: iconColor),
@@ -340,7 +340,7 @@ class FileListItem extends StatelessWidget {
                       Text(
                         dateFormat.format(note.updatedAt),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: textColor.withOpacity(0.7),
+                              color: textColor.withValues(alpha: 0.7),
                             ),
                       ),
                     ],

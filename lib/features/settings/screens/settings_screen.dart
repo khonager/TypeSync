@@ -198,7 +198,7 @@ class SettingsScreen extends StatelessWidget {
           spacing: 12,
           runSpacing: 12,
           children: ThemeService.accentColors.map((color) {
-            final isSelected = color.value == themeService.accentColor.value;
+            final isSelected = color == themeService.accentColor;
             return GestureDetector(
               onTap: () {
                 themeService.setAccentColor(color);

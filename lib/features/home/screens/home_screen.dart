@@ -283,7 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Drag overlay
           if (_isDragging)
             Container(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.all(32),
@@ -326,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(
             Icons.folder_open_outlined,
             size: 64,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(

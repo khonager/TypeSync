@@ -62,7 +62,7 @@ class AppTheme {
       // Color scheme for dark mode
       colorScheme: ColorScheme.dark(
         primary: accent,
-        secondary: accent.withOpacity(0.7),
+        secondary: accent.withValues(alpha: 0.7),
         surface: darkSurface,
         error: const Color(0xFFFF6B6B),
         onPrimary: darkBackground,
@@ -205,7 +205,7 @@ class AppTheme {
       // Color scheme for light mode
       colorScheme: ColorScheme.light(
         primary: accent,
-        secondary: accent.withOpacity(0.7),
+        secondary: accent.withValues(alpha: 0.7),
         surface: lightSurface,
         error: const Color(0xFFFF3B30),
         onPrimary: Colors.white,

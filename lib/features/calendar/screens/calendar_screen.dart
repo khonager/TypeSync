@@ -86,7 +86,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             },
             calendarStyle: CalendarStyle(
               todayDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               selectedDecoration: BoxDecoration(
@@ -94,7 +94,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 shape: BoxShape.circle,
               ),
               weekendTextStyle: TextStyle(
-                color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
               ),
             ),
             headerStyle: HeaderStyle(
@@ -147,7 +147,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Icon(
                   Icons.event_available,
                   size: 48,
-                  color: Colors.grey.withOpacity(0.5),
+                  color: Colors.grey.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 8),
                 const Text(
