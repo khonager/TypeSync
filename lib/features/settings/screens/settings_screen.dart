@@ -251,10 +251,10 @@ class SettingsScreen extends StatelessWidget {
                 onPressed: () async {
                   final success =
                       await syncService.chooseSyncFolder(context: context);
-                  if (success && dialogContext.mounted) {
+                  if (success && dialogContext.mounted && context.mounted) {
                     Navigator.pop(dialogContext);
                     _showLocalFolderSync(context); // Refresh
-                  } else if (!success && dialogContext.mounted) {
+                  } else if (!success && dialogContext.mounted && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -297,6 +297,7 @@ class SettingsScreen extends StatelessWidget {
                           );
 
                           if (dialogContext.mounted &&
+                              context.mounted &&
                               syncService.conflicts.isEmpty) {
                             Navigator.pop(dialogContext);
                             ScaffoldMessenger.of(context).showSnackBar(

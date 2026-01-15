@@ -435,7 +435,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           endMinute: _endMinute,
                         );
 
-                    if (mounted) {
+                    if (context.mounted) {
                       Navigator.pop(context);
                     }
                   },

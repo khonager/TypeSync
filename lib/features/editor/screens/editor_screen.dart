@@ -401,6 +401,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final fileName = file.path.split('/').last;
 
         // Copy PDF to app storage
+        if (!mounted) return;
         final authService = context.read<AuthService>();
         final userId = authService.userId;
         if (userId == null) return;
@@ -413,6 +414,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
         if (storedPath != null && _note != null) {
           // Update note to be a PDF type
+          if (!mounted) return;
           final notesProvider = context.read<NotesProvider>();
           final updatedNote = _note!.copyWith(
             type: NoteType.pdf,
@@ -514,6 +516,7 @@ class _EditorScreenState extends State<EditorScreen> {
     await context.read<NotesProvider>().setBackgroundColor(_note!.id, color);
 
     // Refresh note from provider to ensure we have the latest state
+    if (!mounted) return;
     final updatedNote = context.read<NotesProvider>().getNoteById(_note!.id);
     if (updatedNote != null) {
       setState(() {
@@ -563,6 +566,7 @@ class _EditorScreenState extends State<EditorScreen> {
         }
 
         // Use file picker to choose export location (with Linux fallback)
+        if (!mounted) return;
         final savePath = await FilePickerHelper.saveFile(
           context: context,
           dialogTitle: 'Export PDF',
@@ -746,6 +750,7 @@ class _EditorScreenState extends State<EditorScreen> {
           }
         } else if (fileExtension == 'pdf') {
           // PDF files - import as PDF note
+          if (!mounted) continue;
           final authService = context.read<AuthService>();
           final userId = authService.userId;
           if (userId == null) return;
@@ -758,6 +763,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
           if (storedPath != null) {
             // Create a new PDF note
+            if (!mounted) continue;
             final notesProvider = context.read<NotesProvider>();
             final pdfNote = await notesProvider.createNote(
               userId: userId,

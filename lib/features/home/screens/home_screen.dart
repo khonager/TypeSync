@@ -65,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Initialize local file service
       await LocalFileService.instance.initialize(userId);
 
+      if (!mounted) return;
+
       // Initialize providers with user ID (works for both logged-in and guest users)
       await context.read<NotesProvider>().initialize(userId);
       await context.read<FoldersProvider>().initialize(userId);
@@ -467,6 +469,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (name != null && name.isNotEmpty) {
+      // FIX: Check mounted before using context
+      if (!mounted) return;
       final authService = context.read<AuthService>();
       final userId = authService.userId;
       if (userId == null) return;
@@ -574,6 +578,9 @@ class _HomeScreenState extends State<HomeScreen> {
         noteType = 'text';
       }
 
+      }
+
+      if (!mounted) return;
       final notesProvider = context.read<NotesProvider>();
       final note = await notesProvider.createNote(
         userId: userId,
@@ -675,6 +682,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   initialValue: folder?.name,
                 );
                 if (newName != null && newName.isNotEmpty) {
+                  if (!mounted) return;
                   await this
                       .context
                       .read<FoldersProvider>()

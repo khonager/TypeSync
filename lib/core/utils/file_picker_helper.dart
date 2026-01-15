@@ -34,6 +34,8 @@ class FilePickerHelper {
       debugPrint('File picker failed: $e, using custom browser');
     }
 
+    if (!context.mounted) return null;
+
     // Use custom file browser as fallback
     return FileBrowserDialog.show(
       context: context,
@@ -61,6 +63,8 @@ class FilePickerHelper {
       // If file_picker fails (e.g., zenity not found on Linux), use custom browser
       debugPrint('Directory picker failed: $e, using custom browser');
     }
+
+    if (!context.mounted) return null;
 
     // Use custom file browser as fallback
     return FileBrowserDialog.show(
@@ -94,6 +98,8 @@ class FilePickerHelper {
       debugPrint('Save file dialog failed: $e, using custom browser');
     }
 
+    if (!context.mounted) return null;
+
     // Use custom file browser to select directory, then append filename
     final directory = await FileBrowserDialog.show(
       context: context,
@@ -105,173 +111,13 @@ class FilePickerHelper {
       return '$directory/$fileName';
     }
 
+    if (!context.mounted) return null;
+
     // Final fallback: text input
     return _saveFileFallback(context, dialogTitle, fileName);
   }
 
-  /// Fallback file picker using text input dialog
-  static Future<String?> _pickFileFallback(
-    BuildContext context,
-    String? dialogTitle,
-    List<String>? allowedExtensions,
-  ) async {
-    final controller = TextEditingController();
 
-    // Get default directory (home or documents)
-    String? defaultPath;
-    try {
-      if (Platform.isLinux) {
-        defaultPath = Platform.environment['HOME'] ?? '/home';
-      }
-    } catch (e) {
-      defaultPath = null;
-    }
-
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogTitle ?? 'Select File'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Enter the full path to the file:',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: defaultPath != null
-                    ? '$defaultPath/example.pdf'
-                    : '/path/to/file',
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (value) {
-                if (value.isNotEmpty) {
-                  final file = File(value);
-                  if (file.existsSync()) {
-                    Navigator.pop(dialogContext, value);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('File does not exist')),
-                    );
-                  }
-                }
-              },
-            ),
-            if (allowedExtensions != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Allowed extensions: ${allowedExtensions.join(', ')}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final path = controller.text.trim();
-              if (path.isNotEmpty) {
-                final file = File(path);
-                if (file.existsSync()) {
-                  Navigator.pop(dialogContext, path);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('File does not exist')),
-                  );
-                }
-              }
-            },
-            child: const Text('Select'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Fallback directory picker using text input dialog
-  static Future<String?> _pickDirectoryFallback(
-    BuildContext context,
-    String? dialogTitle,
-  ) async {
-    final controller = TextEditingController();
-
-    // Get default directory (home)
-    String? defaultPath;
-    try {
-      if (Platform.isLinux) {
-        defaultPath = Platform.environment['HOME'] ?? '/home';
-      }
-    } catch (e) {
-      defaultPath = null;
-    }
-
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogTitle ?? 'Select Directory'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Enter the full path to the directory:',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: defaultPath ?? '/path/to/directory',
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (value) {
-                if (value.isNotEmpty) {
-                  final dir = Directory(value);
-                  if (dir.existsSync()) {
-                    Navigator.pop(dialogContext, value);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Directory does not exist')),
-                    );
-                  }
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final path = controller.text.trim();
-              if (path.isNotEmpty) {
-                final dir = Directory(path);
-                if (dir.existsSync()) {
-                  Navigator.pop(dialogContext, path);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Directory does not exist')),
-                  );
-                }
-              }
-            },
-            child: const Text('Select'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Fallback save file using text input dialog
   static Future<String?> _saveFileFallback(

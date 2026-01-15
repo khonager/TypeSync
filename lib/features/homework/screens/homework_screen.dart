@@ -328,7 +328,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                             priority: selectedPriority,
                           );
 
-                      if (mounted) {
+                      if (context.mounted) {
                         Navigator.pop(context);
                       }
                     },

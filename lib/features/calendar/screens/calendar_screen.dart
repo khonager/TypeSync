@@ -432,7 +432,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 : subjectController.text,
                           );
 
-                      if (mounted) {
+                      if (context.mounted) {
                         Navigator.pop(context);
                       }
                     },
