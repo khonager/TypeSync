@@ -173,7 +173,8 @@ class ThemeService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
 
       await prefs.setInt(_themeModeKey, _themeMode.index);
-      await prefs.setInt(_accentColorKey, _accentColor.toARGB32());
+      // ignore: deprecated_member_use
+      await prefs.setInt(_accentColorKey, _accentColor.value);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
     } catch (e) {
       debugPrint('Failed to save theme preferences: $e');

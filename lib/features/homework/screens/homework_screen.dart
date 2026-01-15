@@ -222,7 +222,9 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                             labelText: 'Priority',
                             border: OutlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<HomeworkPriority>(
