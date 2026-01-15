@@ -124,9 +124,13 @@ class SyncService extends ChangeNotifier {
   // PUBLIC METHODS
   // ===========================================
 
+  // Current user ID for sync
+  String? _currentUserId;
+
   /// Start listening to real-time updates for a user
   void startListening(String userId) {
     _stopListening();
+    _currentUserId = userId;
 
     if (!_syncEnabled) {
       debugPrint('Sync is disabled, not starting listeners');
@@ -437,21 +441,22 @@ class SyncService extends ChangeNotifier {
 
   /// Force a refresh of the sync connection
   void refresh() {
-    // If not listening yet and we have a user ID (which we don't track here directly,
-    // but the listener should be active if enabled), we want to restart.
-    // simpler: just trigger sync if online, or if in error state, try to reset.
-    
     _setStatus(SyncStatus.syncing);
     
     // Trigger immediate sync attempt
     if (_syncEnabled && _isOnline) {
-       // If we have an active listener, this will just trigger the debounce sync.
-       // But if we want to RECONNECT listeners, we'd need the userId.
-       // For now, let's just trigger a sync check and reset error status.
+       // Reset error status
        _errorMessage = null;
-       triggerSync();
+
+       // If we assume the issue might be a broken stream, let's restart listeners if we can
+       if (_currentUserId != null) {
+         debugPrint('Restarting sync listeners for user: $_currentUserId');
+         startListening(_currentUserId!);
+       } else {
+         debugPrint('Cannot restart listeners: userId unknown. Just triggering push sync.');
+         triggerSync();
+       }
        
-       // Also notify listeners to ensure UI updates to loading state immediately
        notifyListeners();
     } else {
        // If offline, just show offline status
