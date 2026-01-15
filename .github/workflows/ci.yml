@@ -45,17 +45,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       
-      - name: Format code
-        run: dart format lib test
+      - name: Check code formatting
+        run: dart format --set-exit-if-changed lib test
       
       - name: Auto-fix issues
         run: dart fix --apply
         continue-on-error: true
       
-      - name: Check for formatting changes
+      - name: Check for auto-fix changes
         run: |
           if [ -n "$(git status --porcelain lib test)" ]; then
-            echo "::error::Code formatting or lint fixes were applied. Please commit these changes:"
+            echo "::error::Auto-fix applied changes. Please commit these changes:"
             git diff lib test
             exit 1
           fi
@@ -70,6 +70,8 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           file: coverage/lcov.info
+          fail_ci_if_error: false
+        continue-on-error: true
 
   # ============================================
   # BUILD ANDROID
@@ -113,12 +115,14 @@ jobs:
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
       
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-aab
           path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
 
   # ============================================
   # BUILD LINUX
@@ -158,13 +162,14 @@ jobs:
       - name: Create tarball
         run: |
           cd build/linux/x64/release/bundle
-          tar -czvf ../../../../../typesync-linux-x64.tar.gz .
+          tar -czf ../../../../../typesync-linux-x64.tar.gz .
       
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-bundle
           path: typesync-linux-x64.tar.gz
+          if-no-files-found: error
 
   # ============================================
   # RELEASE - STABLE BRANCH
@@ -186,7 +191,14 @@ jobs:
       - name: Get version from pubspec
         id: version
         run: |
-          VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}' | cut -d'+' -f1)
+          if ! VERSION=$(grep 'version:' pubspec.yaml | head -1 | awk '{print $2}' | cut -d'+' -f1); then
+            echo "::error::Failed to extract version from pubspec.yaml"
+            exit 1
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Version is empty"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       
       - name: Determine next version
@@ -202,6 +214,12 @@ jobs:
           MINOR=${VERSION_PARTS[1]:-0}
           PATCH=${VERSION_PARTS[2]:-0}
           
+          # Validate version components are numeric
+          if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $LATEST_VERSION"
+            exit 1
+          fi
+          
           # Increment patch version
           PATCH=$((PATCH + 1))
           
@@ -209,26 +227,44 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
       
+      - name: Create release directory
+        run: mkdir -p release
+      
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
           name: android-apk
           path: release/
+          if-no-files-found: error
       
       - name: Download Android AAB
         uses: actions/download-artifact@v4
         with:
           name: android-aab
           path: release/
+          if-no-files-found: error
       
       - name: Download Linux bundle
         uses: actions/download-artifact@v4
         with:
           name: linux-bundle
           path: release/
+          if-no-files-found: error
       
       - name: Rename artifacts
         run: |
+          if [ ! -f release/app-release.apk ]; then
+            echo "::error::Android APK not found"
+            exit 1
+          fi
+          if [ ! -f release/app-release.aab ]; then
+            echo "::error::Android AAB not found"
+            exit 1
+          fi
+          if [ ! -f release/typesync-linux-x64.tar.gz ]; then
+            echo "::error::Linux bundle not found"
+            exit 1
+          fi
           mv release/app-release.apk release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
           mv release/app-release.aab release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
           mv release/typesync-linux-x64.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
@@ -278,20 +314,33 @@ jobs:
         id: commit
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       
+      - name: Create release directory
+        run: mkdir -p release
+      
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
           name: android-apk
           path: release/
+          if-no-files-found: error
       
       - name: Download Linux bundle
         uses: actions/download-artifact@v4
         with:
           name: linux-bundle
           path: release/
+          if-no-files-found: error
       
       - name: Rename artifacts
         run: |
+          if [ ! -f release/app-release.apk ]; then
+            echo "::error::Android APK not found"
+            exit 1
+          fi
+          if [ ! -f release/typesync-linux-x64.tar.gz ]; then
+            echo "::error::Linux bundle not found"
+            exit 1
+          fi
           mv release/app-release.apk release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
           mv release/typesync-linux-x64.tar.gz release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
       

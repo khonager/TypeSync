@@ -30,17 +30,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       
-      - name: Format code
-        run: dart format lib test
+      - name: Check code formatting
+        run: dart format --set-exit-if-changed lib test
       
       - name: Auto-fix issues
         run: dart fix --apply
         continue-on-error: true
       
-      - name: Check for formatting/fix changes
+      - name: Check for auto-fix changes
         run: |
           if [ -n "$(git status --porcelain lib test)" ]; then
-            echo "::error::Code formatting or lint fixes were applied. Please commit these changes:"
+            echo "::error::Auto-fix applied changes. Please commit these changes:"
             git diff lib test
             exit 1
           fi
