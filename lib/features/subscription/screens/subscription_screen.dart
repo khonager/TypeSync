@@ -60,20 +60,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     setState(() => _isVerifying = false);
 
-    if (mounted) {
-      if (success) {
-        _licenseController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('License verified! Premium unlocked.')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(storage.errorMessage ?? 'Verification failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    setState(() => _isVerifying = false);
+
+    if (!mounted) return;
+
+    if (success) {
+      _licenseController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('License verified! Premium unlocked.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(storage.errorMessage ?? 'Verification failed'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -91,19 +93,21 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     setState(() => _isVerifying = false);
 
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Patreon verified! Premium unlocked.')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(storage.errorMessage ?? 'Verification failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    setState(() => _isVerifying = false);
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Patreon verified! Premium unlocked.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(storage.errorMessage ?? 'Verification failed'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -209,8 +213,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     child: FilledButton(
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
-                          : () => _verifyLicense(
-                              context, storageService, authService),
+                      : () => _verifyLicense(
+                          context,
+                          storageService,
+                          authService,
+                        ),
                       child: _isVerifying
                           ? const SizedBox(
                               height: 20,
@@ -225,8 +232,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     child: TextButton(
                       onPressed: () {
                         const url = 'https://khonager.gumroad.com/l/ixufbj';
-                        launchUrl(Uri.parse(url),
-                            mode: LaunchMode.externalApplication);
+                        launchUrl(
+                          Uri.parse(url),
+                          mode: LaunchMode.externalApplication,
+                        );
                       },
                       child: const Text('Buy License on Gumroad'),
                     ),
@@ -265,7 +274,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       onPressed: _isVerifying || storageService.isLoading
                           ? null
                           : () => _verifyPatreon(
-                              context, storageService, authService),
+                              context,
+                              storageService,
+                              authService,
+                            ),
                       child: const Text('Verify Patreon Subscription'),
                     ),
                   ),
@@ -298,15 +310,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
-  void _showUpgradeDialog(
-    BuildContext context,
-    SubscriptionInfo plan,
-    AuthService authService,
-    StorageService storageService,
-  ) {
-    // Deprecated in favor of Gumroad/Patreon direct actions
-    // Keeping empty or removing
-  }
+
 }
 
 /// Individual plan card widget
