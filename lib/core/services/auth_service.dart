@@ -254,7 +254,7 @@ class AuthService extends ChangeNotifier {
       final acs = firebase.ActionCodeSettings(
         // URL you want to redirect back to. The domain (www.example.com) for this
         // URL must be whitelisted in the Firebase Console.
-        url: 'https://typesync.web.app/login?email=$email', // TODO: Configure dynamic link
+        url: 'https://typesynced.web.app/login?email=$email', // TODO: Configure dynamic link
         handleCodeInApp: true,
         iOSBundleId: 'com.khonager.typesync',
         androidPackageName: 'com.khonager.typesync',
