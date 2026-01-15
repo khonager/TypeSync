@@ -287,24 +287,31 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<Weekday>(
+                InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Day',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
-                  value: _selectedWeekday,
-                  items: Weekday.values.map((day) {
-                    return DropdownMenuItem(
-                      value: day,
-                      child: Text(day.fullName),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _selectedWeekday = value;
-                      });
-                    }
-                  },
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<Weekday>(
+                      value: _selectedWeekday,
+                      isDense: true,
+                      items: Weekday.values.map((day) {
+                        return DropdownMenuItem(
+                          value: day,
+                          child: Text(day.fullName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedWeekday = value;
+                          });
+                        }
+                      },
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
