@@ -435,6 +435,35 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Force a refresh of the sync connection
+  void refresh() {
+    // If not listening yet and we have a user ID (which we don't track here directly,
+    // but the listener should be active if enabled), we want to restart.
+    // simpler: just trigger sync if online, or if in error state, try to reset.
+    
+    _setStatus(SyncStatus.syncing);
+    
+    // Trigger immediate sync attempt
+    if (_syncEnabled && _isOnline) {
+       // If we have an active listener, this will just trigger the debounce sync.
+       // But if we want to RECONNECT listeners, we'd need the userId.
+       // For now, let's just trigger a sync check and reset error status.
+       _errorMessage = null;
+       triggerSync();
+       
+       // Also notify listeners to ensure UI updates to loading state immediately
+       notifyListeners();
+    } else {
+       // If offline, just show offline status
+       if (!_isOnline) {
+         _status = SyncStatus.offline;
+       } else {
+         _status = SyncStatus.idle;
+       }
+       notifyListeners();
+    }
+  }
+
   void _setStatus(SyncStatus newStatus) {
     _status = newStatus;
     if (newStatus != SyncStatus.error) {
@@ -447,14 +476,7 @@ class SyncService extends ChangeNotifier {
     _status = SyncStatus.error;
     _errorMessage = message;
     notifyListeners();
-
-    // Auto-recover after error
-    Future.delayed(const Duration(seconds: 5), () {
-      if (_status == SyncStatus.error) {
-        _status = _isOnline ? SyncStatus.idle : SyncStatus.offline;
-        notifyListeners();
-      }
-    });
+    // Auto-recovery removed to allow user to see error and retry manually
   }
 
   @override

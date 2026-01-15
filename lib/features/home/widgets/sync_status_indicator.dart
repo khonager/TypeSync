@@ -57,12 +57,18 @@ class SyncStatusIndicator extends StatelessWidget {
     }
 
     return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: syncService.status == SyncStatus.syncing
-            ? _SyncingAnimation(color: color)
-            : Icon(icon, color: color, size: 20),
+      message: '$tooltip${syncService.status == SyncStatus.error ? '\nTap to retry' : '\nTap to refresh'}',
+      child: InkWell(
+        onTap: () {
+          syncService.refresh();
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: syncService.status == SyncStatus.syncing
+              ? _SyncingAnimation(color: color)
+              : Icon(icon, color: color, size: 20),
+        ),
       ),
     );
   }
