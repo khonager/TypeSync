@@ -488,7 +488,7 @@ class SyncService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _stopListening();
+    stopListening();
     _connectivitySubscription?.cancel();
     _syncSubject.close();
     super.dispose();
