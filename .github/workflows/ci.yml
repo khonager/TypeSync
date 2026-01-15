@@ -1,7 +1,7 @@
 # TypeSync CI/CD Pipeline
 # 
 # This workflow handles:
-# - Code analysis and testing on all PRs
+# - Code analysis, formatting, and testing on all PRs and pushes
 # - Building releases on merge to stable/unstable branches
 # - Automatic versioning and tagging
 
@@ -11,6 +11,7 @@ on:
   push:
     branches: [main, stable, unstable]
   pull_request:
+    types: [opened, synchronize, reopened]
     branches: [main, stable, unstable]
 
 env:
@@ -48,24 +49,26 @@ jobs:
       - name: Check code formatting
         run: dart format --set-exit-if-changed lib test
       
-      - name: Auto-fix issues
-        run: dart fix --apply
-        continue-on-error: true
-      
-      - name: Check for auto-fix changes
-        run: |
-          if [ -n "$(git status --porcelain lib test)" ]; then
-            echo "::error::Auto-fix applied changes. Please commit these changes:"
-            git diff lib test
-            exit 1
-          fi
-      
       - name: Analyze code
         run: flutter analyze --fatal-infos
       
       - name: Run tests
         run: flutter test --coverage
       
+      - name: Check for large files
+        run: |
+          # Fail if any file is larger than 1MB (except assets, git files, build artifacts)
+          # We purposefully exclude assets from this check as they might legitimately be large
+          find . -type f -size +1M \
+            ! -path "./build/*" \
+            ! -path "./.git/*" \
+            ! -path "./assets/*" \
+            ! -path "./release/*" \
+            | head -1 | grep . && {
+            echo "::error::Found files larger than 1MB. Please reduce file sizes or move to assets."
+            exit 1
+          } || true
+
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
@@ -80,6 +83,7 @@ jobs:
     name: Build Android
     runs-on: ubuntu-latest
     needs: analyze
+    # Only run builds on pushes to specific branches, not on PRs unless tagged/labeled (simplified to pushes here)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/stable' || github.ref == 'refs/heads/unstable')
     
     steps:
@@ -367,4 +371,3 @@ jobs:
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
