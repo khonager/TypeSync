@@ -17,8 +17,93 @@ import '../../../core/services/auth_service.dart';
 /// - Basic: 5GB for €1.99/month
 /// - Standard: 50GB for €4.99/month
 /// - Premium: 200GB for €9.99/month
-class SubscriptionScreen extends StatelessWidget {
+class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
+
+  @override
+  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
+}
+
+class _SubscriptionScreenState extends State<SubscriptionScreen> {
+  final _licenseController = TextEditingController();
+  bool _isVerifying = false;
+
+  @override
+  void dispose() {
+    _licenseController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verifyLicense(
+    BuildContext context,
+    StorageService storage,
+    AuthService auth,
+  ) async {
+    if (_licenseController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a license key')),
+      );
+      return;
+    }
+
+    final userId = auth.userId;
+    if (userId == null) return;
+
+    setState(() => _isVerifying = true);
+    
+    final success = await storage.verifyLicenseKey(
+      userId,
+      _licenseController.text.trim(),
+    );
+
+    setState(() => _isVerifying = false);
+
+    if (mounted) {
+      if (success) {
+        _licenseController.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('License verified! Premium unlocked.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(storage.errorMessage ?? 'Verification failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _verifyPatreon(
+    BuildContext context,
+    StorageService storage,
+    AuthService auth,
+  ) async {
+    final userId = auth.userId;
+    if (userId == null) return;
+
+    setState(() => _isVerifying = true);
+
+    final success = await storage.verifyPatreon(userId);
+
+    setState(() => _isVerifying = false);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Patreon verified! Premium unlocked.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(storage.errorMessage ?? 'Verification failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,49 +174,121 @@ class SubscriptionScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
+          
+          // Unlock Section
+          Text(
+            'Unlock Premium',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 16),
+          
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Have a Gumroad License?',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _licenseController,
+                    decoration: const InputDecoration(
+                      labelText: 'License Key',
+                      hintText: 'XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _isVerifying || storageService.isLoading
+                          ? null
+                          : () => _verifyLicense(
+                              context, storageService, authService),
+                      child: _isVerifying
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Redeem License'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                         // TODO: Launch Gumroad URL
+                         // launchUrl(Uri.parse('https://gumroad.com/...'));
+                      },
+                      child: const Text('Buy License on Gumroad'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.favorite, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Patreon Supporter?',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Link your Patreon account to unlock premium features if you are an active supporter.',
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _isVerifying || storageService.isLoading
+                          ? null
+                          : () => _verifyPatreon(
+                              context, storageService, authService),
+                      child: const Text('Verify Patreon Subscription'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 24),
 
           Text(
-            'Available Plans',
+            'Plan Details',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 16),
 
-          // Plan cards
+          // Plan cards (Read-only / info)
           ...StorageService.subscriptionPlans.map((plan) {
             final isCurrentPlan = plan.tier == storageService.currentTier;
 
             return _PlanCard(
               plan: plan,
               isCurrentPlan: isCurrentPlan,
-              onSelect: isCurrentPlan
-                  ? null
-                  : () {
-                      _showUpgradeDialog(
-                        context,
-                        plan,
-                        authService,
-                        storageService,
-                      );
-                    },
+              onSelect: null, // Disable selection, buying is done via Key/Patreon
             );
           }),
-
-          const SizedBox(height: 24),
-
-          // Restore purchases
-          Center(
-            child: TextButton(
-              onPressed: () {
-                // TODO: Implement restore purchases
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Checking for previous purchases...'),
-                  ),
-                );
-              },
-              child: const Text('Restore Purchases'),
-            ),
-          ),
         ],
       ),
     );
@@ -143,104 +300,8 @@ class SubscriptionScreen extends StatelessWidget {
     AuthService authService,
     StorageService storageService,
   ) {
-    // Check if user is in guest mode
-    if (authService.isGuestMode) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Login Required'),
-          content: const Text(
-            'Please log in to upgrade your subscription. Guest mode only supports local storage.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context); // Close subscription screen
-                // Navigate to login screen
-                // TODO: Add navigation to login screen
-              },
-              child: const Text('Go to Login'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Upgrade to ${plan.name}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              plan.priceFormatted,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 16),
-            Text('${plan.storage} cloud storage'),
-            const SizedBox(height: 8),
-            ...plan.features.map(
-              (f) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check, size: 16, color: Colors.green),
-                    const SizedBox(width: 8),
-                    Text(f),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-
-              // TODO: Integrate with payment provider
-              // Only show success message after payment is confirmed
-              // For now, this is a placeholder - actual payment integration should
-              // only show success after payment confirmation
-              final userId = authService.userId;
-              if (userId != null) {
-                final success =
-                    await storageService.upgradeSubscription(userId, plan.tier);
-
-                if (context.mounted && success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Upgraded to ${plan.name}!'),
-                    ),
-                  );
-                } else if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Failed to upgrade subscription. Please try again.',
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-            child: Text('Upgrade for ${plan.priceFormatted}'),
-          ),
-        ],
-      ),
-    );
+      // Deprecated in favor of Gumroad/Patreon direct actions
+      // Keeping empty or removing
   }
 }
 

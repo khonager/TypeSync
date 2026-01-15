@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../models/user.dart';
 
@@ -312,7 +313,85 @@ class StorageService extends ChangeNotifier {
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
+  // lazy Firebase Functions instance
+  FirebaseFunctions? _functions;
+  
+  FirebaseFunctions get _cloudFunctions {
+    try {
+      _functions ??= FirebaseFunctions.instance;
+      return _functions!;
+    } catch (e) {
+      debugPrint('Firebase Functions not available: $e');
+      rethrow;
+    }
+  }
+
+  /// Verify Gumroad License Key
+  Future<bool> verifyLicenseKey(String userId, String key) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final result = await _cloudFunctions
+          .httpsCallable('verify_gumroad_license')
+          .call<Map<String, dynamic>>({
+        'license_key': key,
+      });
+
+      final data = result.data;
+      if (data['success'] == true) {
+        // Reload storage info to get updated tier
+        await loadStorageInfo(userId);
+        _errorMessage = null;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = data['message'] ?? 'Invalid license key';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Verification failed: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Verify Patreon Subscription
+  Future<bool> verifyPatreon(String userId) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final result = await _cloudFunctions
+          .httpsCallable('check_patreon_subscription')
+          .call<Map<String, dynamic>>();
+
+      final data = result.data;
+      if (data['success'] == true) {
+        await loadStorageInfo(userId);
+        _errorMessage = null;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = data['message'] ?? 'Verification failed';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Patreon check failed: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
 }
+
 
 /// Information about a subscription plan
 class SubscriptionInfo {
