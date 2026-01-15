@@ -48,7 +48,6 @@ class AuthService extends ChangeNotifier {
   String? _errorMessage;
   bool _hasError = false;
 
-
   // ===========================================
   // GETTERS
   // ===========================================

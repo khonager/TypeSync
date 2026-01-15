@@ -42,8 +42,11 @@ class _MagicLinkDialogState extends State<MagicLinkDialog> {
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.mark_email_read,
-                    size: 48, color: Colors.green,),
+                const Icon(
+                  Icons.mark_email_read,
+                  size: 48,
+                  color: Colors.green,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'We sent a magic link to your email. Click it to log in instantly.',
