@@ -6,5 +6,5 @@ class QuillNativeBridgeWindows extends QuillNativeBridgePlatform {
   static void registerWith(dynamic registrar) {}
   
   @override
-  Future<bool> isSupported() async => false;
+  Future<bool> isSupported(QuillNativeBridgeFeature feature) async => false;
 }

@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
       syncService.onFoldersUpdated = (folders) {
         context.read<FoldersProvider>().handleCloudUpdate(folders);
       };
-      
+
       // Check for data migration (Guest/Local -> User)
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -131,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false), // No, keep local (actually separate)
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('No'),
             ),
             ElevatedButton(
@@ -149,11 +149,13 @@ class _HomeScreenState extends State<HomeScreen> {
           foldersProvider: foldersProvider,
           keepLocal: false,
         );
-        
+
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Migrated $count items to your account')),
         );
-        
+
         // Trigger sync immediately
         context.read<SyncService>().triggerSync();
       }

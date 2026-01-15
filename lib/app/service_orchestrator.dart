@@ -9,8 +9,8 @@ class ServiceOrchestrator extends StatefulWidget {
   final Widget child;
 
   const ServiceOrchestrator({
-    super.key,
     required this.child,
+    super.key,
   });
 
   @override
@@ -37,11 +37,15 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
 
       if (userId != null) {
         // User logged in
-        debugPrint('ServiceOrchestrator: User logged in ($userId), initializing services');
-        
+        debugPrint(
+          'ServiceOrchestrator: User logged in ($userId), initializing services',
+        );
+
         // Initialize LocalFileService
         LocalFileService.instance.initialize(userId).catchError((e) {
-          debugPrint('ServiceOrchestrator: Failed to initialize LocalFileService: $e');
+          debugPrint(
+            'ServiceOrchestrator: Failed to initialize LocalFileService: $e',
+          );
         });
 
         // Start SyncService listening
@@ -49,7 +53,7 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
       } else {
         // User logged out
         debugPrint('ServiceOrchestrator: User logged out, stopping services');
-        
+
         // Stop SyncService listening
         syncService.stopListening();
       }

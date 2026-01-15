@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
+
 class MagicLinkDialog extends StatefulWidget {
+  const MagicLinkDialog({super.key});
+
   @override
   State<MagicLinkDialog> createState() => _MagicLinkDialogState();
 }
@@ -21,7 +24,8 @@ class _MagicLinkDialogState extends State<MagicLinkDialog> {
     if (_emailController.text.isEmpty) return;
 
     final authService = context.read<AuthService>();
-    final success = await authService.sendSignInLinkToEmail(_emailController.text);
+    final success =
+        await authService.sendSignInLinkToEmail(_emailController.text);
 
     if (success) {
       setState(() => _sent = true);
@@ -38,7 +42,11 @@ class _MagicLinkDialogState extends State<MagicLinkDialog> {
           ? Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.mark_email_read, size: 48, color: Colors.green),
+                const Icon(
+                  Icons.mark_email_read,
+                  size: 48,
+                  color: Colors.green,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'We sent a magic link to your email. Click it to log in instantly.',
