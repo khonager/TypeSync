@@ -35,7 +35,7 @@ dependencies:
   cross_file: ^0.3.4
   
   # Markdown & Text Editing
-  flutter_quill: ^11.5.0
+  flutter_quill: ^10.8.0
   markdown: ^7.2.2
   flutter_markdown: ^0.7.3
   
@@ -77,6 +77,9 @@ dev_dependencies:
   mockito: ^5.4.4
   integration_test:
     sdk: flutter
+
+dependency_overrides:
+  intl: any
 
 flutter:
   uses-material-design: true
