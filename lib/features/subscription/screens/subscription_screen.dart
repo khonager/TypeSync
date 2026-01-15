@@ -10,6 +10,8 @@ import '../../../core/models/user.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/auth_service.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 /// Subscription management screen
 ///
 /// Shows available storage plans:
@@ -222,8 +224,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   Center(
                     child: TextButton(
                       onPressed: () {
-                         // TODO: Launch Gumroad URL
-                         // launchUrl(Uri.parse('https://gumroad.com/...'));
+                         const url = 'https://khonager.gumroad.com/l/ixufbj';
+                         launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
                       },
                       child: const Text('Buy License on Gumroad'),
                     ),

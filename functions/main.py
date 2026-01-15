@@ -43,9 +43,8 @@ def verify_gumroad_license(req: https_fn.CallableRequest) -> dict:
     # For verification, knowing the Product Permalink is usually enough if checking against a specific product.
     # Ideally, store PRODUCT_ID in environment variables.
     
-    # We'll use a hardcoded product permalink or ID if not provided, 
-    # but strictly this should be your specific product ID.
-    target_product_permalink = product_permalink or "typesync-pro"
+    # We'll use the specific product permalink provided.
+    target_product_permalink = product_permalink or "ixufbj"
 
     try:
         response = requests.post(
