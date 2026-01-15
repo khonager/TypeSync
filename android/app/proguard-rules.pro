@@ -15,5 +15,7 @@
 # Keep Hive models
 -keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
 
-
-
+# Fix for R8 missing class errors related to Play Core
+# We are not using deferred components/split install, so we can ignore these warnings.
+-dontwarn com.google.android.play.core.**
+-dontwarn io.flutter.embedding.android.FlutterPlayStoreSplitApplication
