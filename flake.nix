@@ -232,6 +232,19 @@
           # Add any additional build configuration here
           targetFlutterPlatform = "linux";
 
+          postInstall = ''
+                        mkdir -p $out/share/applications
+                        cat > $out/share/applications/typesync.desktop <<EOF
+            [Desktop Entry]
+            Name=TypeSync
+            Exec=typesync
+            Icon=typesync
+            Type=Application
+            Categories=Utility;TextEditor;Office;
+            Comment=A cross-platform note-taking app with cloud sync
+            EOF
+          '';
+
           meta = {
             mainProgram = "typesync";
           };
