@@ -227,6 +227,8 @@
           version = "0.1.0";
           src = ./.;
 
+          pubspecLock = ./pubspec.lock;
+
           # Add any additional build configuration here
           targetFlutterPlatform = "linux";
 
