@@ -4,7 +4,7 @@ import 'package:quill_native_bridge_platform_interface/quill_native_bridge_platf
 
 class QuillNativeBridgeWindows extends QuillNativeBridgePlatform {
   static void registerWith(dynamic registrar) {}
-  
+
   @override
   Future<bool> isSupported(QuillNativeBridgeFeature feature) async => false;
 }
