@@ -227,7 +227,7 @@
           version = "0.1.0";
           src = ./.;
 
-          pubspecLock = ./pubspec.lock;
+          pubspecLock = pkgs.lib.importJSON ./pubspec.lock.json;
 
           # Add any additional build configuration here
           targetFlutterPlatform = "linux";
