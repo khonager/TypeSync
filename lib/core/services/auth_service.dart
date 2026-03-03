@@ -7,6 +7,8 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:firedart/firedart.dart' as fd;
+import 'package:firedart/auth/user_gateway.dart' as fd;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -22,6 +24,9 @@ class AuthService extends ChangeNotifier {
   firebase.FirebaseAuth? _auth;
   FirebaseFirestore? _firestore;
 
+  // Firedart instances for Linux fallback
+  fd.FirebaseAuth? _fdAuth;
+
   // Lazy getters for Firebase instances
   firebase.FirebaseAuth get _firebaseAuth {
     _auth ??= firebase.FirebaseAuth.instance;
@@ -31,6 +36,11 @@ class AuthService extends ChangeNotifier {
   FirebaseFirestore get _firebaseFirestore {
     _firestore ??= FirebaseFirestore.instance;
     return _firestore!;
+  }
+
+  fd.FirebaseAuth get _firedartAuth {
+    _fdAuth ??= fd.FirebaseAuth.instance;
+    return _fdAuth!;
   }
 
   // Current user data
@@ -82,6 +92,9 @@ class AuthService extends ChangeNotifier {
     if (_isGuestMode && _currentUser != null) {
       return _currentUser!.id;
     }
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      return _firedartAuth.isSignedIn ? _firedartAuth.userId : null;
+    }
     return _auth?.currentUser?.uid;
   }
 
@@ -98,6 +111,16 @@ class AuthService extends ChangeNotifier {
     try {
       if (Firebase.apps.isNotEmpty) {
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        // Listen to Firedart auth changes
+        _firedartAuth.signInState.listen((signedIn) async {
+          if (signedIn) {
+            final fdUser = await _firedartAuth.getUser();
+            _onFiredartAuthChanged(fdUser);
+          } else {
+            _onFiredartAuthChanged(null);
+          }
+        });
       }
     } catch (e) {
       // Firebase not initialized (e.g., on Linux without proper config)
@@ -149,6 +172,26 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
+      // Handle Linux fallback
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        await _firedartAuth.signIn(email.trim(), password);
+        final fdUser = await _firedartAuth.getUser();
+
+        _currentUser = User(
+          id: fdUser.id,
+          email: fdUser.email ?? email.trim(),
+          displayName: fdUser.displayName,
+          createdAt: DateTime.now(), // Fallback
+          lastSignIn: DateTime.now(),
+          emailVerified: true, // Firedart doesn't expose this easily
+        );
+
+        _isGuestMode = false;
+        _setLoading(false);
+        notifyListeners();
+        return true;
+      }
+
       // Attempt Firebase sign in
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -168,7 +211,10 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
       return false;
     } catch (e) {
-      _setError('An unexpected error occurred. Please try again.');
+      // Firedart errors might come here
+      _setError(e.toString().contains('INVALID_PASSWORD')
+          ? 'Incorrect password.'
+          : 'An unexpected error occurred. Please try again.');
       _setLoading(false);
       return false;
     }
@@ -276,7 +322,11 @@ class AuthService extends ChangeNotifier {
 
     try {
       if (!_isGuestMode) {
-        await _firebaseAuth.signOut();
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+          _firedartAuth.signOut();
+        } else {
+          await _firebaseAuth.signOut();
+        }
       }
       _currentUser = null;
       _isGuestMode = false;
@@ -447,6 +497,22 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading user data: $e');
     }
+  }
+
+  Future<void> _onFiredartAuthChanged(fd.User? fdUser) async {
+    if (fdUser != null && !_isGuestMode) {
+      _currentUser = User(
+        id: fdUser.id,
+        email: fdUser.email ?? '',
+        displayName: fdUser.displayName,
+        createdAt: DateTime.now(),
+        lastSignIn: DateTime.now(),
+        emailVerified: true,
+      );
+    } else if (fdUser == null && !_isGuestMode) {
+      _currentUser = null;
+    }
+    notifyListeners();
   }
 
   /// Map Firebase error codes to user-friendly messages

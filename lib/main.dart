@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firedart/firedart.dart' as firedart;
+import 'package:flutter/foundation.dart';
 
 import 'app/app.dart';
 import 'core/services/sync_service.dart';
@@ -51,6 +53,23 @@ void main() async {
       debugPrint(
         'Firebase initialization skipped: ${e.toString().split(':').first}',
       );
+    }
+  }
+
+  // Initialize Firedart for Linux support
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+    try {
+      firedart.FirebaseAuth.initialize(
+        DefaultFirebaseOptions.linux.apiKey,
+        firedart.VolatileStore(),
+      );
+      if (kDebugMode) {
+        debugPrint('Firedart initialized for Linux');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Firedart initialization failed: $e');
+      }
     }
   }
 

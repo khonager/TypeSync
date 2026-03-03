@@ -110,6 +110,13 @@
               nspr
               nss
 
+              # GTK/System dependencies for better integration and crash prevention
+              gsettings-desktop-schemas
+              adwaita-icon-theme
+              hicolor-icon-theme
+              libsecret
+              librsvg
+
               # Python for Firebase Functions
               python313
               python313Packages.pip
@@ -118,6 +125,7 @@
           runScript = "bash";
 
           profile = ''
+            export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
