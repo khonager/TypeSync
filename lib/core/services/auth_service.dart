@@ -308,6 +308,38 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Send magic link to email
+  Future<bool> sendSignInLinkToEmail(String email) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      final actionCodeSettings = firebase.ActionCodeSettings(
+        url: 'https://typesync-app.web.app/finishSignUp?email=$email',
+        handleCodeInApp: true,
+        androidPackageName: 'com.khonager.typesync',
+        androidMinimumVersion: '1',
+        androidInstallApp: true,
+      );
+
+      await _firebaseAuth.sendSignInLinkToEmail(
+        email: email.trim(),
+        actionCodeSettings: actionCodeSettings,
+      );
+
+      _setLoading(false);
+      return true;
+    } on firebase.FirebaseAuthException catch (e) {
+      _setError(_mapFirebaseError(e.code));
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to send magic link. Please try again.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
   /// Resend email verification
   Future<bool> resendVerificationEmail() async {
     try {
