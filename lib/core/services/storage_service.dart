@@ -313,9 +313,10 @@ class StorageService extends ChangeNotifier {
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
+
   // lazy Firebase Functions instance
   FirebaseFunctions? _functions;
-  
+
   FirebaseFunctions get _cloudFunctions {
     try {
       _functions ??= FirebaseFunctions.instance;
@@ -391,7 +392,6 @@ class StorageService extends ChangeNotifier {
     }
   }
 }
-
 
 /// Information about a subscription plan
 class SubscriptionInfo {
