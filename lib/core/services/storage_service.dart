@@ -313,10 +313,9 @@ class StorageService extends ChangeNotifier {
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
-
   // lazy Firebase Functions instance
   FirebaseFunctions? _functions;
-
+  
   FirebaseFunctions get _cloudFunctions {
     try {
       _functions ??= FirebaseFunctions.instance;
@@ -348,7 +347,7 @@ class StorageService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = (data['message'] as String?) ?? 'Invalid license key';
+        _errorMessage = data['message'] ?? 'Invalid license key';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -379,7 +378,7 @@ class StorageService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = (data['message'] as String?) ?? 'Verification failed';
+        _errorMessage = data['message'] ?? 'Verification failed';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -392,6 +391,7 @@ class StorageService extends ChangeNotifier {
     }
   }
 }
+
 
 /// Information about a subscription plan
 class SubscriptionInfo {

@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/user.dart';
 
@@ -47,6 +48,9 @@ class AuthService extends ChangeNotifier {
   // Error state
   String? _errorMessage;
   bool _hasError = false;
+
+  // UUID generator for guest IDs
+  final Uuid _uuid = const Uuid();
 
   // ===========================================
   // GETTERS
@@ -229,97 +233,31 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Enter guest mode (no user account)
-  void enterGuestMode() {
-    _isLoading = true;
-    notifyListeners();
-
-    _currentUser = null;
-    _isGuestMode = true;
-
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  /// Send sign-in link to email (Passwordless / Magic Link)
-  Future<bool> sendSignInLinkToEmail(String email) async {
+  /// Sign in as guest (local-only mode)
+  Future<void> signInAsGuest() async {
     _setLoading(true);
     _clearError();
 
     try {
-      final acs = firebase.ActionCodeSettings(
-        // URL you want to redirect back to. The domain (www.example.com) for this
-        // URL must be whitelisted in the Firebase Console.
-        url:
-            'https://typesynced.web.app/login?email=$email', // TODO: Configure dynamic link
-        handleCodeInApp: true,
-        iOSBundleId: 'com.khonager.typesync',
-        androidPackageName: 'com.khonager.typesync',
-        // androidInstallApp: true,
-        // androidMinimumVersion: '12',
+      // Generate a guest user ID
+      final guestId = 'guest_${_uuid.v4()}';
+
+      // Create a guest user object
+      _currentUser = User(
+        id: guestId,
+        email: 'guest@local',
+        displayName: 'Guest',
+        createdAt: DateTime.now(),
+        lastSignIn: DateTime.now(),
+        emailVerified: false,
       );
 
-      await _firebaseAuth.sendSignInLinkToEmail(
-        email: email.trim(),
-        actionCodeSettings: acs,
-      );
-
-      // Save the email locally so we can use it when the link is opened
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('emailLinkUserEmail', email.trim());
-
+      _isGuestMode = true;
       _setLoading(false);
-      return true;
-    } on firebase.FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e.code));
-      _setLoading(false);
-      return false;
+      notifyListeners();
     } catch (e) {
-      _setError('Failed to send sign in link. Please try again.');
+      _setError('Failed to sign in as guest.');
       _setLoading(false);
-      return false;
-    }
-  }
-
-  /// Complete sign-in with email link
-  Future<bool> signInWithEmailLink(String emailLink) async {
-    _setLoading(true);
-    _clearError();
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? email = prefs.getString('emailLinkUserEmail');
-
-      // If email is not saved locally, ask user for it (UI should handle this flow)
-      if (email == null) {
-        _setError('email-not-found-locally'); // Special error code for UI
-        _setLoading(false);
-        return false;
-      }
-
-      if (_firebaseAuth.isSignInWithEmailLink(emailLink)) {
-        final credential = await _firebaseAuth.signInWithEmailLink(
-          email: email,
-          emailLink: emailLink,
-        );
-
-        if (credential.user != null) {
-          await _loadUserData(credential.user!.uid);
-          // Clear saved email
-          await prefs.remove('emailLinkUserEmail');
-        }
-      }
-
-      _setLoading(false);
-      return true;
-    } on firebase.FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e.code));
-      _setLoading(false);
-      return false;
-    } catch (e) {
-      _setError('Sign in failed. Please try again.');
-      _setLoading(false);
-      return false;
     }
   }
 
