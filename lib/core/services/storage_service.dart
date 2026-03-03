@@ -348,7 +348,7 @@ class StorageService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'] ?? 'Invalid license key';
+        _errorMessage = data['message'] as String? ?? 'Invalid license key';
         _isLoading = false;
         notifyListeners();
         return false;
@@ -379,7 +379,7 @@ class StorageService extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['message'] ?? 'Verification failed';
+        _errorMessage = data['message'] as String? ?? 'Verification failed';
         _isLoading = false;
         notifyListeners();
         return false;
