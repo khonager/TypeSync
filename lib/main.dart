@@ -11,7 +11,6 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firedart/firedart.dart' as firedart;
-import 'package:flutter/foundation.dart';
 
 import 'app/app.dart';
 import 'core/services/sync_service.dart';

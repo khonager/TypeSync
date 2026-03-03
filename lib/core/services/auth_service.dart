@@ -214,7 +214,8 @@ class AuthService extends ChangeNotifier {
       // Firedart errors might come here
       _setError(e.toString().contains('INVALID_PASSWORD')
           ? 'Incorrect password.'
-          : 'An unexpected error occurred. Please try again.');
+          : 'An unexpected error occurred. Please try again.',
+      );
       _setLoading(false);
       return false;
     }
