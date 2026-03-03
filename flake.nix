@@ -10,8 +10,15 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, android-nixpkgs }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      android-nixpkgs,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -25,7 +32,9 @@
         isDarwin = pkgs.stdenv.isDarwin;
 
         # Android SDK configuration - include cmake and all needed components
-        androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs;
+        androidSdk = android-nixpkgs.sdk.${system} (
+          sdkPkgs:
+          with sdkPkgs;
           [
             cmdline-tools-latest
             build-tools-36-0-0
@@ -46,7 +55,8 @@
             # Native tools - include cmake!
             ndk-28-2-13676358
             cmake-3-22-1
-          ] ++ pkgs.lib.optionals isLinux [
+          ]
+          ++ pkgs.lib.optionals isLinux [
             emulator
           ]
         );
@@ -54,54 +64,56 @@
         # Linux-specific: Use FHS environment for binary compatibility
         linuxDevShell = pkgs.buildFHSEnv {
           name = "typesync-dev-env";
-          targetPkgs = pkgs: (with pkgs; [
-            androidSdk
-            flutter
-            dart
-            jdk17
+          targetPkgs =
+            pkgs:
+            (with pkgs; [
+              androidSdk
+              flutter
+              dart
+              jdk17
 
-            # Common libraries needed by unpatched binaries (like aapt2)
-            glibc
-            zlib
-            ncurses5
-            stdenv.cc.cc.lib
-            openssl
-            expat
+              # Common libraries needed by unpatched binaries (like aapt2)
+              glibc
+              zlib
+              ncurses5
+              stdenv.cc.cc.lib
+              openssl
+              expat
 
-            # Linux desktop development dependencies
-            gtk3
-            glib
-            pcre2
-            libselinux
-            libsepol
-            util-linux
-            libepoxy
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
-            libGL
-            pkg-config
-            cmake
-            ninja
-            clang
+              # Linux desktop development dependencies
+              gtk3
+              glib
+              pcre2
+              libselinux
+              libsepol
+              util-linux
+              libepoxy
+              xorg.libX11
+              xorg.libXcursor
+              xorg.libXi
+              xorg.libXrandr
+              libGL
+              pkg-config
+              cmake
+              ninja
+              clang
 
-            # Utilities
-            git
-            curl
-            unzip
-            which
-            google-chrome
-            mesa-demos
-            nodejs_22
-            github-cli
-            nspr
-            nss
-            
-            # Python for Firebase Functions
-            python313
-            python313Packages.pip
-          ]);
+              # Utilities
+              git
+              curl
+              unzip
+              which
+              google-chrome
+              mesa-demos
+              nodejs_22
+              github-cli
+              nspr
+              nss
+
+              # Python for Firebase Functions
+              python313
+              python313Packages.pip
+            ]);
 
           runScript = "bash";
 
@@ -109,7 +121,19 @@
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
-            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.vulkan-loader pkgs.libGL pkgs.xorg.libX11 pkgs.xorg.libXcursor pkgs.xorg.libXi pkgs.xorg.libXrandr pkgs.gtk3 pkgs.glib pkgs.libepoxy ]}"
+            export LD_LIBRARY_PATH="${
+              pkgs.lib.makeLibraryPath [
+                pkgs.vulkan-loader
+                pkgs.libGL
+                pkgs.xorg.libX11
+                pkgs.xorg.libXcursor
+                pkgs.xorg.libXi
+                pkgs.xorg.libXrandr
+                pkgs.gtk3
+                pkgs.glib
+                pkgs.libepoxy
+              ]
+            }"
             export CHROME_EXECUTABLE="${pkgs.google-chrome}/bin/google-chrome-stable"
             export GRADLE_USER_HOME="$HOME/.gradle"
 
@@ -133,7 +157,7 @@
             echo "║    flutter build linux     - Build Linux app             ║"
             echo "║    firebase deploy         - Deploy Firebase services    ║"
             echo "╚═══════════════════════════════════════════════════════════╝"
-            
+
             # Set up Python venv for Firebase Functions if functions directory exists
             if [ -d "functions" ] && [ ! -d "functions/venv" ]; then
               echo "Setting up Python virtual environment for Firebase Functions..."
@@ -155,7 +179,7 @@
             flutter
             dart
             jdk17
-            cocoapods  # Required for iOS development on macOS
+            cocoapods # Required for iOS development on macOS
 
             # Additional tools
             git
@@ -163,7 +187,7 @@
             unzip
             which
             nodejs_22
-            
+
             # Python for Firebase Functions
             python313
             python313Packages.pip
@@ -202,10 +226,13 @@
           pname = "typesync";
           version = "0.1.0";
           src = ./.;
-          
+
           # Add any additional build configuration here
           targetFlutterPlatform = "linux";
-          pubspecLock = pkgs.lib.importJSON ./pubspec.lock.json;
+
+          meta = {
+            mainProgram = "typesync";
+          };
         };
       }
     );
