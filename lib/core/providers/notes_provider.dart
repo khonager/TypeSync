@@ -130,7 +130,7 @@ class NotesProvider extends ChangeNotifier {
               await service.syncDirtyItems(dirtyNotes: dirty, dirtyFolders: []);
           if (success) {
             debugPrint(
-                'NotesProvider: Sync successful, clearing dirty flags',
+              'NotesProvider: Sync successful, clearing dirty flags',
             );
             _clearDirtyFlags(dirty);
           }
