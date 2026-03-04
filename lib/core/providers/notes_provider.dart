@@ -414,7 +414,7 @@ class NotesProvider extends ChangeNotifier {
               List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
           final cloudDelta = note.conflictContent != null
               ? List<dynamic>.from(
-                  jsonDecode(note.conflictContent!) as Iterable<dynamic>),
+                  jsonDecode(note.conflictContent!) as Iterable<dynamic>)
               : [];
 
           final mergedDelta = [
