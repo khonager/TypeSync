@@ -111,7 +111,7 @@ class CalendarProvider extends ChangeNotifier {
           final success = await service.syncDirtyItems(dirtyEvents: dirty);
           if (success) {
             debugPrint(
-                'CalendarProvider: Sync successful, clearing dirty flags',
+              'CalendarProvider: Sync successful, clearing dirty flags',
             );
             _clearDirtyFlags(dirty);
           }

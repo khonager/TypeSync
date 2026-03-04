@@ -128,7 +128,7 @@ class FoldersProvider extends ChangeNotifier {
               await service.syncDirtyItems(dirtyNotes: [], dirtyFolders: dirty);
           if (success) {
             debugPrint(
-                'FoldersProvider: Sync successful, clearing dirty flags',
+              'FoldersProvider: Sync successful, clearing dirty flags',
             );
             _clearDirtyFlags(dirty);
           }
