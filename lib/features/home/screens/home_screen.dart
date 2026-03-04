@@ -14,12 +14,16 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/models/note.dart';
+import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/folders_provider.dart';
+import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/migration_service.dart';
+import '../../../core/services/sync_service.dart';
+import '../../../core/services/theme_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
@@ -90,6 +94,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // Connect providers to sync service
       context.read<NotesProvider>().setSyncService(syncService);
       context.read<FoldersProvider>().setSyncService(syncService);
+      context.read<CalendarProvider>().setSyncService(syncService);
+      context.read<HomeworkProvider>().setSyncService(syncService);
+      context.read<TimetableProvider>().setSyncService(syncService);
+      context.read<ThemeService>().setSyncService(syncService);
 
       // Set up sync callbacks
       syncService.onNotesUpdated = (notes) {
@@ -97,6 +105,18 @@ class _HomeScreenState extends State<HomeScreen> {
       };
       syncService.onFoldersUpdated = (folders) {
         context.read<FoldersProvider>().handleCloudUpdate(folders);
+      };
+      syncService.onCalendarUpdated = (events) {
+        context.read<CalendarProvider>().handleCloudUpdate(events);
+      };
+      syncService.onHomeworkUpdated = (tasks) {
+        context.read<HomeworkProvider>().handleCloudUpdate(tasks);
+      };
+      syncService.onTimetableUpdated = (entries) {
+        context.read<TimetableProvider>().handleCloudUpdate(entries);
+      };
+      syncService.onSettingsUpdated = (settings) {
+        context.read<ThemeService>().handleCloudSettings(settings);
       };
 
       // Check for data migration (Guest/Local -> User)
@@ -109,6 +129,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // For guests or when sync is disabled, don't set up sync service
       context.read<NotesProvider>().setSyncService(null);
       context.read<FoldersProvider>().setSyncService(null);
+      context.read<CalendarProvider>().setSyncService(null);
+      context.read<HomeworkProvider>().setSyncService(null);
+      context.read<TimetableProvider>().setSyncService(null);
+      context.read<ThemeService>().setSyncService(null);
     }
   }
 

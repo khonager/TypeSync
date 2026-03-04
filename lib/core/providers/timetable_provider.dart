@@ -4,6 +4,7 @@
 /// filtering, and sync status tracking.
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -33,6 +34,7 @@ class TimetableProvider extends ChangeNotifier {
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
+  StreamSubscription<void>? _syncSubscription;
 
   // ===========================================
   // GETTERS
@@ -87,7 +89,35 @@ class TimetableProvider extends ChangeNotifier {
 
   /// Set sync service reference (null to disable sync)
   void setSyncService(SyncService? service) {
+    _syncSubscription?.cancel();
     _syncService = service;
+
+    if (service != null) {
+      _syncSubscription = service.syncTriggerStream.listen((_) async {
+        final dirty = dirtyEntries;
+        if (dirty.isNotEmpty) {
+          debugPrint('TimetableProvider: Syncing ${dirty.length} dirty entries');
+          final success = await service.syncDirtyItems(dirtyEntries: dirty);
+          if (success) {
+            debugPrint('TimetableProvider: Sync successful, clearing dirty flags');
+            _clearDirtyFlags(dirty);
+          }
+        }
+      });
+    }
+  }
+
+  /// Clear dirty flags for a list of entries
+  void _clearDirtyFlags(List<TimetableEntry> entriesToClear) {
+    for (final entry in entriesToClear) {
+      final index = _entries.indexWhere((e) => e.id == entry.id);
+      if (index >= 0) {
+        final cleanedEntry = _entries[index].copyWith(isDirty: false);
+        _entries[index] = cleanedEntry;
+        _entriesBox?.put(entry.id, cleanedEntry);
+      }
+    }
+    notifyListeners();
   }
 
   // ===========================================
@@ -195,6 +225,12 @@ class TimetableProvider extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   // ===========================================

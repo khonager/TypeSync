@@ -12,6 +12,9 @@ import 'package:rxdart/rxdart.dart';
 
 import '../models/note.dart';
 import '../models/folder.dart';
+import '../models/calendar_event.dart';
+import '../models/homework.dart';
+import '../models/timetable_entry.dart';
 
 /// Sync status enum
 enum SyncStatus {
@@ -59,6 +62,10 @@ class SyncService extends ChangeNotifier {
   // Stream subscriptions for real-time updates
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _calendarSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _homeworkSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _timetableSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _settingsSubscription;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Debounce subject for batching sync operations
@@ -67,6 +74,10 @@ class SyncService extends ChangeNotifier {
   // Callbacks for data updates
   void Function(List<Note>)? onNotesUpdated;
   void Function(List<Folder>)? onFoldersUpdated;
+  void Function(List<CalendarEvent>)? onCalendarUpdated;
+  void Function(List<Homework>)? onHomeworkUpdated;
+  void Function(List<TimetableEntry>)? onTimetableUpdated;
+  void Function(Map<String, dynamic>)? onSettingsUpdated;
 
   // Stream for triggering sync across providers
   final _syncTriggerController = StreamController<void>.broadcast();
@@ -207,6 +218,68 @@ class SyncService extends ChangeNotifier {
           _setError('Failed to sync folders: $error');
         },
       );
+
+      // Listen to calendar_events collection
+      _calendarSubscription = firestore
+          .collection('calendar_events')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint('SyncService: Received ${snapshot.docs.length} calendar events from Firestore');
+          final events = snapshot.docs.map((doc) => CalendarEvent.fromJson(doc.data())).toList();
+          onCalendarUpdated?.call(events);
+        },
+        onError: (Object error) => _setError('Failed to sync calendar: $error'),
+      );
+
+      // Listen to homework collection
+      _homeworkSubscription = firestore
+          .collection('homework')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint('SyncService: Received ${snapshot.docs.length} homework from Firestore');
+          final tasks = snapshot.docs.map((doc) => Homework.fromJson(doc.data())).toList();
+          onHomeworkUpdated?.call(tasks);
+        },
+        onError: (Object error) => _setError('Failed to sync homework: $error'),
+      );
+
+      // Listen to timetable_entries collection
+      _timetableSubscription = firestore
+          .collection('timetable_entries')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint('SyncService: Received ${snapshot.docs.length} timetable entries from Firestore');
+          final entries = snapshot.docs.map((doc) => TimetableEntry.fromJson(doc.data())).toList();
+          onTimetableUpdated?.call(entries);
+        },
+        onError: (Object error) => _setError('Failed to sync timetable: $error'),
+      );
+
+      // Listen to user settings document
+      _settingsSubscription = firestore
+          .collection('users')
+          .doc(userId)
+          .collection('settings')
+          .doc('app_settings')
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (snapshot.exists && snapshot.data() != null) {
+            debugPrint('SyncService: Received settings update from Firestore');
+            onSettingsUpdated?.call(snapshot.data()!);
+          }
+        },
+        onError: (Object error) => _setError('Failed to sync settings: $error'),
+      );
     } catch (e) {
       // Firebase not initialized or unavailable
       debugPrint('Cannot start listening: Firebase not available - $e');
@@ -218,6 +291,10 @@ class SyncService extends ChangeNotifier {
   void stopListening() {
     _notesSubscription?.cancel();
     _foldersSubscription?.cancel();
+    _calendarSubscription?.cancel();
+    _homeworkSubscription?.cancel();
+    _timetableSubscription?.cancel();
+    _settingsSubscription?.cancel();
   }
 
   /// Trigger a sync operation (debounced)
@@ -432,14 +509,48 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Sync user settings to Firestore
+  Future<bool> syncSettings(Map<String, dynamic> settingsData) async {
+    if (!_isOnline || !_syncEnabled || _currentUserId == null) {
+      return false;
+    }
+
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
+    try {
+      await firestore
+          .collection('users')
+          .doc(_currentUserId)
+          .collection('settings')
+          .doc('app_settings')
+          .set(settingsData, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      debugPrint('SyncService: Failed to sync settings: $e');
+      return false;
+    }
+  }
+
   /// Sync all dirty (unsynced) items
   Future<bool> syncDirtyItems({
-    required List<Note> dirtyNotes,
-    required List<Folder> dirtyFolders,
+    List<Note>? dirtyNotes,
+    List<Folder>? dirtyFolders,
+    List<CalendarEvent>? dirtyEvents,
+    List<Homework>? dirtyHomework,
+    List<TimetableEntry>? dirtyEntries,
   }) async {
-    if (!_isOnline ||
-        !_syncEnabled ||
-        (dirtyNotes.isEmpty && dirtyFolders.isEmpty)) {
+    if (!_isOnline || !_syncEnabled) {
+      return true;
+    }
+
+    final hasNotes = dirtyNotes != null && dirtyNotes.isNotEmpty;
+    final hasFolders = dirtyFolders != null && dirtyFolders.isNotEmpty;
+    final hasEvents = dirtyEvents != null && dirtyEvents.isNotEmpty;
+    final hasHomework = dirtyHomework != null && dirtyHomework.isNotEmpty;
+    final hasEntries = dirtyEntries != null && dirtyEntries.isNotEmpty;
+
+    if (!hasNotes && !hasFolders && !hasEvents && !hasHomework && !hasEntries) {
       return true;
     }
 
@@ -449,43 +560,48 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
-    _setStatus(SyncStatus.syncing);
-
     try {
-      // Use batched writes for efficiency
       final batch = firestore.batch();
 
-      for (final note in dirtyNotes) {
-        final ref = firestore.collection('notes').doc(note.id);
-        batch.set(
-          ref,
-          note
-              .copyWith(
-                isDirty: false,
-                syncedAt: DateTime.now(),
-              )
-              .toJson(),
-          SetOptions(merge: true),
-        );
-      }
-
-      for (final folder in dirtyFolders) {
-        final ref = firestore.collection('folders').doc(folder.id);
-        batch.set(
-          ref,
-          folder
-              .copyWith(
-                isDirty: false,
-                syncedAt: DateTime.now(),
-              )
-              .toJson(),
-          SetOptions(merge: true),
-        );
-      }
-
       debugPrint(
-        'SyncService: Committing batch sync for ${dirtyNotes.length} notes and ${dirtyFolders.length} folders',
+        'SyncService: Committing batch sync for ${dirtyNotes?.length ?? 0} notes, ${dirtyFolders?.length ?? 0} folders, ${dirtyEvents?.length ?? 0} events, ${dirtyHomework?.length ?? 0} homework, ${dirtyEntries?.length ?? 0} entries',
       );
+
+      if (hasNotes) {
+        for (final note in dirtyNotes) {
+          final ref = firestore.collection('notes').doc(note.id);
+          batch.set(ref, note.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(), SetOptions(merge: true));
+        }
+      }
+
+      if (hasFolders) {
+        for (final folder in dirtyFolders) {
+          final ref = firestore.collection('folders').doc(folder.id);
+          batch.set(ref, folder.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(), SetOptions(merge: true));
+        }
+      }
+
+      if (hasEvents) {
+        for (final event in dirtyEvents) {
+          final ref = firestore.collection('calendar_events').doc(event.id);
+          batch.set(ref, event.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+        }
+      }
+
+      if (hasHomework) {
+        for (final homework in dirtyHomework) {
+          final ref = firestore.collection('homework').doc(homework.id);
+          batch.set(ref, homework.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+        }
+      }
+
+      if (hasEntries) {
+        for (final entry in dirtyEntries) {
+          final ref = firestore.collection('timetable_entries').doc(entry.id);
+          batch.set(ref, entry.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+        }
+      }
+
       await batch.commit();
 
       _setStatus(SyncStatus.synced);

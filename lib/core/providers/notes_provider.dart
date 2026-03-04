@@ -406,9 +406,9 @@ class NotesProvider extends ChangeNotifier {
         // For Delta JSON (Flutter Quill), simple string append breaks the JSON format.
         // For now, we will try to parse Delta, append a divider, and append the cloud Delta.
         try {
-          final localDelta = List<dynamic>.from(jsonDecode(note.content));
+          final localDelta = List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
           final cloudDelta = note.conflictContent != null 
-              ? List<dynamic>.from(jsonDecode(note.conflictContent!))
+              ? List<dynamic>.from(jsonDecode(note.conflictContent!) as Iterable<dynamic>)
               : [];
           
           final mergedDelta = [
