@@ -106,10 +106,12 @@ class HomeworkProvider extends ChangeNotifier {
       _syncSubscription = service.syncTriggerStream.listen((_) async {
         final dirty = dirtyHomework;
         if (dirty.isNotEmpty) {
-          debugPrint('HomeworkProvider: Syncing ${dirty.length} dirty homework');
+          debugPrint(
+              'HomeworkProvider: Syncing ${dirty.length} dirty homework');
           final success = await service.syncDirtyItems(dirtyHomework: dirty);
           if (success) {
-            debugPrint('HomeworkProvider: Sync successful, clearing dirty flags');
+            debugPrint(
+                'HomeworkProvider: Sync successful, clearing dirty flags');
             _clearDirtyFlags(dirty);
           }
         }

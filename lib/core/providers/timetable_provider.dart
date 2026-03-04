@@ -96,10 +96,12 @@ class TimetableProvider extends ChangeNotifier {
       _syncSubscription = service.syncTriggerStream.listen((_) async {
         final dirty = dirtyEntries;
         if (dirty.isNotEmpty) {
-          debugPrint('TimetableProvider: Syncing ${dirty.length} dirty entries');
+          debugPrint(
+              'TimetableProvider: Syncing ${dirty.length} dirty entries');
           final success = await service.syncDirtyItems(dirtyEntries: dirty);
           if (success) {
-            debugPrint('TimetableProvider: Sync successful, clearing dirty flags');
+            debugPrint(
+                'TimetableProvider: Sync successful, clearing dirty flags');
             _clearDirtyFlags(dirty);
           }
         }

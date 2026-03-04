@@ -35,9 +35,9 @@ class AuthService extends ChangeNotifier {
 
   FirebaseFirestore get _firebaseFirestore {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-      // On Linux, we should ideally use Firedart for Firestore too, 
+      // On Linux, we should ideally use Firedart for Firestore too,
       // but the app currently uses cloud_firestore FirebaseFirestore type.
-      // If Firebase.initializeApp worked, this might work. 
+      // If Firebase.initializeApp worked, this might work.
       // If it didn't, this will throw.
       return FirebaseFirestore.instance;
     }

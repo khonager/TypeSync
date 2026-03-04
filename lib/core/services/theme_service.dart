@@ -19,7 +19,7 @@ class ThemeService extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _accentColor = const Color(0xFF64D2FF);
   bool _syncWithSystem = false;
-  
+
   // Sync service reference (set by parent)
   SyncService? _syncService;
 
@@ -223,7 +223,7 @@ class ThemeService extends ChangeNotifier {
       // ignore: deprecated_member_use
       await prefs.setInt(_accentColorKey, _accentColor.value);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
-      
+
       if (syncToCloud && _syncService != null) {
         _syncService!.syncSettings({
           'themeMode': _themeMode.index,

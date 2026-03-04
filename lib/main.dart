@@ -61,7 +61,7 @@ void main() async {
         DefaultFirebaseOptions.linux.apiKey,
         firedart.VolatileStore(),
       );
-      
+
       // Initialize Firestore if Firebase core failed (common on Linux)
       // or if we want to ensure Firedart handles Firestore on this platform.
       // NOTE: Firedart doesn't need explicit 'initialize' for Firestore like Auth,

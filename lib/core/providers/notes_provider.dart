@@ -120,13 +120,14 @@ class NotesProvider extends ChangeNotifier {
   void setSyncService(SyncService? service) {
     _syncSubscription?.cancel();
     _syncService = service;
-    
+
     if (service != null) {
       _syncSubscription = service.syncTriggerStream.listen((_) async {
         final dirty = dirtyNotes;
         if (dirty.isNotEmpty) {
           debugPrint('NotesProvider: Syncing ${dirty.length} dirty notes');
-          final success = await service.syncDirtyItems(dirtyNotes: dirty, dirtyFolders: []);
+          final success =
+              await service.syncDirtyItems(dirtyNotes: dirty, dirtyFolders: []);
           if (success) {
             debugPrint('NotesProvider: Sync successful, clearing dirty flags');
             _clearDirtyFlags(dirty);
@@ -349,7 +350,7 @@ class NotesProvider extends ChangeNotifier {
       if (localIndex >= 0) {
         final localNote = _notes[localIndex];
 
-        if (localNote.isDirty && 
+        if (localNote.isDirty &&
             cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
             localNote.content != cloudNote.content) {
           // Conflict detected!
@@ -360,7 +361,8 @@ class NotesProvider extends ChangeNotifier {
           );
           _notes[localIndex] = conflictedNote;
           _notesBox?.put(cloudNote.id, conflictedNote);
-          debugPrint('NotesProvider: Conflict detected for note ${localNote.id}');
+          debugPrint(
+              'NotesProvider: Conflict detected for note ${localNote.id}');
         } else if (!localNote.isDirty ||
             cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
           // Cloud wins if local isn't dirty, or if cloud is newer (and wasn't dirty, or content matched)
@@ -406,11 +408,13 @@ class NotesProvider extends ChangeNotifier {
         // For Delta JSON (Flutter Quill), simple string append breaks the JSON format.
         // For now, we will try to parse Delta, append a divider, and append the cloud Delta.
         try {
-          final localDelta = List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
-          final cloudDelta = note.conflictContent != null 
-              ? List<dynamic>.from(jsonDecode(note.conflictContent!) as Iterable<dynamic>)
+          final localDelta =
+              List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
+          final cloudDelta = note.conflictContent != null
+              ? List<dynamic>.from(
+                  jsonDecode(note.conflictContent!) as Iterable<dynamic>)
               : [];
-          
+
           final mergedDelta = [
             ...localDelta,
             {'insert': '\n\n=== CLOUD VERSION ===\n\n'},
@@ -419,7 +423,8 @@ class NotesProvider extends ChangeNotifier {
           resolvedContent = jsonEncode(mergedDelta);
         } catch (e) {
           // Fallback if not valid JSON (e.g. plain text or older format)
-          resolvedContent = '${note.content}\n\n=== CLOUD VERSION ===\n\n${note.conflictContent ?? ""}';
+          resolvedContent =
+              '${note.content}\n\n=== CLOUD VERSION ===\n\n${note.conflictContent ?? ""}';
         }
         break;
     }

@@ -164,8 +164,8 @@ class Note extends Equatable {
       userId: userId ?? this.userId,
       pdfPath: pdfPath ?? this.pdfPath,
       hasConflict: hasConflict ?? this.hasConflict,
-      conflictContent: clearConflictContent 
-          ? null 
+      conflictContent: clearConflictContent
+          ? null
           : (conflictContent ?? this.conflictContent),
     );
   }
@@ -189,9 +189,9 @@ class Note extends Equatable {
       'lineCount': lineCount,
       'userId': userId,
       'pdfPath': pdfPath,
-      // We explicitly don't sync conflict state up to the cloud; 
+      // We explicitly don't sync conflict state up to the cloud;
       // the cloud is just the source of truth for the remote version.
-      // But if we did want to serialize them locally somehow, we might. 
+      // But if we did want to serialize them locally somehow, we might.
       // For now, Firestore toJson doesn't need them.
     };
   }

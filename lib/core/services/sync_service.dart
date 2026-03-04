@@ -62,10 +62,14 @@ class SyncService extends ChangeNotifier {
   // Stream subscriptions for real-time updates
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _calendarSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _homeworkSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _timetableSubscription;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _settingsSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _calendarSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _homeworkSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _timetableSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _settingsSubscription;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Debounce subject for batching sync operations
@@ -177,12 +181,13 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
-          debugPrint('SyncService: Received ${snapshot.docs.length} notes from Firestore');
+          debugPrint(
+              'SyncService: Received ${snapshot.docs.length} notes from Firestore');
           final notes =
               snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
-          
+
           // If we were syncing/refreshing, transition back to idle/synced
           if (_status == SyncStatus.syncing) {
             _setStatus(SyncStatus.synced);
@@ -203,11 +208,12 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
-          debugPrint('SyncService: Received ${snapshot.docs.length} folders from Firestore');
+          debugPrint(
+              'SyncService: Received ${snapshot.docs.length} folders from Firestore');
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
-          
+
           if (_status == SyncStatus.syncing) {
             _setStatus(SyncStatus.synced);
           } else if (_status != SyncStatus.error) {
@@ -227,8 +233,11 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
-          debugPrint('SyncService: Received ${snapshot.docs.length} calendar events from Firestore');
-          final events = snapshot.docs.map((doc) => CalendarEvent.fromJson(doc.data())).toList();
+          debugPrint(
+              'SyncService: Received ${snapshot.docs.length} calendar events from Firestore');
+          final events = snapshot.docs
+              .map((doc) => CalendarEvent.fromJson(doc.data()))
+              .toList();
           onCalendarUpdated?.call(events);
         },
         onError: (Object error) => _setError('Failed to sync calendar: $error'),
@@ -242,8 +251,11 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
-          debugPrint('SyncService: Received ${snapshot.docs.length} homework from Firestore');
-          final tasks = snapshot.docs.map((doc) => Homework.fromJson(doc.data())).toList();
+          debugPrint(
+              'SyncService: Received ${snapshot.docs.length} homework from Firestore');
+          final tasks = snapshot.docs
+              .map((doc) => Homework.fromJson(doc.data()))
+              .toList();
           onHomeworkUpdated?.call(tasks);
         },
         onError: (Object error) => _setError('Failed to sync homework: $error'),
@@ -257,11 +269,15 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
-          debugPrint('SyncService: Received ${snapshot.docs.length} timetable entries from Firestore');
-          final entries = snapshot.docs.map((doc) => TimetableEntry.fromJson(doc.data())).toList();
+          debugPrint(
+              'SyncService: Received ${snapshot.docs.length} timetable entries from Firestore');
+          final entries = snapshot.docs
+              .map((doc) => TimetableEntry.fromJson(doc.data()))
+              .toList();
           onTimetableUpdated?.call(entries);
         },
-        onError: (Object error) => _setError('Failed to sync timetable: $error'),
+        onError: (Object error) =>
+            _setError('Failed to sync timetable: $error'),
       );
 
       // Listen to user settings document
@@ -570,35 +586,46 @@ class SyncService extends ChangeNotifier {
       if (hasNotes) {
         for (final note in dirtyNotes) {
           final ref = firestore.collection('notes').doc(note.id);
-          batch.set(ref, note.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(), SetOptions(merge: true));
+          batch.set(
+              ref,
+              note.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(),
+              SetOptions(merge: true));
         }
       }
 
       if (hasFolders) {
         for (final folder in dirtyFolders) {
           final ref = firestore.collection('folders').doc(folder.id);
-          batch.set(ref, folder.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(), SetOptions(merge: true));
+          batch.set(
+              ref,
+              folder
+                  .copyWith(isDirty: false, syncedAt: DateTime.now())
+                  .toJson(),
+              SetOptions(merge: true));
         }
       }
 
       if (hasEvents) {
         for (final event in dirtyEvents) {
           final ref = firestore.collection('calendar_events').doc(event.id);
-          batch.set(ref, event.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+          batch.set(ref, event.copyWith(isDirty: false).toJson(),
+              SetOptions(merge: true));
         }
       }
 
       if (hasHomework) {
         for (final homework in dirtyHomework) {
           final ref = firestore.collection('homework').doc(homework.id);
-          batch.set(ref, homework.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+          batch.set(ref, homework.copyWith(isDirty: false).toJson(),
+              SetOptions(merge: true));
         }
       }
 
       if (hasEntries) {
         for (final entry in dirtyEntries) {
           final ref = firestore.collection('timetable_entries').doc(entry.id);
-          batch.set(ref, entry.copyWith(isDirty: false).toJson(), SetOptions(merge: true));
+          batch.set(ref, entry.copyWith(isDirty: false).toJson(),
+              SetOptions(merge: true));
         }
       }
 

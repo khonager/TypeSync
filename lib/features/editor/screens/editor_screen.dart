@@ -223,29 +223,30 @@ class _EditorScreenState extends State<EditorScreen> {
     final providerNote = notesProvider.getNoteById(widget.noteId!);
 
     if (providerNote != null && _note != null) {
-      if (providerNote.updatedAt.isAfter(_note!.updatedAt) || 
-          providerNote.isDirty != _note!.isDirty || 
+      if (providerNote.updatedAt.isAfter(_note!.updatedAt) ||
+          providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
-        
         final providerContent = providerNote.content;
-        final localContent = jsonEncode(_quillController.document.toDelta().toJson());
-        
+        final localContent =
+            jsonEncode(_quillController.document.toDelta().toJson());
+
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
-        if (providerContent != localContent && providerContent != _lastSavedContent) {
-           WidgetsBinding.instance.addPostFrameCallback((_) {
-             _updateContentFromProvider(providerNote);
-           });
+        if (providerContent != localContent &&
+            providerContent != _lastSavedContent) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _updateContentFromProvider(providerNote);
+          });
         } else {
-           // Content matches or is our own save. Just sync metadata silently.
-           WidgetsBinding.instance.addPostFrameCallback((_) {
-             if (mounted) {
-               setState(() {
-                 _note = providerNote;
-                 _lastSavedContent = providerContent;
-               });
-             }
-           });
+          // Content matches or is our own save. Just sync metadata silently.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _note = providerNote;
+                _lastSavedContent = providerContent;
+              });
+            }
+          });
         }
       }
     }
@@ -322,7 +323,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         Container(
                           width: double.infinity,
                           height: double.infinity,
-                          color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+                          color: bgColor ??
+                              Theme.of(context).scaffoldBackgroundColor,
                           padding: const EdgeInsets.all(16),
                           child: QuillEditor(
                             controller: _quillController,
@@ -350,7 +352,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                   color: Theme.of(context).colorScheme.surface,
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
                                     width: 2,
                                   ),
                                 ),
@@ -360,12 +363,15 @@ class _EditorScreenState extends State<EditorScreen> {
                                     Icon(
                                       Icons.cloud_upload,
                                       size: 64,
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
                                       'Drop files here to import',
-                                      style: Theme.of(context).textTheme.titleLarge,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge,
                                     ),
                                   ],
                                 ),
@@ -393,7 +399,8 @@ class _EditorScreenState extends State<EditorScreen> {
           const Expanded(
             child: Text(
               'Conflicting changes detected!',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
           TextButton(
@@ -952,29 +959,30 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _updateContentFromProvider(Note providerNote) {
     if (!mounted) return;
-    
+
     try {
-      final delta = Delta.fromJson(jsonDecode(providerNote.content) as List<dynamic>);
-      
+      final delta =
+          Delta.fromJson(jsonDecode(providerNote.content) as List<dynamic>);
+
       setState(() {
         _isUpdatingFromExternal = true;
-        
+
         // Preserve selection if possible
         final selection = _quillController.selection;
-        
+
         _quillController.document = Document.fromDelta(delta);
-        
+
         // Try to restore selection
         if (selection.end <= _quillController.document.length) {
           _quillController.updateSelection(selection, ChangeSource.local);
         }
-        
+
         _note = providerNote;
         _lastSavedContent = providerNote.content;
         _characterCount = providerNote.characterCount;
         _lineCount = providerNote.lineCount;
         _titleController.text = providerNote.title;
-        
+
         _isUpdatingFromExternal = false;
       });
     } catch (e) {

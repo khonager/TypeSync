@@ -118,15 +118,17 @@ class FoldersProvider extends ChangeNotifier {
   void setSyncService(SyncService? service) {
     _syncSubscription?.cancel();
     _syncService = service;
-    
+
     if (service != null) {
       _syncSubscription = service.syncTriggerStream.listen((_) async {
         final dirty = dirtyFolders;
         if (dirty.isNotEmpty) {
           debugPrint('FoldersProvider: Syncing ${dirty.length} dirty folders');
-          final success = await service.syncDirtyItems(dirtyNotes: [], dirtyFolders: dirty);
+          final success =
+              await service.syncDirtyItems(dirtyNotes: [], dirtyFolders: dirty);
           if (success) {
-            debugPrint('FoldersProvider: Sync successful, clearing dirty flags');
+            debugPrint(
+                'FoldersProvider: Sync successful, clearing dirty flags');
             _clearDirtyFlags(dirty);
           }
         }
