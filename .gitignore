@@ -75,3 +75,4 @@ test_driver/screenshots/
 # Temporary files
 *.tmp
 *.temp
+.github_secret_keystore_base64.txt
