@@ -72,10 +72,14 @@ class SyncService extends ChangeNotifier {
   // Stream subscriptions for real-time updates (cloud_firestore)
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _calendarSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _homeworkSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _timetableSubscription;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _settingsSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _calendarSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _homeworkSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _timetableSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _settingsSubscription;
 
   // Stream subscriptions for real-time updates (firedart)
   StreamSubscription<List<fd.Document>>? _fdNotesSubscription;
@@ -339,10 +343,7 @@ class SyncService extends ChangeNotifier {
 
     try {
       // Listen to notes collection
-      _fdNotesSubscription = firestore
-          .collection('notes')
-          .stream
-          .listen(
+      _fdNotesSubscription = firestore.collection('notes').stream.listen(
         (docs) {
           final filteredDocs = docs.where(
             (doc) =>
@@ -371,10 +372,7 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to folders collection
-      _fdFoldersSubscription = firestore
-          .collection('folders')
-          .stream
-          .listen(
+      _fdFoldersSubscription = firestore.collection('folders').stream.listen(
         (docs) {
           final filteredDocs = docs.where(
             (doc) =>
@@ -402,10 +400,8 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to calendar_events collection
-      _fdCalendarSubscription = firestore
-          .collection('calendar_events')
-          .stream
-          .listen(
+      _fdCalendarSubscription =
+          firestore.collection('calendar_events').stream.listen(
         (docs) {
           final filteredDocs = docs.where(
             (doc) =>
@@ -425,10 +421,7 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to homework collection
-      _fdHomeworkSubscription = firestore
-          .collection('homework')
-          .stream
-          .listen(
+      _fdHomeworkSubscription = firestore.collection('homework').stream.listen(
         (docs) {
           final filteredDocs = docs.where(
             (doc) =>
@@ -448,10 +441,8 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to timetable_entries collection
-      _fdTimetableSubscription = firestore
-          .collection('timetable_entries')
-          .stream
-          .listen(
+      _fdTimetableSubscription =
+          firestore.collection('timetable_entries').stream.listen(
         (docs) {
           final filteredDocs = docs.where(
             (doc) =>
@@ -481,7 +472,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (doc) {
           if (doc != null) {
-            debugPrint('SyncService [Linux]: Received settings update from Firestore');
+            debugPrint(
+                'SyncService [Linux]: Received settings update from Firestore');
             final data = doc.map;
             data['id'] = doc.id;
             onSettingsUpdated?.call(data);
@@ -524,17 +516,18 @@ class SyncService extends ChangeNotifier {
 
     try {
       _setStatus(SyncStatus.syncing);
-      
+
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
+        await fdFirestore.collection('notes').document(note.id).update(note
+            .toJson()); // Firedart doesn't have set with merge = true out of the box easily, update does partial if exists, or might fail if not. Actually, we should check if exists or just let update fail and fallback to set? wait, firedart set replaces. wait, firedart document().set() replaces.
+        // A safer approach in firedart:
+        // Since note.toJson() contains all fields, set is fine.
         await fdFirestore
             .collection('notes')
             .document(note.id)
-            .update(note.toJson()); // Firedart doesn't have set with merge = true out of the box easily, update does partial if exists, or might fail if not. Actually, we should check if exists or just let update fail and fallback to set? wait, firedart set replaces. wait, firedart document().set() replaces.
-            // A safer approach in firedart:
-            // Since note.toJson() contains all fields, set is fine.
-        await fdFirestore.collection('notes').document(note.id).set(note.toJson());
+            .set(note.toJson());
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -563,7 +556,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('folders').document(folder.id).set(folder.toJson());
+        await fdFirestore
+            .collection('folders')
+            .document(folder.id)
+            .set(folder.toJson());
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -587,7 +583,10 @@ class SyncService extends ChangeNotifier {
     if (!_isOnline || !_syncEnabled) return false;
 
     try {
-      final updates = {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()};
+      final updates = {
+        'isDeleted': true,
+        'updatedAt': DateTime.now().toIso8601String()
+      };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
@@ -609,11 +608,17 @@ class SyncService extends ChangeNotifier {
     if (!_isOnline || !_syncEnabled) return false;
 
     try {
-      final updates = {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()};
+      final updates = {
+        'isDeleted': true,
+        'updatedAt': DateTime.now().toIso8601String()
+      };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('folders').document(folderId).update(updates);
+        await fdFirestore
+            .collection('folders')
+            .document(folderId)
+            .update(updates);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -637,7 +642,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('timetable_entries').document(entryId).set(entryData);
+        await fdFirestore
+            .collection('timetable_entries')
+            .document(entryId)
+            .set(entryData);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -667,7 +675,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('homework').document(homeworkId).set(homeworkData);
+        await fdFirestore
+            .collection('homework')
+            .document(homeworkId)
+            .set(homeworkData);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -691,11 +702,17 @@ class SyncService extends ChangeNotifier {
     if (!_isOnline || !_syncEnabled) return false;
 
     try {
-      final updates = {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()};
+      final updates = {
+        'isDeleted': true,
+        'updatedAt': DateTime.now().toIso8601String()
+      };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('homework').document(homeworkId).update(updates);
+        await fdFirestore
+            .collection('homework')
+            .document(homeworkId)
+            .update(updates);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -719,7 +736,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('calendar_events').document(eventId).set(eventData);
+        await fdFirestore
+            .collection('calendar_events')
+            .document(eventId)
+            .set(eventData);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -746,7 +766,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('calendar_events').document(eventId).update({'isDeleted': true});
+        await fdFirestore
+            .collection('calendar_events')
+            .document(eventId)
+            .update({'isDeleted': true});
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -819,7 +842,7 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        
+
         debugPrint(
           'SyncService [Linux]: Committing batch sync for ${dirtyNotes?.length ?? 0} notes, ${dirtyFolders?.length ?? 0} folders, ${dirtyEvents?.length ?? 0} events, ${dirtyHomework?.length ?? 0} homework, ${dirtyEntries?.length ?? 0} entries',
         );
@@ -830,56 +853,62 @@ class SyncService extends ChangeNotifier {
 
         if (hasNotes) {
           for (final note in dirtyNotes) {
-            futures.add(fdFirestore.collection('notes').document(note.id).set(
-                  note
-                      .copyWith(isDirty: false, syncedAt: DateTime.now())
-                      .toJson(),
-                ),);
+            futures.add(
+              fdFirestore.collection('notes').document(note.id).set(
+                    note
+                        .copyWith(isDirty: false, syncedAt: DateTime.now())
+                        .toJson(),
+                  ),
+            );
           }
         }
 
         if (hasFolders) {
           for (final folder in dirtyFolders) {
-            futures.add(fdFirestore.collection('folders').document(folder.id).set(
-                  folder
-                      .copyWith(isDirty: false, syncedAt: DateTime.now())
-                      .toJson(),
-                ),);
+            futures.add(
+              fdFirestore.collection('folders').document(folder.id).set(
+                    folder
+                        .copyWith(isDirty: false, syncedAt: DateTime.now())
+                        .toJson(),
+                  ),
+            );
           }
         }
 
         if (hasEvents) {
           for (final event in dirtyEvents) {
-            futures.add(fdFirestore
-                .collection('calendar_events')
-                .document(event.id)
-                .set(
-                  event.copyWith(isDirty: false).toJson(),
-                ),);
+            futures.add(
+              fdFirestore.collection('calendar_events').document(event.id).set(
+                    event.copyWith(isDirty: false).toJson(),
+                  ),
+            );
           }
         }
 
         if (hasHomework) {
           for (final homework in dirtyHomework) {
-            futures.add(fdFirestore.collection('homework').document(homework.id).set(
-                  homework.copyWith(isDirty: false).toJson(),
-                ),);
+            futures.add(
+              fdFirestore.collection('homework').document(homework.id).set(
+                    homework.copyWith(isDirty: false).toJson(),
+                  ),
+            );
           }
         }
 
         if (hasEntries) {
           for (final entry in dirtyEntries) {
-            futures.add(fdFirestore
-                .collection('timetable_entries')
-                .document(entry.id)
-                .set(
-                  entry.copyWith(isDirty: false).toJson(),
-                ),);
+            futures.add(
+              fdFirestore
+                  .collection('timetable_entries')
+                  .document(entry.id)
+                  .set(
+                    entry.copyWith(isDirty: false).toJson(),
+                  ),
+            );
           }
         }
 
         await Future.wait(futures);
-
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) {
@@ -909,7 +938,9 @@ class SyncService extends ChangeNotifier {
             final ref = firestore.collection('folders').doc(folder.id);
             batch.set(
               ref,
-              folder.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(),
+              folder
+                  .copyWith(isDirty: false, syncedAt: DateTime.now())
+                  .toJson(),
               SetOptions(merge: true),
             );
           }

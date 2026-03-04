@@ -155,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                   ),
-                  
+
                   // 95% capacity warning
                   if (storageService.usagePercent >= 0.95) ...[
                     const SizedBox(height: 16),
@@ -168,11 +168,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              storageService.isStorageFull 
+                              storageService.isStorageFull
                                   ? 'Storage is full! Please upgrade your plan.'
                                   : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
                               style: const TextStyle(color: Colors.orange),

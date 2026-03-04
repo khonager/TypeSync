@@ -189,8 +189,6 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
   }
 
-
-
   /// Upload a file to Firebase Storage
   ///
   /// Returns the download URL if successful, null if failed or over quota.
@@ -374,7 +372,7 @@ class StorageService extends ChangeNotifier {
               totalBytes += explicitSize ?? content.length;
             }
           }
-          
+
           await fdFirestore.collection('users').document(userId).update({
             'storageUsedBytes': totalBytes,
           });

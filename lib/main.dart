@@ -64,7 +64,7 @@ void main() async {
 
       // Initialize Firestore explicitly for Firedart
       firedart.Firestore.initialize('typesynced');
-      
+
       if (kDebugMode) {
         debugPrint('Firedart initialized for Linux (Auth & Firestore)');
       }

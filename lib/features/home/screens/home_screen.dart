@@ -583,7 +583,8 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Storage is full. Please upgrade to create folders.'),
+              content:
+                  Text('Storage is full. Please upgrade to create folders.'),
             ),
           );
         }

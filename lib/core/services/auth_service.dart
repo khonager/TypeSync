@@ -252,11 +252,14 @@ class AuthService extends ChangeNotifier {
 
         // Save to Firestore via Firedart
         final fdFirestore = fd.Firestore.instance;
-        await fdFirestore.collection('users').document(fdUser.id).set(user.toJson());
+        await fdFirestore
+            .collection('users')
+            .document(fdUser.id)
+            .set(user.toJson());
 
         _currentUser = user;
         notifyListeners();
-        
+
         _setLoading(false);
         return true;
       }
@@ -448,7 +451,10 @@ class AuthService extends ChangeNotifier {
         if (displayName != null) updates['displayName'] = displayName;
         if (photoUrl != null) updates['photoUrl'] = photoUrl;
 
-        await fdFirestore.collection('users').document(_currentUser!.id).update(updates);
+        await fdFirestore
+            .collection('users')
+            .document(_currentUser!.id)
+            .update(updates);
 
         // Update local user
         _currentUser = _currentUser!.copyWith(
@@ -536,7 +542,10 @@ class AuthService extends ChangeNotifier {
             emailVerified: true,
           );
 
-          await fdFirestore.collection('users').document(uid).set(user.toJson());
+          await fdFirestore
+              .collection('users')
+              .document(uid)
+              .set(user.toJson());
           _currentUser = user;
         }
       } else {
