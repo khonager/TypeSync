@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'sync_service.dart';
+
 /// Service for managing app theme and appearance
 ///
 /// Supports light mode, dark mode, and system-sync mode.
@@ -17,6 +19,13 @@ class ThemeService extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _accentColor = const Color(0xFF64D2FF);
   bool _syncWithSystem = false;
+
+  // Sync service reference (set by parent)
+  SyncService? _syncService;
+
+  void setSyncService(SyncService? service) {
+    _syncService = service;
+  }
 
   // Keys for SharedPreferences
   static const String _themeModeKey = 'theme_mode';
@@ -140,6 +149,44 @@ class ThemeService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
+  /// Handle settings update from cloud
+  void handleCloudSettings(Map<String, dynamic> settings) {
+    bool changed = false;
+
+    if (settings.containsKey('themeMode')) {
+      final modeIndex = settings['themeMode'] as int;
+      if (modeIndex < ThemeMode.values.length) {
+        final newMode = ThemeMode.values[modeIndex];
+        if (_themeMode != newMode) {
+          _themeMode = newMode;
+          changed = true;
+        }
+      }
+    }
+
+    if (settings.containsKey('accentColor')) {
+      final colorValue = settings['accentColor'] as int;
+      final newColor = Color(colorValue);
+      if (_accentColor != newColor) {
+        _accentColor = newColor;
+        changed = true;
+      }
+    }
+
+    if (settings.containsKey('syncWithSystem')) {
+      final newSync = settings['syncWithSystem'] as bool;
+      if (_syncWithSystem != newSync) {
+        _syncWithSystem = newSync;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _savePreferences(syncToCloud: false);
+      notifyListeners();
+    }
+  }
+
   /// Load preferences from SharedPreferences
   Future<void> _loadPreferences() async {
     try {
@@ -168,7 +215,7 @@ class ThemeService extends ChangeNotifier {
   }
 
   /// Save preferences to SharedPreferences
-  Future<void> _savePreferences() async {
+  Future<void> _savePreferences({bool syncToCloud = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -176,6 +223,15 @@ class ThemeService extends ChangeNotifier {
       // ignore: deprecated_member_use
       await prefs.setInt(_accentColorKey, _accentColor.value);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
+
+      if (syncToCloud && _syncService != null) {
+        _syncService!.syncSettings({
+          'themeMode': _themeMode.index,
+          // ignore: deprecated_member_use
+          'accentColor': _accentColor.value,
+          'syncWithSystem': _syncWithSystem,
+        });
+      }
     } catch (e) {
       debugPrint('Failed to save theme preferences: $e');
     }

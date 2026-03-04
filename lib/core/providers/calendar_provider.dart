@@ -4,6 +4,7 @@
 /// filtering, and sync status tracking.
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -33,6 +34,7 @@ class CalendarProvider extends ChangeNotifier {
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
+  StreamSubscription<void>? _syncSubscription;
 
   // ===========================================
   // GETTERS
@@ -98,7 +100,59 @@ class CalendarProvider extends ChangeNotifier {
 
   /// Set sync service reference (null to disable sync)
   void setSyncService(SyncService? service) {
+    _syncSubscription?.cancel();
     _syncService = service;
+
+    if (service != null) {
+      _syncSubscription = service.syncTriggerStream.listen((_) async {
+        final dirty = dirtyEvents;
+        if (dirty.isNotEmpty) {
+          debugPrint('CalendarProvider: Syncing ${dirty.length} dirty events');
+          final success = await service.syncDirtyItems(dirtyEvents: dirty);
+          if (success) {
+            debugPrint(
+              'CalendarProvider: Sync successful, clearing dirty flags',
+            );
+            _clearDirtyFlags(dirty);
+          }
+        }
+      });
+    }
+  }
+
+  /// Handle cloud update (called by SyncService)
+  void handleCloudUpdate(List<CalendarEvent> cloudEvents) {
+    for (final cloudEvent in cloudEvents) {
+      final localIndex = _events.indexWhere((e) => e.id == cloudEvent.id);
+
+      if (localIndex >= 0) {
+        final localEvent = _events[localIndex];
+        // Only update if local event is not dirty (no local changes)
+        if (!localEvent.isDirty) {
+          _events[localIndex] = cloudEvent;
+          _eventsBox?.put(cloudEvent.id, cloudEvent);
+        }
+      } else {
+        // New event from cloud
+        _events.add(cloudEvent);
+        _eventsBox?.put(cloudEvent.id, cloudEvent);
+      }
+    }
+
+    notifyListeners();
+  }
+
+  /// Clear dirty flags for a list of events
+  void _clearDirtyFlags(List<CalendarEvent> eventsToClear) {
+    for (final event in eventsToClear) {
+      final index = _events.indexWhere((e) => e.id == event.id);
+      if (index >= 0) {
+        final cleanedEvent = _events[index].copyWith(isDirty: false);
+        _events[index] = cleanedEvent;
+        _eventsBox?.put(event.id, cleanedEvent);
+      }
+    }
+    notifyListeners();
   }
 
   // ===========================================
@@ -208,6 +262,12 @@ class CalendarProvider extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 }
 

@@ -36,7 +36,6 @@ void main() async {
   await Hive.initFlutter();
 
   // Initialize Firebase for cloud sync and authentication
-  // Check if Firebase is already initialized (e.g., during hot restart)
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
@@ -47,10 +46,9 @@ void main() async {
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
     // The app can run in offline mode without Firebase
-    // Only log in debug mode to reduce console noise
     if (kDebugMode) {
       debugPrint(
-        'Firebase initialization skipped: ${e.toString().split(':').first}',
+        'Firebase initialization skipped/failed: ${e.toString().split(':').first}',
       );
     }
   }
@@ -58,12 +56,18 @@ void main() async {
   // Initialize Firedart for Linux support
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     try {
+      // Initialize Auth
       firedart.FirebaseAuth.initialize(
         DefaultFirebaseOptions.linux.apiKey,
         firedart.VolatileStore(),
       );
+
+      // Initialize Firestore if Firebase core failed (common on Linux)
+      // or if we want to ensure Firedart handles Firestore on this platform.
+      // NOTE: Firedart doesn't need explicit 'initialize' for Firestore like Auth,
+      // it uses the project ID from environment or manual setting.
       if (kDebugMode) {
-        debugPrint('Firedart initialized for Linux');
+        debugPrint('Firedart initialized for Linux (Auth)');
       }
     } catch (e) {
       if (kDebugMode) {

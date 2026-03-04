@@ -12,6 +12,9 @@ import 'package:rxdart/rxdart.dart';
 
 import '../models/note.dart';
 import '../models/folder.dart';
+import '../models/calendar_event.dart';
+import '../models/homework.dart';
+import '../models/timetable_entry.dart';
 
 /// Sync status enum
 enum SyncStatus {
@@ -29,13 +32,22 @@ enum SyncStatus {
 class SyncService extends ChangeNotifier {
   // Lazy Firebase Firestore instance
   FirebaseFirestore? _firestore;
-  FirebaseFirestore get _firebaseFirestore {
+  FirebaseFirestore? get _firebaseFirestore {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      try {
+        // Return instance if available, otherwise return null instead of throwing
+        // to prevent framework crashes.
+        return FirebaseFirestore.instance;
+      } catch (e) {
+        return null;
+      }
+    }
     try {
       _firestore ??= FirebaseFirestore.instance;
-      return _firestore!;
+      return _firestore;
     } catch (e) {
       debugPrint('Firebase Firestore not available: $e');
-      rethrow;
+      return null;
     }
   }
 
@@ -50,6 +62,14 @@ class SyncService extends ChangeNotifier {
   // Stream subscriptions for real-time updates
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _foldersSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _calendarSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _homeworkSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _timetableSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _settingsSubscription;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Debounce subject for batching sync operations
@@ -58,6 +78,14 @@ class SyncService extends ChangeNotifier {
   // Callbacks for data updates
   void Function(List<Note>)? onNotesUpdated;
   void Function(List<Folder>)? onFoldersUpdated;
+  void Function(List<CalendarEvent>)? onCalendarUpdated;
+  void Function(List<Homework>)? onHomeworkUpdated;
+  void Function(List<TimetableEntry>)? onTimetableUpdated;
+  void Function(Map<String, dynamic>)? onSettingsUpdated;
+
+  // Stream for triggering sync across providers
+  final _syncTriggerController = StreamController<void>.broadcast();
+  Stream<void> get syncTriggerStream => _syncTriggerController.stream;
 
   // Sync enabled flag (set by AuthService)
   bool _syncEnabled = true;
@@ -116,7 +144,7 @@ class SyncService extends ChangeNotifier {
   /// Initialize sync debouncer (batches rapid updates)
   void _initSyncDebouncer() {
     _syncSubject
-        .debounceTime(const Duration(milliseconds: 500))
+        .debounceTime(const Duration(milliseconds: 200)) // Reduced from 500ms
         .listen((_) => _performSync());
   }
 
@@ -137,20 +165,36 @@ class SyncService extends ChangeNotifier {
       return;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      debugPrint('Cannot start listening: Firebase not available');
+      _setError('Sync unavailable: Firebase not initialized');
+      return;
+    }
+
     try {
       // Listen to notes collection
-      _notesSubscription = _firebaseFirestore
+      _notesSubscription = firestore
           .collection('notes')
           .where('userId', isEqualTo: userId)
           .where('isDeleted', isEqualTo: false)
           .snapshots()
           .listen(
         (snapshot) {
+          debugPrint(
+            'SyncService: Received ${snapshot.docs.length} notes from Firestore',
+          );
           final notes =
               snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
-          notifyListeners();
+
+          // If we were syncing/refreshing, transition back to idle/synced
+          if (_status == SyncStatus.syncing) {
+            _setStatus(SyncStatus.synced);
+          } else if (_status != SyncStatus.error) {
+            notifyListeners();
+          }
         },
         onError: (Object error) {
           _setError('Failed to sync notes: $error');
@@ -158,20 +202,104 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to folders collection
-      _foldersSubscription = _firebaseFirestore
+      _foldersSubscription = firestore
           .collection('folders')
           .where('userId', isEqualTo: userId)
           .where('isDeleted', isEqualTo: false)
           .snapshots()
           .listen(
         (snapshot) {
+          debugPrint(
+            'SyncService: Received ${snapshot.docs.length} folders from Firestore',
+          );
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
+
+          if (_status == SyncStatus.syncing) {
+            _setStatus(SyncStatus.synced);
+          } else if (_status != SyncStatus.error) {
+            notifyListeners();
+          }
         },
         onError: (Object error) {
           _setError('Failed to sync folders: $error');
         },
+      );
+
+      // Listen to calendar_events collection
+      _calendarSubscription = firestore
+          .collection('calendar_events')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint(
+            'SyncService: Received ${snapshot.docs.length} calendar events from Firestore',
+          );
+          final events = snapshot.docs
+              .map((doc) => CalendarEvent.fromJson(doc.data()))
+              .toList();
+          onCalendarUpdated?.call(events);
+        },
+        onError: (Object error) => _setError('Failed to sync calendar: $error'),
+      );
+
+      // Listen to homework collection
+      _homeworkSubscription = firestore
+          .collection('homework')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint(
+            'SyncService: Received ${snapshot.docs.length} homework from Firestore',
+          );
+          final tasks = snapshot.docs
+              .map((doc) => Homework.fromJson(doc.data()))
+              .toList();
+          onHomeworkUpdated?.call(tasks);
+        },
+        onError: (Object error) => _setError('Failed to sync homework: $error'),
+      );
+
+      // Listen to timetable_entries collection
+      _timetableSubscription = firestore
+          .collection('timetable_entries')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          debugPrint(
+            'SyncService: Received ${snapshot.docs.length} timetable entries from Firestore',
+          );
+          final entries = snapshot.docs
+              .map((doc) => TimetableEntry.fromJson(doc.data()))
+              .toList();
+          onTimetableUpdated?.call(entries);
+        },
+        onError: (Object error) =>
+            _setError('Failed to sync timetable: $error'),
+      );
+
+      // Listen to user settings document
+      _settingsSubscription = firestore
+          .collection('users')
+          .doc(userId)
+          .collection('settings')
+          .doc('app_settings')
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (snapshot.exists && snapshot.data() != null) {
+            debugPrint('SyncService: Received settings update from Firestore');
+            onSettingsUpdated?.call(snapshot.data()!);
+          }
+        },
+        onError: (Object error) => _setError('Failed to sync settings: $error'),
       );
     } catch (e) {
       // Firebase not initialized or unavailable
@@ -184,6 +312,10 @@ class SyncService extends ChangeNotifier {
   void stopListening() {
     _notesSubscription?.cancel();
     _foldersSubscription?.cancel();
+    _calendarSubscription?.cancel();
+    _homeworkSubscription?.cancel();
+    _timetableSubscription?.cancel();
+    _settingsSubscription?.cancel();
   }
 
   /// Trigger a sync operation (debounced)
@@ -198,10 +330,13 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
-      await _firebaseFirestore
+      await firestore
           .collection('notes')
           .doc(note.id)
           .set(note.toJson(), SetOptions(merge: true));
@@ -221,10 +356,13 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
-      await _firebaseFirestore
+      await firestore
           .collection('folders')
           .doc(folder.id)
           .set(folder.toJson(), SetOptions(merge: true));
@@ -242,8 +380,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteNote(String noteId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('notes').doc(noteId).update(
+      await firestore.collection('notes').doc(noteId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -257,8 +398,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteFolder(String folderId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('folders').doc(folderId).update(
+      await firestore.collection('folders').doc(folderId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -274,11 +418,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final entryId = entryData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('timetable_entries')
           .doc(entryId)
           .set(entryData, SetOptions(merge: true));
@@ -298,11 +445,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final homeworkId = homeworkData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('homework')
           .doc(homeworkId)
           .set(homeworkData, SetOptions(merge: true));
@@ -320,8 +470,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteHomework(String homeworkId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('homework').doc(homeworkId).update(
+      await firestore.collection('homework').doc(homeworkId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -337,11 +490,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final eventId = eventData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('calendar_events')
           .doc(eventId)
           .set(eventData, SetOptions(merge: true));
@@ -359,8 +515,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteCalendarEvent(String eventId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore
+      await firestore
           .collection('calendar_events')
           .doc(eventId)
           .update({'isDeleted': true});
@@ -371,57 +530,128 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  /// Sync all dirty (unsynced) items
-  Future<void> syncDirtyItems({
-    required List<Note> dirtyNotes,
-    required List<Folder> dirtyFolders,
-  }) async {
-    if (!_isOnline ||
-        !_syncEnabled ||
-        (dirtyNotes.isEmpty && dirtyFolders.isEmpty)) {
-      return;
+  /// Sync user settings to Firestore
+  Future<bool> syncSettings(Map<String, dynamic> settingsData) async {
+    if (!_isOnline || !_syncEnabled || _currentUserId == null) {
+      return false;
     }
 
-    _setStatus(SyncStatus.syncing);
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
 
     try {
-      // Use batched writes for efficiency
-      final batch = _firebaseFirestore.batch();
+      await firestore
+          .collection('users')
+          .doc(_currentUserId)
+          .collection('settings')
+          .doc('app_settings')
+          .set(settingsData, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      debugPrint('SyncService: Failed to sync settings: $e');
+      return false;
+    }
+  }
 
-      for (final note in dirtyNotes) {
-        final ref = _firebaseFirestore.collection('notes').doc(note.id);
-        batch.set(
-          ref,
-          note
-              .copyWith(
-                isDirty: false,
-                syncedAt: DateTime.now(),
-              )
-              .toJson(),
-          SetOptions(merge: true),
-        );
+  /// Sync all dirty (unsynced) items
+  Future<bool> syncDirtyItems({
+    List<Note>? dirtyNotes,
+    List<Folder>? dirtyFolders,
+    List<CalendarEvent>? dirtyEvents,
+    List<Homework>? dirtyHomework,
+    List<TimetableEntry>? dirtyEntries,
+  }) async {
+    if (!_isOnline || !_syncEnabled) {
+      return true;
+    }
+
+    final hasNotes = dirtyNotes != null && dirtyNotes.isNotEmpty;
+    final hasFolders = dirtyFolders != null && dirtyFolders.isNotEmpty;
+    final hasEvents = dirtyEvents != null && dirtyEvents.isNotEmpty;
+    final hasHomework = dirtyHomework != null && dirtyHomework.isNotEmpty;
+    final hasEntries = dirtyEntries != null && dirtyEntries.isNotEmpty;
+
+    if (!hasNotes && !hasFolders && !hasEvents && !hasHomework && !hasEntries) {
+      return true;
+    }
+
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      _setError('Sync failed: Firebase not available');
+      return false;
+    }
+
+    try {
+      final batch = firestore.batch();
+
+      debugPrint(
+        'SyncService: Committing batch sync for ${dirtyNotes?.length ?? 0} notes, ${dirtyFolders?.length ?? 0} folders, ${dirtyEvents?.length ?? 0} events, ${dirtyHomework?.length ?? 0} homework, ${dirtyEntries?.length ?? 0} entries',
+      );
+
+      if (hasNotes) {
+        for (final note in dirtyNotes) {
+          final ref = firestore.collection('notes').doc(note.id);
+          batch.set(
+            ref,
+            note.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(),
+            SetOptions(merge: true),
+          );
+        }
       }
 
-      for (final folder in dirtyFolders) {
-        final ref = _firebaseFirestore.collection('folders').doc(folder.id);
-        batch.set(
-          ref,
-          folder
-              .copyWith(
-                isDirty: false,
-                syncedAt: DateTime.now(),
-              )
-              .toJson(),
-          SetOptions(merge: true),
-        );
+      if (hasFolders) {
+        for (final folder in dirtyFolders) {
+          final ref = firestore.collection('folders').doc(folder.id);
+          batch.set(
+            ref,
+            folder.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(),
+            SetOptions(merge: true),
+          );
+        }
+      }
+
+      if (hasEvents) {
+        for (final event in dirtyEvents) {
+          final ref = firestore.collection('calendar_events').doc(event.id);
+          batch.set(
+            ref,
+            event.copyWith(isDirty: false).toJson(),
+            SetOptions(merge: true),
+          );
+        }
+      }
+
+      if (hasHomework) {
+        for (final homework in dirtyHomework) {
+          final ref = firestore.collection('homework').doc(homework.id);
+          batch.set(
+            ref,
+            homework.copyWith(isDirty: false).toJson(),
+            SetOptions(merge: true),
+          );
+        }
+      }
+
+      if (hasEntries) {
+        for (final entry in dirtyEntries) {
+          final ref = firestore.collection('timetable_entries').doc(entry.id);
+          batch.set(
+            ref,
+            entry.copyWith(isDirty: false).toJson(),
+            SetOptions(merge: true),
+          );
+        }
       }
 
       await batch.commit();
 
       _setStatus(SyncStatus.synced);
       _lastSyncTime = DateTime.now();
+      return true;
     } catch (e) {
+      debugPrint('SyncService: Sync failed: $e');
       _setError('Sync failed: $e');
+      return false;
     }
   }
 
@@ -433,10 +663,15 @@ class SyncService extends ChangeNotifier {
   Future<void> _performSync() async {
     if (!_isOnline || !_syncEnabled) return;
 
-    // This is called by the debouncer
-    // Actual sync logic is handled by individual sync methods
+    // Notify listeners/providers that it's time to sync dirty items
+    _syncTriggerController.add(null);
+
     _lastSyncTime = DateTime.now();
-    notifyListeners();
+    if (_status == SyncStatus.syncing) {
+      _setStatus(SyncStatus.synced);
+    } else {
+      notifyListeners();
+    }
   }
 
   /// Force a refresh of the sync connection
@@ -482,7 +717,8 @@ class SyncService extends ChangeNotifier {
   void _setError(String message) {
     _status = SyncStatus.error;
     _errorMessage = message;
-    notifyListeners();
+    // Use microtask to avoid setState during build
+    Future.microtask(() => notifyListeners());
     // Auto-recovery removed to allow user to see error and retry manually
   }
 
@@ -491,6 +727,7 @@ class SyncService extends ChangeNotifier {
     stopListening();
     _connectivitySubscription?.cancel();
     _syncSubject.close();
+    _syncTriggerController.close();
     super.dispose();
   }
 }

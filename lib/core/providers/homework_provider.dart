@@ -4,6 +4,7 @@
 /// filtering, and sync status tracking.
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -33,6 +34,7 @@ class HomeworkProvider extends ChangeNotifier {
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
+  StreamSubscription<void>? _syncSubscription;
 
   // ===========================================
   // GETTERS
@@ -97,7 +99,61 @@ class HomeworkProvider extends ChangeNotifier {
 
   /// Set sync service reference (null to disable sync)
   void setSyncService(SyncService? service) {
+    _syncSubscription?.cancel();
     _syncService = service;
+
+    if (service != null) {
+      _syncSubscription = service.syncTriggerStream.listen((_) async {
+        final dirty = dirtyHomework;
+        if (dirty.isNotEmpty) {
+          debugPrint(
+            'HomeworkProvider: Syncing ${dirty.length} dirty homework',
+          );
+          final success = await service.syncDirtyItems(dirtyHomework: dirty);
+          if (success) {
+            debugPrint(
+              'HomeworkProvider: Sync successful, clearing dirty flags',
+            );
+            _clearDirtyFlags(dirty);
+          }
+        }
+      });
+    }
+  }
+
+  /// Handle cloud update (called by SyncService)
+  void handleCloudUpdate(List<Homework> cloudHomework) {
+    for (final cloudItem in cloudHomework) {
+      final localIndex = _homework.indexWhere((h) => h.id == cloudItem.id);
+
+      if (localIndex >= 0) {
+        final localItem = _homework[localIndex];
+        // Only update if local item is not dirty (no local changes)
+        if (!localItem.isDirty) {
+          _homework[localIndex] = cloudItem;
+          _homeworkBox?.put(cloudItem.id, cloudItem);
+        }
+      } else {
+        // New item from cloud
+        _homework.add(cloudItem);
+        _homeworkBox?.put(cloudItem.id, cloudItem);
+      }
+    }
+
+    notifyListeners();
+  }
+
+  /// Clear dirty flags for a list of homework tasks
+  void _clearDirtyFlags(List<Homework> homeworkToClear) {
+    for (final item in homeworkToClear) {
+      final index = _homework.indexWhere((h) => h.id == item.id);
+      if (index >= 0) {
+        final cleanedItem = _homework[index].copyWith(isDirty: false);
+        _homework[index] = cleanedItem;
+        _homeworkBox?.put(item.id, cleanedItem);
+      }
+    }
+    notifyListeners();
   }
 
   // ===========================================
@@ -209,6 +265,12 @@ class HomeworkProvider extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 }
 

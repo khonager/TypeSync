@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/quill_delta.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,6 +22,7 @@ import '../../../core/services/local_file_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
+import '../../home/widgets/sync_status_indicator.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
@@ -55,11 +57,14 @@ class _EditorScreenState extends State<EditorScreen> {
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
 
-  // Current note being edited
-  Note? _note;
-
   // Title controller
   final TextEditingController _titleController = TextEditingController();
+
+  // Last saved content to prevent unnecessary reloads from provider
+  String? _lastSavedContent;
+
+  // Current note being edited
+  Note? _note;
 
   // Auto-save timer
   Timer? _saveTimer;
@@ -73,6 +78,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // Drag and drop state
   bool _isDragging = false;
+  bool _isUpdatingFromExternal = false;
 
   @override
   void initState() {
@@ -147,6 +153,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _onContentChanged() {
+    if (_isUpdatingFromExternal) return;
     _updateStats();
     _scheduleSave();
   }
@@ -160,17 +167,19 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _scheduleSave() {
+    if (_note?.hasConflict == true) return; // Don't auto-save during a conflict
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 500), _saveNote);
+    _saveTimer = Timer(const Duration(milliseconds: 200), _saveNote);
   }
 
   Future<void> _saveNote() async {
-    if (_note == null) return;
+    if (_note == null || _note!.hasConflict) return;
 
     final notesProvider = context.read<NotesProvider>();
 
     // Get content as JSON string
     final content = jsonEncode(_quillController.document.toDelta().toJson());
+    _lastSavedContent = content;
 
     await notesProvider.updateNoteContent(
       noteId: _note!.id,
@@ -200,10 +209,46 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return _buildEditor(context);
+  }
+
+  Widget _buildEditor(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    }
+    // React to external changes from provider
+    final notesProvider = context.watch<NotesProvider>();
+    final providerNote = notesProvider.getNoteById(widget.noteId!);
+
+    if (providerNote != null && _note != null) {
+      if (providerNote.updatedAt.isAfter(_note!.updatedAt) ||
+          providerNote.isDirty != _note!.isDirty ||
+          providerNote.hasConflict != _note!.hasConflict) {
+        final providerContent = providerNote.content;
+        final localContent =
+            jsonEncode(_quillController.document.toDelta().toJson());
+
+        // We only reload Quill if the content actually differs from what we currently have
+        // AND it wasn't a change we just pushed ourselves.
+        if (providerContent != localContent &&
+            providerContent != _lastSavedContent) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _updateContentFromProvider(providerNote);
+          });
+        } else {
+          // Content matches or is our own save. Just sync metadata silently.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _note = providerNote;
+                _lastSavedContent = providerContent;
+              });
+            }
+          });
+        }
+      }
     }
 
     final bgColor = _note?.backgroundColor != null
@@ -239,6 +284,8 @@ class _EditorScreenState extends State<EditorScreen> {
             lineCount: _lineCount,
             characterCount: _characterCount,
           ),
+          // Sync status indicator
+          const SyncStatusIndicator(),
           // More options
           IconButton(
             icon: const Icon(Icons.more_vert),
@@ -246,85 +293,166 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         ],
       ),
-      body: _note?.type == NoteType.pdf && _note?.pdfPath != null
-          ? _buildPdfViewer()
-          : DropTarget(
-              onDragEntered: (details) {
-                setState(() {
-                  _isDragging = true;
-                });
-              },
-              onDragExited: (details) {
-                setState(() {
-                  _isDragging = false;
-                });
-              },
-              onDragDone: (details) {
-                _handleDroppedFiles(details.files);
-                setState(() {
-                  _isDragging = false;
-                });
-              },
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Editor area
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-                    padding: const EdgeInsets.all(16),
-                    child: QuillEditor(
-                      controller: _quillController,
-                      focusNode: _focusNode,
-                      scrollController: _scrollController,
-                    ),
-                  ),
-
-                  // Floating toolbar
-                  EditorToolbar(
-                    controller: _quillController,
-                    onInsertPdf: _insertPdf,
-                  ),
-                  // Drag overlay
-                  if (_isDragging)
-                    Container(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.2),
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(32),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.cloud_upload,
-                                size: 64,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Drop files here to import',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                            ],
+      body: Column(
+        children: [
+          if (_note?.hasConflict == true) _buildConflictBanner(),
+          Expanded(
+            child: _note?.type == NoteType.pdf && _note?.pdfPath != null
+                ? _buildPdfViewer()
+                : DropTarget(
+                    onDragEntered: (details) {
+                      setState(() {
+                        _isDragging = true;
+                      });
+                    },
+                    onDragExited: (details) {
+                      setState(() {
+                        _isDragging = false;
+                      });
+                    },
+                    onDragDone: (details) {
+                      _handleDroppedFiles(details.files);
+                      setState(() {
+                        _isDragging = false;
+                      });
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Editor area
+                        Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          color: bgColor ??
+                              Theme.of(context).scaffoldBackgroundColor,
+                          padding: const EdgeInsets.all(16),
+                          child: QuillEditor(
+                            controller: _quillController,
+                            focusNode: _focusNode,
+                            scrollController: _scrollController,
                           ),
                         ),
-                      ),
+
+                        // Floating toolbar
+                        EditorToolbar(
+                          controller: _quillController,
+                          onInsertPdf: _insertPdf,
+                        ),
+                        // Drag overlay
+                        if (_isDragging)
+                          Container(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.2),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(32),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.cloud_upload,
+                                      size: 64,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Drop files here to import',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConflictBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.red.shade800,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.white),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Conflicting changes detected!',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
+          ),
+          TextButton(
+            onPressed: _showConflictDialog,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red.shade800,
+              backgroundColor: Colors.white,
+            ),
+            child: const Text('RESOLVE'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConflictDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Resolve Conflict'),
+        content: const Text(
+          'This note was modified on another device at the same time. '
+          'How would you like to resolve this?\n\n'
+          '• Keep Local: Retain your current changes and overwrite the cloud.\n'
+          '• Keep Cloud: Discard your current changes and load the cloud version.\n'
+          '• Merge: Append the cloud version to the bottom of your local version.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<NotesProvider>().resolveConflict(_note!.id, 'local');
+            },
+            child: const Text('Keep Local'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<NotesProvider>().resolveConflict(_note!.id, 'cloud');
+            },
+            child: const Text('Keep Cloud'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<NotesProvider>().resolveConflict(_note!.id, 'merge');
+            },
+            child: const Text('Merge'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -826,6 +954,40 @@ class _EditorScreenState extends State<EditorScreen> {
           );
         }
       }
+    }
+  }
+
+  void _updateContentFromProvider(Note providerNote) {
+    if (!mounted) return;
+
+    try {
+      final delta =
+          Delta.fromJson(jsonDecode(providerNote.content) as List<dynamic>);
+
+      setState(() {
+        _isUpdatingFromExternal = true;
+
+        // Preserve selection if possible
+        final selection = _quillController.selection;
+
+        _quillController.document = Document.fromDelta(delta);
+
+        // Try to restore selection
+        if (selection.end <= _quillController.document.length) {
+          _quillController.updateSelection(selection, ChangeSource.local);
+        }
+
+        _note = providerNote;
+        _lastSavedContent = providerNote.content;
+        _characterCount = providerNote.characterCount;
+        _lineCount = providerNote.lineCount;
+        _titleController.text = providerNote.title;
+
+        _isUpdatingFromExternal = false;
+      });
+    } catch (e) {
+      debugPrint('Error updating from external source: $e');
+      _isUpdatingFromExternal = false;
     }
   }
 }
