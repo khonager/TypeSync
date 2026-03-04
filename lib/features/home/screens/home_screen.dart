@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeData() async {
+    debugPrint('HomeScreen: _initializeData IS CALLED!');
     final authService = context.read<AuthService>();
     final userId = authService.userId;
 

@@ -4,6 +4,8 @@
 /// filtering, and sync status tracking.
 library;
 
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -34,6 +36,7 @@ class NotesProvider extends ChangeNotifier {
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
+  StreamSubscription<void>? _syncSubscription;
 
   // ===========================================
   // GETTERS
@@ -115,7 +118,22 @@ class NotesProvider extends ChangeNotifier {
 
   /// Set sync service reference (null to disable sync)
   void setSyncService(SyncService? service) {
+    _syncSubscription?.cancel();
     _syncService = service;
+    
+    if (service != null) {
+      _syncSubscription = service.syncTriggerStream.listen((_) async {
+        final dirty = dirtyNotes;
+        if (dirty.isNotEmpty) {
+          debugPrint('NotesProvider: Syncing ${dirty.length} dirty notes');
+          final success = await service.syncDirtyItems(dirtyNotes: dirty, dirtyFolders: []);
+          if (success) {
+            debugPrint('NotesProvider: Sync successful, clearing dirty flags');
+            _clearDirtyFlags(dirty);
+          }
+        }
+      });
+    }
   }
 
   // ===========================================
@@ -331,11 +349,29 @@ class NotesProvider extends ChangeNotifier {
       if (localIndex >= 0) {
         final localNote = _notes[localIndex];
 
-        // Cloud wins if local isn't dirty, or if cloud is newer
-        if (!localNote.isDirty ||
+        if (localNote.isDirty && 
+            cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
+            localNote.content != cloudNote.content) {
+          // Conflict detected!
+          // We keep our local changes as the main content but flag it and save cloud content
+          final conflictedNote = localNote.copyWith(
+            hasConflict: true,
+            conflictContent: cloudNote.content,
+          );
+          _notes[localIndex] = conflictedNote;
+          _notesBox?.put(cloudNote.id, conflictedNote);
+          debugPrint('NotesProvider: Conflict detected for note ${localNote.id}');
+        } else if (!localNote.isDirty ||
             cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
-          _notes[localIndex] = cloudNote;
-          _notesBox?.put(cloudNote.id, cloudNote);
+          // Cloud wins if local isn't dirty, or if cloud is newer (and wasn't dirty, or content matched)
+          // Also, if local WAS dirty but the incoming cloud update is newer and NO conflict arose
+          // (e.g., contents match, or we just want to overwrite because we weren't dirty), we take cloud.
+          final updatedNote = cloudNote.copyWith(
+            hasConflict: false,
+            clearConflictContent: true,
+          );
+          _notes[localIndex] = updatedNote;
+          _notesBox?.put(cloudNote.id, updatedNote);
         }
       } else {
         // New note from cloud
@@ -344,6 +380,78 @@ class NotesProvider extends ChangeNotifier {
       }
     }
 
+    notifyListeners();
+  }
+
+  /// Resolves a merge conflict for a given note
+  /// [strategy] can be 'local', 'cloud', or 'merge'
+  Future<void> resolveConflict(String noteId, String strategy) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) return;
+
+    final note = _notes[index];
+    if (!note.hasConflict) return;
+
+    String resolvedContent = note.content;
+
+    switch (strategy) {
+      case 'local':
+        resolvedContent = note.content;
+        break;
+      case 'cloud':
+        resolvedContent = note.conflictContent ?? note.content;
+        break;
+      case 'merge':
+        // For text or markdown, we append them.
+        // For Delta JSON (Flutter Quill), simple string append breaks the JSON format.
+        // For now, we will try to parse Delta, append a divider, and append the cloud Delta.
+        try {
+          final localDelta = List<dynamic>.from(jsonDecode(note.content));
+          final cloudDelta = note.conflictContent != null 
+              ? List<dynamic>.from(jsonDecode(note.conflictContent!))
+              : [];
+          
+          final mergedDelta = [
+            ...localDelta,
+            {'insert': '\n\n=== CLOUD VERSION ===\n\n'},
+            ...cloudDelta,
+          ];
+          resolvedContent = jsonEncode(mergedDelta);
+        } catch (e) {
+          // Fallback if not valid JSON (e.g. plain text or older format)
+          resolvedContent = '${note.content}\n\n=== CLOUD VERSION ===\n\n${note.conflictContent ?? ""}';
+        }
+        break;
+    }
+
+    // Update the note with the resolved content and clear conflict flags
+    final resolvedNote = note.copyWith(
+      content: resolvedContent,
+      hasConflict: false,
+      clearConflictContent: true,
+      updatedAt: DateTime.now(),
+      isDirty: true, // Needs to be synced back to cloud
+    );
+
+    _notes[index] = resolvedNote;
+    await _notesBox?.put(noteId, resolvedNote);
+
+    // Trigger sync
+    _syncService?.triggerSync();
+
+    notifyListeners();
+  }
+
+  /// Clear dirty flags for a list of notes
+  void _clearDirtyFlags(List<Note> notesToClear) {
+    for (final note in notesToClear) {
+      final index = _notes.indexWhere((n) => n.id == note.id);
+      if (index >= 0) {
+        final cleanedNote = _notes[index].copyWith(isDirty: false);
+        _notes[index] = cleanedNote;
+        _notesBox?.put(cleanedNote.id, cleanedNote);
+      }
+    }
     notifyListeners();
   }
 
@@ -360,6 +468,12 @@ class NotesProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 }
 
@@ -388,6 +502,8 @@ class NoteAdapter extends TypeAdapter<Note> {
       lineCount: reader.readInt(),
       userId: reader.readString(),
       pdfPath: reader.readString(),
+      hasConflict: reader.availableBytes > 0 ? reader.readBool() : false,
+      conflictContent: reader.availableBytes > 0 ? reader.readString() : null,
     );
   }
 
@@ -413,6 +529,8 @@ class NoteAdapter extends TypeAdapter<Note> {
     writer.writeInt(obj.lineCount);
     writer.writeString(obj.userId);
     writer.writeString(obj.pdfPath ?? '');
+    writer.writeBool(obj.hasConflict);
+    writer.writeString(obj.conflictContent ?? '');
   }
 }
 

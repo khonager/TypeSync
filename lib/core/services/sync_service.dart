@@ -68,6 +68,10 @@ class SyncService extends ChangeNotifier {
   void Function(List<Note>)? onNotesUpdated;
   void Function(List<Folder>)? onFoldersUpdated;
 
+  // Stream for triggering sync across providers
+  final _syncTriggerController = StreamController<void>.broadcast();
+  Stream<void> get syncTriggerStream => _syncTriggerController.stream;
+
   // Sync enabled flag (set by AuthService)
   bool _syncEnabled = true;
 
@@ -125,7 +129,7 @@ class SyncService extends ChangeNotifier {
   /// Initialize sync debouncer (batches rapid updates)
   void _initSyncDebouncer() {
     _syncSubject
-        .debounceTime(const Duration(milliseconds: 500))
+        .debounceTime(const Duration(milliseconds: 200)) // Reduced from 500ms
         .listen((_) => _performSync());
   }
 
@@ -162,6 +166,7 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
+          debugPrint('SyncService: Received ${snapshot.docs.length} notes from Firestore');
           final notes =
               snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
           onNotesUpdated?.call(notes);
@@ -187,6 +192,7 @@ class SyncService extends ChangeNotifier {
           .snapshots()
           .listen(
         (snapshot) {
+          debugPrint('SyncService: Received ${snapshot.docs.length} folders from Firestore');
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
@@ -427,20 +433,20 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Sync all dirty (unsynced) items
-  Future<void> syncDirtyItems({
+  Future<bool> syncDirtyItems({
     required List<Note> dirtyNotes,
     required List<Folder> dirtyFolders,
   }) async {
     if (!_isOnline ||
         !_syncEnabled ||
         (dirtyNotes.isEmpty && dirtyFolders.isEmpty)) {
-      return;
+      return true;
     }
 
     final firestore = _firebaseFirestore;
     if (firestore == null) {
       _setError('Sync failed: Firebase not available');
-      return;
+      return false;
     }
 
     _setStatus(SyncStatus.syncing);
@@ -477,12 +483,18 @@ class SyncService extends ChangeNotifier {
         );
       }
 
+      debugPrint(
+        'SyncService: Committing batch sync for ${dirtyNotes.length} notes and ${dirtyFolders.length} folders',
+      );
       await batch.commit();
 
       _setStatus(SyncStatus.synced);
       _lastSyncTime = DateTime.now();
+      return true;
     } catch (e) {
+      debugPrint('SyncService: Sync failed: $e');
       _setError('Sync failed: $e');
+      return false;
     }
   }
 
@@ -494,10 +506,9 @@ class SyncService extends ChangeNotifier {
   Future<void> _performSync() async {
     if (!_isOnline || !_syncEnabled) return;
 
-    // This is called by the debouncer
-    // Actual sync logic is handled by individual sync methods
-    // If we want to support global dirty item sync, it should be triggered here
-    // For now, just ensure the status returns to synced if it was syncing
+    // Notify listeners/providers that it's time to sync dirty items
+    _syncTriggerController.add(null);
+
     _lastSyncTime = DateTime.now();
     if (_status == SyncStatus.syncing) {
       _setStatus(SyncStatus.synced);
@@ -559,6 +570,7 @@ class SyncService extends ChangeNotifier {
     stopListening();
     _connectivitySubscription?.cancel();
     _syncSubject.close();
+    _syncTriggerController.close();
     super.dispose();
   }
 }

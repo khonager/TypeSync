@@ -4,6 +4,7 @@
 /// and hierarchical structure management.
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -30,6 +31,7 @@ class FoldersProvider extends ChangeNotifier {
 
   // Sync service reference
   SyncService? _syncService;
+  StreamSubscription<void>? _syncSubscription;
 
   // ===========================================
   // GETTERS
@@ -114,7 +116,22 @@ class FoldersProvider extends ChangeNotifier {
 
   /// Set sync service reference (null to disable sync)
   void setSyncService(SyncService? service) {
+    _syncSubscription?.cancel();
     _syncService = service;
+    
+    if (service != null) {
+      _syncSubscription = service.syncTriggerStream.listen((_) async {
+        final dirty = dirtyFolders;
+        if (dirty.isNotEmpty) {
+          debugPrint('FoldersProvider: Syncing ${dirty.length} dirty folders');
+          final success = await service.syncDirtyItems(dirtyNotes: [], dirtyFolders: dirty);
+          if (success) {
+            debugPrint('FoldersProvider: Sync successful, clearing dirty flags');
+            _clearDirtyFlags(dirty);
+          }
+        }
+      });
+    }
   }
 
   // ===========================================
@@ -291,10 +308,29 @@ class FoldersProvider extends ChangeNotifier {
     return descendants;
   }
 
+  /// Clear dirty flags for a list of folders
+  void _clearDirtyFlags(List<Folder> foldersToClear) {
+    for (final folder in foldersToClear) {
+      final index = _folders.indexWhere((f) => f.id == folder.id);
+      if (index >= 0) {
+        final cleanedFolder = _folders[index].copyWith(isDirty: false);
+        _folders[index] = cleanedFolder;
+        _foldersBox?.put(cleanedFolder.id, cleanedFolder);
+      }
+    }
+    notifyListeners();
+  }
+
   /// Clear error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 }
 

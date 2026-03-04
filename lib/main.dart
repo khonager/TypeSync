@@ -36,16 +36,11 @@ void main() async {
   await Hive.initFlutter();
 
   // Initialize Firebase for cloud sync and authentication
-  // Check if Firebase is already initialized (e.g., during hot restart)
-  bool firebaseInitialized = false;
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      firebaseInitialized = true;
-    } else {
-      firebaseInitialized = true;
     }
   } catch (e) {
     // Silently handle Firebase initialization errors

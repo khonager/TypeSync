@@ -69,6 +69,12 @@ class Note extends Equatable {
   /// PDF file path if type is pdf
   final String? pdfPath;
 
+  /// Whether this note has an unresolved merge conflict
+  final bool hasConflict;
+
+  /// The incoming cloud content that conflicts with local changes
+  final String? conflictContent;
+
   const Note({
     required this.id,
     required this.title,
@@ -87,6 +93,8 @@ class Note extends Equatable {
     this.characterCount = 0,
     this.lineCount = 0,
     this.pdfPath,
+    this.hasConflict = false,
+    this.conflictContent,
   });
 
   /// Creates a new note with default values
@@ -131,6 +139,9 @@ class Note extends Equatable {
     String? userId,
     String? pdfPath,
     bool backgroundColorSet = false,
+    bool? hasConflict,
+    String? conflictContent,
+    bool clearConflictContent = false,
   }) {
     return Note(
       id: id ?? this.id,
@@ -152,6 +163,10 @@ class Note extends Equatable {
       lineCount: lineCount ?? this.lineCount,
       userId: userId ?? this.userId,
       pdfPath: pdfPath ?? this.pdfPath,
+      hasConflict: hasConflict ?? this.hasConflict,
+      conflictContent: clearConflictContent 
+          ? null 
+          : (conflictContent ?? this.conflictContent),
     );
   }
 
@@ -174,6 +189,10 @@ class Note extends Equatable {
       'lineCount': lineCount,
       'userId': userId,
       'pdfPath': pdfPath,
+      // We explicitly don't sync conflict state up to the cloud; 
+      // the cloud is just the source of truth for the remote version.
+      // But if we did want to serialize them locally somehow, we might. 
+      // For now, Firestore toJson doesn't need them.
     };
   }
 
@@ -201,6 +220,8 @@ class Note extends Equatable {
       lineCount: json['lineCount'] as int? ?? 0,
       userId: json['userId'] as String,
       pdfPath: json['pdfPath'] as String?,
+      hasConflict: false, // from server is never conflicted
+      conflictContent: null,
     );
   }
 
@@ -223,5 +244,7 @@ class Note extends Equatable {
         lineCount,
         userId,
         pdfPath,
+        hasConflict,
+        conflictContent,
       ];
 }
