@@ -121,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Email',
                     hint: 'Enter your email',
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
                     prefixIcon: Icons.email_outlined,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -140,6 +141,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Password',
                     hint: 'Enter your password',
                     obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _handleLogin(),
                     prefixIcon: Icons.lock_outline,
                     suffixIcon: IconButton(
                       icon: Icon(
