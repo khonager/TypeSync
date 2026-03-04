@@ -129,7 +129,9 @@ class NotesProvider extends ChangeNotifier {
           final success =
               await service.syncDirtyItems(dirtyNotes: dirty, dirtyFolders: []);
           if (success) {
-            debugPrint('NotesProvider: Sync successful, clearing dirty flags');
+            debugPrint(
+                'NotesProvider: Sync successful, clearing dirty flags',
+            );
             _clearDirtyFlags(dirty);
           }
         }
@@ -412,7 +414,7 @@ class NotesProvider extends ChangeNotifier {
               List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
           final cloudDelta = note.conflictContent != null
               ? List<dynamic>.from(
-                  jsonDecode(note.conflictContent!) as Iterable<dynamic>)
+                  jsonDecode(note.conflictContent!) as Iterable<dynamic>),
               : [];
 
           final mergedDelta = [

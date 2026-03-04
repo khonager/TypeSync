@@ -97,11 +97,13 @@ class TimetableProvider extends ChangeNotifier {
         final dirty = dirtyEntries;
         if (dirty.isNotEmpty) {
           debugPrint(
-              'TimetableProvider: Syncing ${dirty.length} dirty entries');
+              'TimetableProvider: Syncing ${dirty.length} dirty entries',
+          );
           final success = await service.syncDirtyItems(dirtyEntries: dirty);
           if (success) {
             debugPrint(
-                'TimetableProvider: Sync successful, clearing dirty flags');
+                'TimetableProvider: Sync successful, clearing dirty flags',
+            );
             _clearDirtyFlags(dirty);
           }
         }

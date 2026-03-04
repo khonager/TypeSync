@@ -182,7 +182,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (snapshot) {
           debugPrint(
-              'SyncService: Received ${snapshot.docs.length} notes from Firestore');
+              'SyncService: Received ${snapshot.docs.length} notes from Firestore',
+          );
           final notes =
               snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
           onNotesUpdated?.call(notes);
@@ -209,7 +210,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (snapshot) {
           debugPrint(
-              'SyncService: Received ${snapshot.docs.length} folders from Firestore');
+              'SyncService: Received ${snapshot.docs.length} folders from Firestore',
+          );
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
@@ -234,7 +236,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (snapshot) {
           debugPrint(
-              'SyncService: Received ${snapshot.docs.length} calendar events from Firestore');
+              'SyncService: Received ${snapshot.docs.length} calendar events from Firestore',
+          );
           final events = snapshot.docs
               .map((doc) => CalendarEvent.fromJson(doc.data()))
               .toList();
@@ -252,7 +255,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (snapshot) {
           debugPrint(
-              'SyncService: Received ${snapshot.docs.length} homework from Firestore');
+              'SyncService: Received ${snapshot.docs.length} homework from Firestore',
+          );
           final tasks = snapshot.docs
               .map((doc) => Homework.fromJson(doc.data()))
               .toList();
@@ -270,7 +274,8 @@ class SyncService extends ChangeNotifier {
           .listen(
         (snapshot) {
           debugPrint(
-              'SyncService: Received ${snapshot.docs.length} timetable entries from Firestore');
+              'SyncService: Received ${snapshot.docs.length} timetable entries from Firestore',
+          );
           final entries = snapshot.docs
               .map((doc) => TimetableEntry.fromJson(doc.data()))
               .toList();
@@ -589,7 +594,8 @@ class SyncService extends ChangeNotifier {
           batch.set(
               ref,
               note.copyWith(isDirty: false, syncedAt: DateTime.now()).toJson(),
-              SetOptions(merge: true));
+              SetOptions(merge: true),
+          );
         }
       }
 
@@ -601,7 +607,8 @@ class SyncService extends ChangeNotifier {
               folder
                   .copyWith(isDirty: false, syncedAt: DateTime.now())
                   .toJson(),
-              SetOptions(merge: true));
+              SetOptions(merge: true),
+          );
         }
       }
 
@@ -609,7 +616,8 @@ class SyncService extends ChangeNotifier {
         for (final event in dirtyEvents) {
           final ref = firestore.collection('calendar_events').doc(event.id);
           batch.set(ref, event.copyWith(isDirty: false).toJson(),
-              SetOptions(merge: true));
+              SetOptions(merge: true),
+          );
         }
       }
 
@@ -617,7 +625,8 @@ class SyncService extends ChangeNotifier {
         for (final homework in dirtyHomework) {
           final ref = firestore.collection('homework').doc(homework.id);
           batch.set(ref, homework.copyWith(isDirty: false).toJson(),
-              SetOptions(merge: true));
+              SetOptions(merge: true),
+          );
         }
       }
 
@@ -625,7 +634,8 @@ class SyncService extends ChangeNotifier {
         for (final entry in dirtyEntries) {
           final ref = firestore.collection('timetable_entries').doc(entry.id);
           batch.set(ref, entry.copyWith(isDirty: false).toJson(),
-              SetOptions(merge: true));
+              SetOptions(merge: true),
+          );
         }
       }
 

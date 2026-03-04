@@ -107,11 +107,13 @@ class HomeworkProvider extends ChangeNotifier {
         final dirty = dirtyHomework;
         if (dirty.isNotEmpty) {
           debugPrint(
-              'HomeworkProvider: Syncing ${dirty.length} dirty homework');
+              'HomeworkProvider: Syncing ${dirty.length} dirty homework',
+          );
           final success = await service.syncDirtyItems(dirtyHomework: dirty);
           if (success) {
             debugPrint(
-                'HomeworkProvider: Sync successful, clearing dirty flags');
+                'HomeworkProvider: Sync successful, clearing dirty flags',
+            );
             _clearDirtyFlags(dirty);
           }
         }

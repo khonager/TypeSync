@@ -227,7 +227,7 @@ class ThemeService extends ChangeNotifier {
       if (syncToCloud && _syncService != null) {
         _syncService!.syncSettings({
           'themeMode': _themeMode.index,
-          'accentColor': _accentColor.toARGB32(),
+          'accentColor': _accentColor.value,
           'syncWithSystem': _syncWithSystem,
         });
       }
