@@ -166,7 +166,13 @@ class SyncService extends ChangeNotifier {
               snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
-          notifyListeners();
+          
+          // If we were syncing/refreshing, transition back to idle/synced
+          if (_status == SyncStatus.syncing) {
+            _setStatus(SyncStatus.synced);
+          } else if (_status != SyncStatus.error) {
+            notifyListeners();
+          }
         },
         onError: (Object error) {
           _setError('Failed to sync notes: $error');
@@ -184,6 +190,12 @@ class SyncService extends ChangeNotifier {
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
+          
+          if (_status == SyncStatus.syncing) {
+            _setStatus(SyncStatus.synced);
+          } else if (_status != SyncStatus.error) {
+            notifyListeners();
+          }
         },
         onError: (Object error) {
           _setError('Failed to sync folders: $error');
@@ -484,8 +496,14 @@ class SyncService extends ChangeNotifier {
 
     // This is called by the debouncer
     // Actual sync logic is handled by individual sync methods
+    // If we want to support global dirty item sync, it should be triggered here
+    // For now, just ensure the status returns to synced if it was syncing
     _lastSyncTime = DateTime.now();
-    notifyListeners();
+    if (_status == SyncStatus.syncing) {
+      _setStatus(SyncStatus.synced);
+    } else {
+      notifyListeners();
+    }
   }
 
   /// Force a refresh of the sync connection
