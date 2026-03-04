@@ -44,11 +44,11 @@
       "dependency": "transitive",
       "description": {
         "name": "archive",
-        "sha256": "2fde1607386ab523f7a36bb3e7edb43bd58e6edaf2ffb29d8a6d578b297fdbbd",
+        "sha256": "cb6a278ef2dbb298455e1a713bda08524a175630ec643a242c399c932a0a1f7d",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "4.0.7"
+      "version": "3.6.1"
     },
     "args": {
       "dependency": "transitive",
@@ -184,11 +184,11 @@
       "dependency": "transitive",
       "description": {
         "name": "characters",
-        "sha256": "f71061c654a3380576a52b451dd5532377954cf9dbd272a78fc8479606670803",
+        "sha256": "faf38497bda5ead2a8c7615f4f7939df04333478bf32e4173fcb06d428b5716b",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "1.4.0"
+      "version": "1.4.1"
     },
     "charcode": {
       "dependency": "transitive",
@@ -610,6 +610,16 @@
       "source": "hosted",
       "version": "3.10.17"
     },
+    "firedart": {
+      "dependency": "direct main",
+      "description": {
+        "name": "firedart",
+        "sha256": "bf9ea24bf70567b5e4596bbceb2b7325c3167f10555ca757ef1f887af42b300a",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "0.9.8"
+    },
     "fixnum": {
       "dependency": "transitive",
       "description": {
@@ -816,6 +826,26 @@
       "source": "hosted",
       "version": "6.3.3"
     },
+    "google_identity_services_web": {
+      "dependency": "transitive",
+      "description": {
+        "name": "google_identity_services_web",
+        "sha256": "5d187c46dc59e02646e10fe82665fc3884a9b71bc1c90c2b8b749316d33ee454",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "0.3.3+1"
+    },
+    "googleapis_auth": {
+      "dependency": "transitive",
+      "description": {
+        "name": "googleapis_auth",
+        "sha256": "befd71383a955535060acde8792e7efc11d2fccd03dd1d3ec434e85b68775938",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "1.6.0"
+    },
     "graphs": {
       "dependency": "transitive",
       "description": {
@@ -825,6 +855,16 @@
       },
       "source": "hosted",
       "version": "2.3.2"
+    },
+    "grpc": {
+      "dependency": "transitive",
+      "description": {
+        "name": "grpc",
+        "sha256": "e93ee3bce45c134bf44e9728119102358c7cd69de7832d9a874e2e74eb8cab40",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "3.2.4"
     },
     "hive": {
       "dependency": "direct main",
@@ -867,7 +907,7 @@
       "version": "0.15.6"
     },
     "http": {
-      "dependency": "transitive",
+      "dependency": "direct main",
       "description": {
         "name": "http",
         "sha256": "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412",
@@ -875,6 +915,16 @@
       },
       "source": "hosted",
       "version": "1.6.0"
+    },
+    "http2": {
+      "dependency": "transitive",
+      "description": {
+        "name": "http2",
+        "sha256": "382d3aefc5bd6dc68c6b892d7664f29b5beb3251611ae946a98d35158a82bbfa",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "2.3.1"
     },
     "http_multi_server": {
       "dependency": "transitive",
@@ -900,11 +950,11 @@
       "dependency": "transitive",
       "description": {
         "name": "image",
-        "sha256": "4e973fcf4caae1a4be2fa0a13157aa38a8f9cb049db6529aa00b4d71abc4d928",
+        "sha256": "f31d52537dc417fdcde36088fdf11d191026fd5e4fae742491ebd40e5a8bea7d",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "4.5.4"
+      "version": "4.3.0"
     },
     "integration_test": {
       "dependency": "direct dev",
@@ -1016,21 +1066,21 @@
       "dependency": "transitive",
       "description": {
         "name": "matcher",
-        "sha256": "dc58c723c3c24bf8d3e2d3ad3f2f9d7bd9cf43ec6feaa64181775e60190153f2",
+        "sha256": "12956d0ad8390bbcc63ca2e1469c0619946ccb52809807067a7020d57e647aa6",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "0.12.17"
+      "version": "0.12.18"
     },
     "material_color_utilities": {
       "dependency": "transitive",
       "description": {
         "name": "material_color_utilities",
-        "sha256": "f7142bb1154231d7ea5f96bc7bde4bda2a0945d2806bb11670e30b850d56bdec",
+        "sha256": "9c337007e82b1889149c82ed242ed1cb24a66044e30979c44912381e9be4c48b",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "0.11.1"
+      "version": "0.13.0"
     },
     "material_design_icons_flutter": {
       "dependency": "direct main",
@@ -1242,16 +1292,6 @@
       "source": "hosted",
       "version": "1.5.2"
     },
-    "posix": {
-      "dependency": "transitive",
-      "description": {
-        "name": "posix",
-        "sha256": "6323a5b0fa688b6a010df4905a56b00181479e6d10534cecfecede2aa55add61",
-        "url": "https://pub.dev"
-      },
-      "source": "hosted",
-      "version": "6.0.3"
-    },
     "printing": {
       "dependency": "direct main",
       "description": {
@@ -1271,6 +1311,16 @@
       },
       "source": "hosted",
       "version": "5.0.5"
+    },
+    "protobuf": {
+      "dependency": "transitive",
+      "description": {
+        "name": "protobuf",
+        "sha256": "68645b24e0716782e58948f8467fd42a880f255096a821f9e7d0ec625b00c84d",
+        "url": "https://pub.dev"
+      },
+      "source": "hosted",
+      "version": "3.1.0"
     },
     "provider": {
       "dependency": "direct main",
@@ -1761,11 +1811,11 @@
       "dependency": "transitive",
       "description": {
         "name": "test_api",
-        "sha256": "ab2726c1a94d3176a45960b6234466ec367179b87dd74f1611adb1f3b5fb9d55",
+        "sha256": "93167629bfc610f71560ab9312acdda4959de4df6fac7492c89ff0d3886f6636",
         "url": "https://pub.dev"
       },
       "source": "hosted",
-      "version": "0.7.7"
+      "version": "0.7.9"
     },
     "timing": {
       "dependency": "transitive",
