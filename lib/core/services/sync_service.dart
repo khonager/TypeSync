@@ -521,8 +521,9 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('notes').document(note.id).update(note
-            .toJson()); // Firedart doesn't have set with merge = true out of the box easily.
+        await fdFirestore.collection('notes').document(note.id).update(
+              note.toJson(),
+            ); // Firedart doesn't have set with merge = true out of the box easily.
         // A safer approach in firedart:
         // Since note.toJson() contains all fields, set is fine.
         await fdFirestore
