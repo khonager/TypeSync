@@ -364,7 +364,8 @@ class NotesProvider extends ChangeNotifier {
           _notes[localIndex] = conflictedNote;
           _notesBox?.put(cloudNote.id, conflictedNote);
           debugPrint(
-              'NotesProvider: Conflict detected for note ${localNote.id}');
+            'NotesProvider: Conflict detected for note ${localNote.id}',
+          );
         } else if (!localNote.isDirty ||
             cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
           // Cloud wins if local isn't dirty, or if cloud is newer (and wasn't dirty, or content matched)
@@ -414,7 +415,8 @@ class NotesProvider extends ChangeNotifier {
               List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
           final cloudDelta = note.conflictContent != null
               ? List<dynamic>.from(
-                  jsonDecode(note.conflictContent!) as Iterable<dynamic>)
+                  jsonDecode(note.conflictContent!) as Iterable<dynamic>,
+                )
               : [];
 
           final mergedDelta = [
