@@ -29,13 +29,22 @@ enum SyncStatus {
 class SyncService extends ChangeNotifier {
   // Lazy Firebase Firestore instance
   FirebaseFirestore? _firestore;
-  FirebaseFirestore get _firebaseFirestore {
+  FirebaseFirestore? get _firebaseFirestore {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      try {
+        // Return instance if available, otherwise return null instead of throwing
+        // to prevent framework crashes.
+        return FirebaseFirestore.instance;
+      } catch (e) {
+        return null;
+      }
+    }
     try {
       _firestore ??= FirebaseFirestore.instance;
-      return _firestore!;
+      return _firestore;
     } catch (e) {
       debugPrint('Firebase Firestore not available: $e');
-      rethrow;
+      return null;
     }
   }
 
@@ -137,9 +146,16 @@ class SyncService extends ChangeNotifier {
       return;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      debugPrint('Cannot start listening: Firebase not available');
+      _setError('Sync unavailable: Firebase not initialized');
+      return;
+    }
+
     try {
       // Listen to notes collection
-      _notesSubscription = _firebaseFirestore
+      _notesSubscription = firestore
           .collection('notes')
           .where('userId', isEqualTo: userId)
           .where('isDeleted', isEqualTo: false)
@@ -158,7 +174,7 @@ class SyncService extends ChangeNotifier {
       );
 
       // Listen to folders collection
-      _foldersSubscription = _firebaseFirestore
+      _foldersSubscription = firestore
           .collection('folders')
           .where('userId', isEqualTo: userId)
           .where('isDeleted', isEqualTo: false)
@@ -198,10 +214,13 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
-      await _firebaseFirestore
+      await firestore
           .collection('notes')
           .doc(note.id)
           .set(note.toJson(), SetOptions(merge: true));
@@ -221,10 +240,13 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
-      await _firebaseFirestore
+      await firestore
           .collection('folders')
           .doc(folder.id)
           .set(folder.toJson(), SetOptions(merge: true));
@@ -242,8 +264,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteNote(String noteId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('notes').doc(noteId).update(
+      await firestore.collection('notes').doc(noteId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -257,8 +282,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteFolder(String folderId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('folders').doc(folderId).update(
+      await firestore.collection('folders').doc(folderId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -274,11 +302,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final entryId = entryData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('timetable_entries')
           .doc(entryId)
           .set(entryData, SetOptions(merge: true));
@@ -298,11 +329,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final homeworkId = homeworkData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('homework')
           .doc(homeworkId)
           .set(homeworkData, SetOptions(merge: true));
@@ -320,8 +354,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteHomework(String homeworkId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore.collection('homework').doc(homeworkId).update(
+      await firestore.collection('homework').doc(homeworkId).update(
         {'isDeleted': true, 'updatedAt': DateTime.now().toIso8601String()},
       );
       return true;
@@ -337,11 +374,14 @@ class SyncService extends ChangeNotifier {
       return false;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
       _setStatus(SyncStatus.syncing);
 
       final eventId = eventData['id'] as String;
-      await _firebaseFirestore
+      await firestore
           .collection('calendar_events')
           .doc(eventId)
           .set(eventData, SetOptions(merge: true));
@@ -359,8 +399,11 @@ class SyncService extends ChangeNotifier {
   Future<bool> deleteCalendarEvent(String eventId) async {
     if (!_isOnline || !_syncEnabled) return false;
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) return false;
+
     try {
-      await _firebaseFirestore
+      await firestore
           .collection('calendar_events')
           .doc(eventId)
           .update({'isDeleted': true});
@@ -382,14 +425,20 @@ class SyncService extends ChangeNotifier {
       return;
     }
 
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      _setError('Sync failed: Firebase not available');
+      return;
+    }
+
     _setStatus(SyncStatus.syncing);
 
     try {
       // Use batched writes for efficiency
-      final batch = _firebaseFirestore.batch();
+      final batch = firestore.batch();
 
       for (final note in dirtyNotes) {
-        final ref = _firebaseFirestore.collection('notes').doc(note.id);
+        final ref = firestore.collection('notes').doc(note.id);
         batch.set(
           ref,
           note
@@ -403,7 +452,7 @@ class SyncService extends ChangeNotifier {
       }
 
       for (final folder in dirtyFolders) {
-        final ref = _firebaseFirestore.collection('folders').doc(folder.id);
+        final ref = firestore.collection('folders').doc(folder.id);
         batch.set(
           ref,
           folder
@@ -482,7 +531,8 @@ class SyncService extends ChangeNotifier {
   void _setError(String message) {
     _status = SyncStatus.error;
     _errorMessage = message;
-    notifyListeners();
+    // Use microtask to avoid setState during build
+    Future.microtask(() => notifyListeners());
     // Auto-recovery removed to allow user to see error and retry manually
   }
 
