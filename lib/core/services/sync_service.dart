@@ -473,7 +473,8 @@ class SyncService extends ChangeNotifier {
         (doc) {
           if (doc != null) {
             debugPrint(
-                'SyncService [Linux]: Received settings update from Firestore');
+              'SyncService [Linux]: Received settings update from Firestore',
+            );
             final data = doc.map;
             data['id'] = doc.id;
             onSettingsUpdated?.call(data);
@@ -520,8 +521,10 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore.collection('notes').document(note.id).update(note
-            .toJson()); // Firedart doesn't have set with merge = true out of the box easily, update does partial if exists, or might fail if not. Actually, we should check if exists or just let update fail and fallback to set? wait, firedart set replaces. wait, firedart document().set() replaces.
+        await fdFirestore
+            .collection('notes')
+            .document(note.id)
+            .update(note.toJson()); // Firedart doesn't have set with merge = true out of the box easily.
         // A safer approach in firedart:
         // Since note.toJson() contains all fields, set is fine.
         await fdFirestore
@@ -585,7 +588,7 @@ class SyncService extends ChangeNotifier {
     try {
       final updates = {
         'isDeleted': true,
-        'updatedAt': DateTime.now().toIso8601String()
+        'updatedAt': DateTime.now().toIso8601String(),
       };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
@@ -610,7 +613,7 @@ class SyncService extends ChangeNotifier {
     try {
       final updates = {
         'isDeleted': true,
-        'updatedAt': DateTime.now().toIso8601String()
+        'updatedAt': DateTime.now().toIso8601String(),
       };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
@@ -704,7 +707,7 @@ class SyncService extends ChangeNotifier {
     try {
       final updates = {
         'isDeleted': true,
-        'updatedAt': DateTime.now().toIso8601String()
+        'updatedAt': DateTime.now().toIso8601String(),
       };
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;

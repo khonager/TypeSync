@@ -168,8 +168,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: Colors.orange),
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.orange,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
