@@ -12,8 +12,26 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/routes/app_router.dart';
 
 /// User profile screen
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Load storage info when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authService = context.read<AuthService>();
+      final userId = authService.userId;
+      if (userId != null) {
+        context.read<StorageService>().loadStorageInfo(userId);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +155,33 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  
+                  // 95% capacity warning
+                  if (storageService.usagePercent >= 0.95) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              storageService.isStorageFull 
+                                  ? 'Storage is full! Please upgrade your plan.'
+                                  : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
+                              style: const TextStyle(color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

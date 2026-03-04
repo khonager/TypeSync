@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firedart/firedart.dart' as fd;
 
 import '../models/user.dart';
 
@@ -39,6 +40,15 @@ class StorageService extends ChangeNotifier {
       debugPrint('Firebase Firestore not available: $e');
       rethrow;
     }
+  }
+
+  fd.Firestore? get _firedartFirestore {
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      if (fd.Firestore.initialized) {
+        return fd.Firestore.instance;
+      }
+    }
+    return null;
   }
 
   // Current user subscription info
@@ -113,29 +123,73 @@ class StorageService extends ChangeNotifier {
   // ===========================================
 
   /// Load storage info for a user
+  ///
+  /// Calculates actual storage usage from cloud-synced documents.
   Future<void> loadStorageInfo(String userId) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      final doc =
-          await _firebaseFirestore.collection('users').doc(userId).get();
+      int totalBytes = 0;
 
-      if (doc.exists) {
-        final data = doc.data()!;
-        _currentTier =
-            SubscriptionTier.values[data['subscriptionTier'] as int? ?? 0];
-        _storageUsedBytes = data['storageUsedBytes'] as int? ?? 0;
+      // Load subscription tier and calculate storage from cloud
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          // 1. Get user document for subscription tier
+          final userDoc =
+              await fdFirestore.collection('users').document(userId).get();
+          if (userDoc.map.isNotEmpty) {
+            _currentTier = SubscriptionTier
+                .values[userDoc.map['subscriptionTier'] as int? ?? 0];
+          }
+
+          // 2. Sum up sizes of all notes from Firedart
+          final notes = await fdFirestore.collection('notes').get();
+          for (final doc in notes) {
+            if (doc.map['userId'] == userId && doc.map['isDeleted'] == false) {
+              final explicitSize = doc.map['size'] as int?;
+              final content = doc.map['content'] as String? ?? '';
+              totalBytes += explicitSize ?? content.length;
+            }
+          }
+        }
+      } else {
+        // 1. Get user document for subscription tier
+        final userDoc =
+            await _firebaseFirestore.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          final data = userDoc.data()!;
+          _currentTier =
+              SubscriptionTier.values[data['subscriptionTier'] as int? ?? 0];
+        }
+
+        // 2. Sum up sizes of all notes from Firestore
+        final notesSnapshot = await _firebaseFirestore
+            .collection('notes')
+            .where('userId', isEqualTo: userId)
+            .where('isDeleted', isEqualTo: false)
+            .get();
+        for (final doc in notesSnapshot.docs) {
+          final data = doc.data();
+          final explicitSize = data['size'] as int?;
+          final content = data['content'] as String? ?? '';
+          totalBytes += explicitSize ?? content.length;
+        }
       }
 
+      _storageUsedBytes = totalBytes;
       _errorMessage = null;
     } catch (e) {
-      _errorMessage = 'Failed to load storage info';
+      _errorMessage = 'Failed to load storage info: $e';
+      debugPrint('StorageService.loadStorageInfo error: $e');
     }
 
     _isLoading = false;
     notifyListeners();
   }
+
+
 
   /// Upload a file to Firebase Storage
   ///
@@ -171,9 +225,18 @@ class StorageService extends ChangeNotifier {
 
       // Update storage usage in Firestore
       _storageUsedBytes += fileSize;
-      await _firebaseFirestore.collection('users').doc(userId).update({
-        'storageUsedBytes': _storageUsedBytes,
-      });
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          await fdFirestore.collection('users').document(userId).update({
+            'storageUsedBytes': _storageUsedBytes,
+          });
+        }
+      } else {
+        await _firebaseFirestore.collection('users').doc(userId).update({
+          'storageUsedBytes': _storageUsedBytes,
+        });
+      }
 
       _errorMessage = null;
       _isLoading = false;
@@ -205,9 +268,18 @@ class StorageService extends ChangeNotifier {
       // Update storage usage
       _storageUsedBytes =
           (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
-      await _firebaseFirestore.collection('users').doc(userId).update({
-        'storageUsedBytes': _storageUsedBytes,
-      });
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          await fdFirestore.collection('users').document(userId).update({
+            'storageUsedBytes': _storageUsedBytes,
+          });
+        }
+      } else {
+        await _firebaseFirestore.collection('users').doc(userId).update({
+          'storageUsedBytes': _storageUsedBytes,
+        });
+      }
 
       notifyListeners();
       return true;
@@ -252,11 +324,22 @@ class StorageService extends ChangeNotifier {
       // TODO: Integrate with payment provider
       // For now, just update the tier in Firestore
 
-      await _firebaseFirestore.collection('users').doc(userId).update({
-        'subscriptionTier': newTier.index,
-        'subscriptionExpiresAt':
-            DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-      });
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          await fdFirestore.collection('users').document(userId).update({
+            'subscriptionTier': newTier.index,
+            'subscriptionExpiresAt':
+                DateTime.now().add(const Duration(days: 30)).toIso8601String(),
+          });
+        }
+      } else {
+        await _firebaseFirestore.collection('users').doc(userId).update({
+          'subscriptionTier': newTier.index,
+          'subscriptionExpiresAt':
+              DateTime.now().add(const Duration(days: 30)).toIso8601String(),
+        });
+      }
 
       _currentTier = newTier;
       _errorMessage = null;
@@ -272,29 +355,52 @@ class StorageService extends ChangeNotifier {
     }
   }
 
-  /// Calculate total storage used by recalculating from Firebase Storage
+  /// Calculate total storage used by recalculating from Firestore note sizes
   Future<void> recalculateStorage(String userId) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      final ref = _firebaseStorage.ref().child('users/$userId');
-      final result = await ref.listAll();
+      int totalBytes = 0;
 
-      int totalSize = 0;
-      for (final item in result.items) {
-        final metadata = await item.getMetadata();
-        totalSize += metadata.size ?? 0;
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          final notes = await fdFirestore.collection('notes').get();
+          for (final doc in notes) {
+            if (doc.map['userId'] == userId && doc.map['isDeleted'] == false) {
+              final explicitSize = doc.map['size'] as int?;
+              final content = doc.map['content'] as String? ?? '';
+              totalBytes += explicitSize ?? content.length;
+            }
+          }
+          
+          await fdFirestore.collection('users').document(userId).update({
+            'storageUsedBytes': totalBytes,
+          });
+        }
+      } else {
+        final notesSnapshot = await _firebaseFirestore
+            .collection('notes')
+            .where('userId', isEqualTo: userId)
+            .where('isDeleted', isEqualTo: false)
+            .get();
+        for (final doc in notesSnapshot.docs) {
+          final data = doc.data();
+          final explicitSize = data['size'] as int?;
+          final content = data['content'] as String? ?? '';
+          totalBytes += explicitSize ?? content.length;
+        }
+
+        await _firebaseFirestore.collection('users').doc(userId).update({
+          'storageUsedBytes': totalBytes,
+        });
       }
 
-      _storageUsedBytes = totalSize;
-      await _firebaseFirestore.collection('users').doc(userId).update({
-        'storageUsedBytes': totalSize,
-      });
-
+      _storageUsedBytes = totalBytes;
       _errorMessage = null;
     } catch (e) {
-      _errorMessage = 'Failed to recalculate storage';
+      _errorMessage = 'Failed to recalculate storage: $e';
     }
 
     _isLoading = false;

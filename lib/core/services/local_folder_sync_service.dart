@@ -360,6 +360,8 @@ class LocalFolderSyncService extends ChangeNotifier {
           fileName: fileName,
         );
 
+        final fileSize = await file.length();
+
         if (storedPath != null) {
           await notesProvider
               .createNote(
@@ -367,6 +369,7 @@ class LocalFolderSyncService extends ChangeNotifier {
             title: fileName.replaceAll('.pdf', ''),
             content: '',
             type: NoteType.pdf,
+            size: fileSize,
           )
               .then((note) {
             if (note != null) {

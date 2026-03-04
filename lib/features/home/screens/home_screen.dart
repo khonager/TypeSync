@@ -22,6 +22,7 @@ import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/migration_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/routes/app_router.dart';
@@ -537,6 +538,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final userId = authService.userId;
     if (userId == null) return;
 
+    final storageService = context.read<StorageService>();
+    if (storageService.isStorageFull) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage is full. Please upgrade to create notes.'),
+          ),
+        );
+      }
+      return;
+    }
+
     final notesProvider = context.read<NotesProvider>();
     final note = await notesProvider.createNote(
       userId: userId,
@@ -565,6 +578,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final userId = authService.userId;
       if (userId == null) return;
 
+      final storageService = context.read<StorageService>();
+      if (storageService.isStorageFull) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Storage is full. Please upgrade to create folders.'),
+            ),
+          );
+        }
+        return;
+      }
+
       await context.read<FoldersProvider>().createFolder(
             userId: userId,
             name: name,
@@ -574,6 +599,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addDocumentFromStorage() async {
+    final storageService = context.read<StorageService>();
+    if (storageService.isStorageFull) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage is full. Please upgrade to add documents.'),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final filePath = await FilePickerHelper.pickFile(
         context: context,

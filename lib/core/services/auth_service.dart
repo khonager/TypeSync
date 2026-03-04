@@ -184,14 +184,8 @@ class AuthService extends ChangeNotifier {
         await _firedartAuth.signIn(email.trim(), password);
         final fdUser = await _firedartAuth.getUser();
 
-        _currentUser = User(
-          id: fdUser.id,
-          email: fdUser.email ?? email.trim(),
-          displayName: fdUser.displayName,
-          createdAt: DateTime.now(), // Fallback
-          lastSignIn: DateTime.now(),
-          emailVerified: true, // Firedart doesn't expose this easily
-        );
+        // Load full user data from Firestore using Firedart
+        await _loadUserData(fdUser.id);
 
         _isGuestMode = false;
         _setLoading(false);
@@ -241,6 +235,32 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
+      // Handle Linux fallback
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        await _firedartAuth.signUp(email.trim(), password);
+        final fdUser = await _firedartAuth.getUser();
+
+        // Create user object for Firestore
+        final user = User(
+          id: fdUser.id,
+          email: email.trim(),
+          displayName: displayName,
+          createdAt: DateTime.now(),
+          lastSignIn: DateTime.now(),
+          emailVerified: true, // Firedart fallback
+        );
+
+        // Save to Firestore via Firedart
+        final fdFirestore = fd.Firestore.instance;
+        await fdFirestore.collection('users').document(fdUser.id).set(user.toJson());
+
+        _currentUser = user;
+        notifyListeners();
+        
+        _setLoading(false);
+        return true;
+      }
+
       // Create Firebase Auth account
       final credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -282,7 +302,7 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
       return false;
     } catch (e) {
-      _setError('Registration failed. Please try again.');
+      _setError('Registration failed. Please try again: $e');
       _setLoading(false);
       return false;
     }
@@ -421,6 +441,26 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
+      // Handle Linux fallback
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final fdFirestore = fd.Firestore.instance;
+        final updates = <String, dynamic>{};
+        if (displayName != null) updates['displayName'] = displayName;
+        if (photoUrl != null) updates['photoUrl'] = photoUrl;
+
+        await fdFirestore.collection('users').document(_currentUser!.id).update(updates);
+
+        // Update local user
+        _currentUser = _currentUser!.copyWith(
+          displayName: displayName ?? _currentUser!.displayName,
+          photoUrl: photoUrl ?? _currentUser!.photoUrl,
+        );
+
+        notifyListeners();
+        _setLoading(false);
+        return true;
+      }
+
       // Update Firebase Auth profile
       if (displayName != null) {
         await _firebaseAuth.currentUser?.updateDisplayName(displayName);
@@ -449,7 +489,7 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
       return true;
     } catch (e) {
-      _setError('Failed to update profile.');
+      _setError('Failed to update profile: $e');
       _setLoading(false);
       return false;
     }
@@ -473,33 +513,61 @@ class AuthService extends ChangeNotifier {
   /// Load user data from Firestore
   Future<void> _loadUserData(String uid) async {
     try {
-      final doc = await _firebaseFirestore.collection('users').doc(uid).get();
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final fdFirestore = fd.Firestore.instance;
+        final doc = await fdFirestore.collection('users').document(uid).get();
 
-      if (doc.exists) {
-        _currentUser = User.fromJson(doc.data()!);
+        if (doc.map.isNotEmpty) {
+          _currentUser = User.fromJson(doc.map);
 
-        // Update last sign in
-        await _firebaseFirestore.collection('users').doc(uid).update({
-          'lastSignIn': DateTime.now().toIso8601String(),
-        });
+          // Update last sign in
+          await fdFirestore.collection('users').document(uid).update({
+            'lastSignIn': DateTime.now().toIso8601String(),
+          });
+        } else {
+          // Create user document if it doesn't exist
+          final fdUser = await _firedartAuth.getUser();
+          final user = User(
+            id: uid,
+            email: fdUser.email!,
+            displayName: fdUser.displayName,
+            createdAt: DateTime.now(),
+            lastSignIn: DateTime.now(),
+            emailVerified: true,
+          );
+
+          await fdFirestore.collection('users').document(uid).set(user.toJson());
+          _currentUser = user;
+        }
       } else {
-        // Create user document if it doesn't exist (e.g., after auth migration)
-        final firebaseUser = _firebaseAuth.currentUser!;
-        final user = User(
-          id: uid,
-          email: firebaseUser.email!,
-          displayName: firebaseUser.displayName,
-          photoUrl: firebaseUser.photoURL,
-          createdAt: DateTime.now(),
-          lastSignIn: DateTime.now(),
-          emailVerified: firebaseUser.emailVerified,
-        );
+        final doc = await _firebaseFirestore.collection('users').doc(uid).get();
 
-        await _firebaseFirestore
-            .collection('users')
-            .doc(uid)
-            .set(user.toJson());
-        _currentUser = user;
+        if (doc.exists) {
+          _currentUser = User.fromJson(doc.data()!);
+
+          // Update last sign in
+          await _firebaseFirestore.collection('users').doc(uid).update({
+            'lastSignIn': DateTime.now().toIso8601String(),
+          });
+        } else {
+          // Create user document if it doesn't exist (e.g., after auth migration)
+          final firebaseUser = _firebaseAuth.currentUser!;
+          final user = User(
+            id: uid,
+            email: firebaseUser.email!,
+            displayName: firebaseUser.displayName,
+            photoUrl: firebaseUser.photoURL,
+            createdAt: DateTime.now(),
+            lastSignIn: DateTime.now(),
+            emailVerified: firebaseUser.emailVerified,
+          );
+
+          await _firebaseFirestore
+              .collection('users')
+              .doc(uid)
+              .set(user.toJson());
+          _currentUser = user;
+        }
       }
 
       notifyListeners();

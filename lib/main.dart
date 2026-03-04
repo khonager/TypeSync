@@ -62,12 +62,11 @@ void main() async {
         firedart.VolatileStore(),
       );
 
-      // Initialize Firestore if Firebase core failed (common on Linux)
-      // or if we want to ensure Firedart handles Firestore on this platform.
-      // NOTE: Firedart doesn't need explicit 'initialize' for Firestore like Auth,
-      // it uses the project ID from environment or manual setting.
+      // Initialize Firestore explicitly for Firedart
+      firedart.Firestore.initialize('typesynced');
+      
       if (kDebugMode) {
-        debugPrint('Firedart initialized for Linux (Auth)');
+        debugPrint('Firedart initialized for Linux (Auth & Firestore)');
       }
     } catch (e) {
       if (kDebugMode) {
