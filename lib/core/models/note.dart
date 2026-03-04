@@ -63,6 +63,9 @@ class Note extends Equatable {
   /// Line count for the note content
   final int lineCount;
 
+  /// Size of the note in bytes
+  final int size;
+
   /// User ID who owns this note
   final String userId;
 
@@ -92,6 +95,7 @@ class Note extends Equatable {
     this.isDeleted = false,
     this.characterCount = 0,
     this.lineCount = 0,
+    this.size = 0,
     this.pdfPath,
     this.hasConflict = false,
     this.conflictContent,
@@ -136,6 +140,7 @@ class Note extends Equatable {
     bool? isDeleted,
     int? characterCount,
     int? lineCount,
+    int? size,
     String? userId,
     String? pdfPath,
     bool backgroundColorSet = false,
@@ -161,6 +166,7 @@ class Note extends Equatable {
       isDeleted: isDeleted ?? this.isDeleted,
       characterCount: characterCount ?? this.characterCount,
       lineCount: lineCount ?? this.lineCount,
+      size: size ?? this.size,
       userId: userId ?? this.userId,
       pdfPath: pdfPath ?? this.pdfPath,
       hasConflict: hasConflict ?? this.hasConflict,
@@ -187,6 +193,7 @@ class Note extends Equatable {
       'isDeleted': isDeleted,
       'characterCount': characterCount,
       'lineCount': lineCount,
+      'size': size,
       'userId': userId,
       'pdfPath': pdfPath,
       // We explicitly don't sync conflict state up to the cloud;
@@ -218,6 +225,7 @@ class Note extends Equatable {
       isDeleted: json['isDeleted'] as bool? ?? false,
       characterCount: json['characterCount'] as int? ?? 0,
       lineCount: json['lineCount'] as int? ?? 0,
+      size: json['size'] as int? ?? 0,
       userId: json['userId'] as String,
       pdfPath: json['pdfPath'] as String?,
       hasConflict: false, // from server is never conflicted
@@ -242,6 +250,7 @@ class Note extends Equatable {
         isDeleted,
         characterCount,
         lineCount,
+        size,
         userId,
         pdfPath,
         hasConflict,

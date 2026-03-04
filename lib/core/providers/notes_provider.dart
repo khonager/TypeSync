@@ -150,6 +150,7 @@ class NotesProvider extends ChangeNotifier {
     String content = '',
     String? folderId,
     NoteType type = NoteType.text,
+    int? size,
   }) async {
     try {
       final note = Note.create(
@@ -159,6 +160,8 @@ class NotesProvider extends ChangeNotifier {
         content: content,
         folderId: folderId,
         type: type,
+      ).copyWith(
+        size: size ?? (type == NoteType.pdf ? 0 : content.length),
       );
 
       // Save locally
@@ -230,6 +233,7 @@ class NotesProvider extends ChangeNotifier {
       content: content,
       characterCount: characterCount,
       lineCount: lineCount,
+      size: content.length,
       updatedAt: DateTime.now(),
       isDirty: true,
     );
@@ -513,6 +517,7 @@ class NoteAdapter extends TypeAdapter<Note> {
       pdfPath: reader.readString(),
       hasConflict: reader.availableBytes > 0 ? reader.readBool() : false,
       conflictContent: reader.availableBytes > 0 ? reader.readString() : null,
+      size: reader.availableBytes > 0 ? reader.readInt() : 0,
     );
   }
 
@@ -540,6 +545,7 @@ class NoteAdapter extends TypeAdapter<Note> {
     writer.writeString(obj.pdfPath ?? '');
     writer.writeBool(obj.hasConflict);
     writer.writeString(obj.conflictContent ?? '');
+    writer.writeInt(obj.size);
   }
 }
 

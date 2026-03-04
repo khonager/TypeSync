@@ -19,6 +19,7 @@ import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
@@ -517,6 +518,18 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _insertPdf() async {
+    final storageService = context.read<StorageService>();
+    if (storageService.isStorageFull) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage is full. Please upgrade to add PDFs.'),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final filePath = await FilePickerHelper.pickFile(
         context: context,
@@ -540,6 +553,8 @@ class _EditorScreenState extends State<EditorScreen> {
           fileName: fileName,
         );
 
+        final fileSize = await file.length();
+
         if (storedPath != null && _note != null) {
           // Update note to be a PDF type
           if (!mounted) return;
@@ -548,6 +563,7 @@ class _EditorScreenState extends State<EditorScreen> {
             type: NoteType.pdf,
             pdfPath: storedPath,
             title: fileName.replaceAll('.pdf', ''),
+            size: fileSize,
           );
           await notesProvider.updateNote(updatedNote);
 
@@ -838,6 +854,18 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _handleDroppedFiles(List<XFile> files) async {
+    final storageService = context.read<StorageService>();
+    if (storageService.isStorageFull) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage is full. Please upgrade to import files.'),
+          ),
+        );
+      }
+      return;
+    }
+
     for (final file in files) {
       try {
         final filePath = file.path;
