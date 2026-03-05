@@ -24,7 +24,8 @@ class HiveTokenStore extends TokenStore {
     final dynamic map = _box.get(_key);
     if (map != null) {
       try {
-        final stringMap = Map<String, dynamic>.from(map as Map<dynamic, dynamic>);
+        final stringMap =
+            Map<String, dynamic>.from(map as Map<dynamic, dynamic>);
         return Token.fromMap(stringMap);
       } catch (e) {
         // If the token format is invalid, disregard it

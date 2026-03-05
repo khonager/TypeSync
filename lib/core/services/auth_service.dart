@@ -129,7 +129,7 @@ class AuthService extends ChangeNotifier {
             lastSignIn: DateTime.now(),
             emailVerified: true,
           );
-          
+
           // Asynchronously fetch complete user data
           _firedartAuth.getUser().then((fdUser) {
             _onFiredartAuthChanged(fdUser);
