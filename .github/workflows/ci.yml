@@ -246,12 +246,52 @@ jobs:
           if-no-files-found: error
 
   # ============================================
+  # BUILD WEB
+  # ============================================
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/stable' || github.ref == 'refs/heads/unstable')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        run: flutter build web --release
+
+      - name: Create tarball
+        run: |
+          cd build/web
+          tar -czf ../../typesync-web.tar.gz .
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: typesync-web.tar.gz
+          if-no-files-found: error
+
+  # ============================================
   # RELEASE - STABLE BRANCH
   # ============================================
   release-stable:
     name: Release Stable
     runs-on: ubuntu-latest
-    needs: [build-android-release, build-linux]
+    needs: [build-android-release, build-linux, build-web]
     if: github.ref == 'refs/heads/stable'
     permissions:
       contents: write
@@ -325,6 +365,13 @@ jobs:
           path: release/
           if-no-files-found: error
 
+      - name: Download Web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: release/
+          if-no-files-found: error
+
       - name: Rename artifacts
         run: |
           if [ ! -f release/app-release.apk ]; then
@@ -339,9 +386,14 @@ jobs:
             echo "::error::Linux bundle not found"
             exit 1
           fi
+          if [ ! -f release/typesync-web.tar.gz ]; then
+            echo "::error::Web bundle not found"
+            exit 1
+          fi
           mv release/app-release.apk release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
           mv release/app-release.aab release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
           mv release/typesync-linux-x64.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+          mv release/typesync-web.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-web.tar.gz
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -355,6 +407,7 @@ jobs:
             - **Android APK**: TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
             - **Android App Bundle**: TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
             - **Linux**: TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+            - **Web**: TypeSync-${{ steps.semver.outputs.new_version }}-web.tar.gz
 
             ### Changes
             See commit history for full changelog.
@@ -362,6 +415,7 @@ jobs:
             release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
             release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
             release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
+            release/TypeSync-${{ steps.semver.outputs.new_version }}-web.tar.gz
           draft: false
           prerelease: false
         env:
