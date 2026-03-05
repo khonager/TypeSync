@@ -25,6 +25,7 @@ import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
 import 'core/providers/homework_provider.dart';
 import 'core/providers/calendar_provider.dart';
+import 'core/services/hive_token_store.dart';
 import 'firebase_options.dart';
 
 /// Main entry point for the TypeSync application
@@ -56,17 +57,18 @@ void main() async {
   // Initialize Firedart for Linux support
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     try {
-      // Initialize Auth
+      // Initialize Auth with persistent TokenStore
+      final tokenStore = await HiveTokenStore.create();
       firedart.FirebaseAuth.initialize(
         DefaultFirebaseOptions.linux.apiKey,
-        firedart.VolatileStore(),
+        tokenStore,
       );
 
-      // Initialize Firestore explicitly for Firedart
-      firedart.Firestore.initialize('typesynced');
+      // Initialize Firestore if Firebase core failed (common on Linux)
+      firedart.Firestore.initialize(DefaultFirebaseOptions.linux.projectId);
 
       if (kDebugMode) {
-        debugPrint('Firedart initialized for Linux (Auth & Firestore)');
+        debugPrint('Firedart initialized for Linux (Auth)');
       }
     } catch (e) {
       if (kDebugMode) {

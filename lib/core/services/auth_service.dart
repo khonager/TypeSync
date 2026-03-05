@@ -119,6 +119,25 @@ class AuthService extends ChangeNotifier {
       if (Firebase.apps.isNotEmpty) {
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        // Sync check for signed in state to prevent login screen flash
+        if (_firedartAuth.isSignedIn) {
+          _currentUser = User(
+            id: _firedartAuth.userId,
+            email: '',
+            displayName: null,
+            createdAt: DateTime.now(),
+            lastSignIn: DateTime.now(),
+            emailVerified: true,
+          );
+
+          // Asynchronously fetch complete user data
+          _firedartAuth.getUser().then((fdUser) {
+            _onFiredartAuthChanged(fdUser);
+          }).catchError((_) {
+            // Silently handle get user error
+          });
+        }
+
         // Listen to Firedart auth changes
         _firedartAuth.signInState.listen((signedIn) async {
           if (signedIn) {
