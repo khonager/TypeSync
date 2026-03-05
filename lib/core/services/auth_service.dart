@@ -129,7 +129,7 @@ class AuthService extends ChangeNotifier {
             lastSignIn: DateTime.now(),
             emailVerified: firebaseUser.emailVerified,
           );
-          
+
           // Asynchronously fetch complete user data
           _loadUserData(firebaseUser.uid).catchError((_) {
             // Silently handle get user error
