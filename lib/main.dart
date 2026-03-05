@@ -65,7 +65,7 @@ void main() async {
       );
 
       // Initialize Firestore if Firebase core failed (common on Linux)
-      // firedart.Firestore.initialize('typesynced'); // Removed as per instruction
+      firedart.Firestore.initialize(DefaultFirebaseOptions.linux.projectId);
 
       if (kDebugMode) {
         debugPrint('Firedart initialized for Linux (Auth)');
