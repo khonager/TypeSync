@@ -117,6 +117,25 @@ class AuthService extends ChangeNotifier {
     // Only listen to auth state changes if Firebase is initialized
     try {
       if (Firebase.apps.isNotEmpty) {
+        // Sync check for signed in state to prevent login screen flash on Android/iOS/Web
+        final firebaseUser = _firebaseAuth.currentUser;
+        if (firebaseUser != null) {
+          _currentUser = User(
+            id: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            displayName: firebaseUser.displayName,
+            photoUrl: firebaseUser.photoURL,
+            createdAt: DateTime.now(),
+            lastSignIn: DateTime.now(),
+            emailVerified: firebaseUser.emailVerified,
+          );
+          
+          // Asynchronously fetch complete user data
+          _loadUserData(firebaseUser.uid).catchError((_) {
+            // Silently handle get user error
+          });
+        }
+
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         // Sync check for signed in state to prevent login screen flash
