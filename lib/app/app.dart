@@ -27,9 +27,21 @@ class TypeSyncAppContent extends StatelessWidget {
     final authService = context.watch<AuthService>();
 
     return ServiceOrchestrator(
-      child: MaterialApp(
-        title: 'TypeSync',
-        debugShowCheckedModeBanner: false,
+      child: !authService.isInitialized
+          ? MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme(themeService.accentColor),
+              darkTheme: AppTheme.darkTheme(themeService.accentColor),
+              themeMode: themeService.themeMode,
+              home: const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            )
+          : MaterialApp(
+              title: 'TypeSync',
+              debugShowCheckedModeBanner: false,
 
         // Theme configuration based on user preference or system setting
         theme: AppTheme.lightTheme(themeService.accentColor),

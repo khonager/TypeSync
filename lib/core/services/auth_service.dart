@@ -62,6 +62,9 @@ class AuthService extends ChangeNotifier {
   // Loading state
   bool _isLoading = false;
 
+  // Initialization state (whether we've determined the initial auth state)
+  bool _isInitialized = false;
+
   // Error state
   String? _errorMessage;
   bool _hasError = false;
@@ -87,6 +90,9 @@ class AuthService extends ChangeNotifier {
 
   /// Loading state for async operations
   bool get isLoading => _isLoading;
+
+  /// Whether the initial auth state has been determined
+  bool get isInitialized => _isInitialized;
 
   /// Current error message (null if no error)
   String? get errorMessage => _errorMessage;
@@ -136,7 +142,12 @@ class AuthService extends ChangeNotifier {
           });
         }
 
-        _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+          _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+        } else {
+          // No user initially, but still need to mark as initialized
+          // after the first check
+          _onAuthStateChanged(null);
+        }
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         // Sync check for signed in state to prevent login screen flash
         if (_firedartAuth.isSignedIn) {
@@ -550,8 +561,9 @@ class AuthService extends ChangeNotifier {
     } else if (firebaseUser == null && !_isGuestMode) {
       // Only clear user if not in guest mode
       _currentUser = null;
-      notifyListeners();
     }
+    _isInitialized = true;
+    notifyListeners();
   }
 
   /// Load user data from Firestore
@@ -636,6 +648,7 @@ class AuthService extends ChangeNotifier {
     } else if (fdUser == null && !_isGuestMode) {
       _currentUser = null;
     }
+    _isInitialized = true;
     notifyListeners();
   }
 
