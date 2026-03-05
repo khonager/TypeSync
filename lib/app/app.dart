@@ -13,10 +13,6 @@ import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
 import 'service_orchestrator.dart';
 
-/// Main app content widget that responds to theme changes
-///
-/// Separates the MaterialApp from providers to allow theme
-/// changes to rebuild only the necessary widgets.
 class TypeSyncAppContent extends StatelessWidget {
   const TypeSyncAppContent({super.key});
 
@@ -24,41 +20,31 @@ class TypeSyncAppContent extends StatelessWidget {
   Widget build(BuildContext context) {
     // Watch the theme service for changes
     final themeService = context.watch<ThemeService>();
-    final authService = context.watch<AuthService>();
 
     return ServiceOrchestrator(
-      child: !authService.isInitialized
-          ? MaterialApp(
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.lightTheme(themeService.accentColor),
-              darkTheme: AppTheme.darkTheme(themeService.accentColor),
-              themeMode: themeService.themeMode,
-              home: const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-            )
-          : MaterialApp(
-              title: 'TypeSync',
-              debugShowCheckedModeBanner: false,
+      child: MaterialApp(
+        title: 'TypeSync',
+        debugShowCheckedModeBanner: false,
 
         // Theme configuration based on user preference or system setting
         theme: AppTheme.lightTheme(themeService.accentColor),
         darkTheme: AppTheme.darkTheme(themeService.accentColor),
         themeMode: themeService.themeMode,
 
-        // Named routes for navigation
-        routes: AppRouter.routes,
+        // Set AuthWrapper as the home
+        home: const AuthWrapper(),
 
-        // Initial route depends on authentication status
-        initialRoute:
-            authService.isAuthenticated ? AppRouter.home : AppRouter.login,
-
-        // Handle unknown routes gracefully - redirect to home
-        onUnknownRoute: (settings) => MaterialPageRoute(
-          builder: (context) => AppRouter.routes[AppRouter.home]!(context),
-        ),
+        // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
+        routes: {
+          AppRouter.editor: AppRouter.routes[AppRouter.editor]!,
+          AppRouter.register: AppRouter.routes[AppRouter.register]!,
+          AppRouter.settings: AppRouter.routes[AppRouter.settings]!,
+          AppRouter.calendar: AppRouter.routes[AppRouter.calendar]!,
+          AppRouter.timetable: AppRouter.routes[AppRouter.timetable]!,
+          AppRouter.homework: AppRouter.routes[AppRouter.homework]!,
+          AppRouter.profile: AppRouter.routes[AppRouter.profile]!,
+          AppRouter.subscription: AppRouter.routes[AppRouter.subscription]!,
+        },
 
         // Global error handling for navigation
         builder: (context, child) {
@@ -74,5 +60,32 @@ class TypeSyncAppContent extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// A wrapper widget that handles authentication state transitions gracefully.
+/// It displays a loading indicator while AuthService initializes, and then
+/// switches between HomeScreen and LoginScreen based on authentication status.
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = context.watch<AuthService>();
+
+    if (!authService.isInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (authService.isAuthenticated) {
+      // Defer to the same widget builder defined in AppRouter for consistency
+      return AppRouter.routes[AppRouter.home]!(context);
+    } else {
+      return AppRouter.routes[AppRouter.login]!(context);
+    }
   }
 }

@@ -27,7 +27,7 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
   }
 
   void _checkAuthState() {
-    final authService = context.watch<AuthService>();
+    final authService = context.read<AuthService>();
     final syncService = context.read<SyncService>();
     final userId = authService.userId;
 
