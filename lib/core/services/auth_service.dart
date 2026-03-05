@@ -62,6 +62,9 @@ class AuthService extends ChangeNotifier {
   // Loading state
   bool _isLoading = false;
 
+  // Initialization state (whether we've determined the initial auth state)
+  bool _isInitialized = false;
+
   // Error state
   String? _errorMessage;
   bool _hasError = false;
@@ -87,6 +90,9 @@ class AuthService extends ChangeNotifier {
 
   /// Loading state for async operations
   bool get isLoading => _isLoading;
+
+  /// Whether the initial auth state has been determined
+  bool get isInitialized => _isInitialized;
 
   /// Current error message (null if no error)
   String? get errorMessage => _errorMessage;
@@ -134,6 +140,14 @@ class AuthService extends ChangeNotifier {
           _loadUserData(firebaseUser.uid).catchError((_) {
             // Silently handle get user error
           });
+        } else if (kIsWeb) {
+          // On Web, wait a short moment for Firebase to restore session
+          // before assuming the user is logged out.
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (!_isInitialized && _firebaseAuth.currentUser == null) {
+              _onAuthStateChanged(null);
+            }
+          });
         }
 
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
@@ -155,6 +169,10 @@ class AuthService extends ChangeNotifier {
           }).catchError((_) {
             // Silently handle get user error
           });
+        } else {
+          // Mark as initialized if not signed in
+          _isInitialized = true;
+          notifyListeners();
         }
 
         // Listen to Firedart auth changes
@@ -166,10 +184,15 @@ class AuthService extends ChangeNotifier {
             _onFiredartAuthChanged(null);
           }
         });
+      } else {
+        // Local-only mode or platform not supported
+        _isInitialized = true;
+        notifyListeners();
       }
     } catch (e) {
-      // Firebase not initialized (e.g., on Linux without proper config)
-      // Silently handle - app can run in offline mode
+      // Firebase not initialized
+      _isInitialized = true;
+      notifyListeners();
       if (kDebugMode) {
         debugPrint(
           'Firebase Auth not available: ${e.toString().split(':').first}',
@@ -543,13 +566,23 @@ class AuthService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
+  bool _webInitialized = false;
+
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
     if (firebaseUser != null && !_isGuestMode) {
       await _loadUserData(firebaseUser.uid);
+      _isInitialized = true;
+      notifyListeners();
     } else if (firebaseUser == null && !_isGuestMode) {
+      if (kIsWeb && !_webInitialized) {
+        // Skip the first null event on Web to allow for session restoration delay
+        _webInitialized = true;
+        return;
+      }
       // Only clear user if not in guest mode
       _currentUser = null;
+      _isInitialized = true;
       notifyListeners();
     }
   }
@@ -636,6 +669,7 @@ class AuthService extends ChangeNotifier {
     } else if (fdUser == null && !_isGuestMode) {
       _currentUser = null;
     }
+    _isInitialized = true;
     notifyListeners();
   }
 
