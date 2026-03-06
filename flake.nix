@@ -103,6 +103,7 @@
               curl
               unzip
               which
+              zenity
               google-chrome
               mesa-demos
               nodejs_22

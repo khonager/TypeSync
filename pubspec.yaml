@@ -28,6 +28,7 @@ dependencies:
 
   # File Handling
   file_picker: ^8.0.0
+  share_plus: ^10.1.4
   syncfusion_flutter_pdfviewer: ^28.1.37
   printing: ^5.13.0
   pdf: ^3.11.0

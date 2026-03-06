@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -14,6 +15,9 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -696,9 +700,21 @@ class _EditorScreenState extends State<EditorScreen> {
       final String fileName = _note!.title;
       String extension = '.txt';
       String content = '';
+      Uint8List? fileBytes;
 
       if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
         // Export PDF file
+        if (kIsWeb) {
+          // On Web, we'd typicaly use the URL or bytes. 
+          // Assuming pdfPath is a URL or we need to fetch it.
+          // For now, if it's a local path representation, it might not work on Web directly 
+          // unless stored in Firebase.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF export on Web is not yet implemented')),
+          );
+          return;
+        }
+
         final pdfFile = File(_note!.pdfPath!);
         if (!await pdfFile.exists()) {
           if (mounted) {
@@ -708,63 +724,99 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return;
         }
-
-        // Use file picker to choose export location (with Linux fallback)
-        if (!mounted) return;
-        final savePath = await FilePickerHelper.saveFile(
-          context: context,
-          dialogTitle: 'Export PDF',
-          fileName: '$fileName.pdf',
-          fileExtension: 'pdf',
-        );
-
-        if (savePath != null) {
-          await pdfFile.copy(savePath);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('PDF exported to $savePath')),
-            );
+        fileBytes = await pdfFile.readAsBytes();
+        extension = '.pdf';
+      } else {
+        if (_note!.type == NoteType.markdown) {
+          extension = '.md';
+          content = _note!.content;
+        } else {
+          // Text note - export as plain text
+          extension = '.txt';
+          // Convert Quill Delta to plain text
+          try {
+            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
+            final document = Document.fromJson(jsonData);
+            content = document.toPlainText();
+          } catch (e) {
+            // If not JSON, use content as-is
+            content = _note!.content;
           }
         }
-        return;
-      } else if (_note!.type == NoteType.markdown) {
-        extension = '.md';
-        content = _note!.content;
-      } else {
-        // Text note - export as plain text
-        extension = '.txt';
-        // Convert Quill Delta to plain text
-        try {
-          final jsonData = jsonDecode(_note!.content) as List<dynamic>;
-          final document = Document.fromJson(jsonData);
-          content = document.toPlainText();
-        } catch (e) {
-          // If not JSON, use content as-is
-          content = _note!.content;
-        }
+        fileBytes = utf8.encode(content);
       }
 
-      // Use file picker to choose export location (with Linux fallback)
-      final savePath = await FilePickerHelper.saveFile(
-        context: context,
-        dialogTitle: 'Export Note',
-        fileName: '$fileName$extension',
-        fileExtension: extension.substring(1),
-      );
+      final fullName = '$fileName$extension';
 
-      if (savePath != null) {
-        final file = File(savePath);
-        await file.writeAsString(content);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Note exported to $savePath')),
-          );
-        }
+      // Platform-specific export logic
+      if (kIsWeb) {
+        // Web: Trigger native browser download
+        await _exportWeb(fileBytes, fullName);
+      } else if (Platform.isAndroid || Platform.isIOS) {
+        // Mobile: Use system Share sheet
+        await _exportMobile(fileBytes, fullName);
+      } else {
+        // Desktop: Use native file save dialog
+        await _exportDesktop(content, fileBytes, fullName, extension);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to export: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportWeb(Uint8List bytes, String fileName) async {
+    // For Web, we use a simple JS-less way if possible, but standard is anchor click.
+    // In Flutter, we can use a package or a simple trick with url_launcher if we had a blob URL.
+    // However, the most "native" way is anchor element.
+    // Since I cannot easily add 'dart:html' without potential issues in newer Flutter, 
+    // I will use a data URI with url_launcher as a fallback that is "native" to the browser.
+    final base64String = base64Encode(bytes);
+    final url = 'data:application/octet-stream;base64,$base64String';
+    final uri = Uri.parse(url);
+    
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Download started')),
+        );
+      }
+    } else {
+      throw 'Could not launch download link';
+    }
+  }
+
+  Future<void> _exportMobile(Uint8List bytes, String fileName) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File('${tempDir.path}/$fileName');
+    await tempFile.writeAsBytes(bytes);
+
+    final xFile = XFile(tempFile.path, name: fileName);
+    await Share.shareXFiles([xFile], text: 'Exported Note: $fileName');
+  }
+
+  Future<void> _exportDesktop(String textContent, Uint8List? bytes, String fileName, String extension) async {
+    final savePath = await FilePickerHelper.saveFile(
+      context: context,
+      dialogTitle: 'Export Note',
+      fileName: fileName,
+      fileExtension: extension.startsWith('.') ? extension.substring(1) : extension,
+    );
+
+    if (savePath != null) {
+      final file = File(savePath);
+      if (bytes != null) {
+        await file.writeAsBytes(bytes);
+      } else {
+        await file.writeAsString(textContent);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported to $savePath')),
         );
       }
     }
