@@ -46,8 +46,17 @@ class AuthService extends ChangeNotifier {
   }
 
   fd.FirebaseAuth get _firedartAuth {
-    _fdAuth ??= fd.FirebaseAuth.instance;
-    return _fdAuth!;
+    try {
+      _fdAuth ??= fd.FirebaseAuth.instance;
+      return _fdAuth!;
+    } catch (e) {
+      // If FirebaseAuth.instance throws because it hasn't been initialized,
+      // we need to handle it gracefully.
+      if (kDebugMode) {
+        debugPrint('Firedart FirebaseAuth instance access failed: $e');
+      }
+      rethrow;
+    }
   }
 
   // Current user data
@@ -153,7 +162,16 @@ class AuthService extends ChangeNotifier {
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         // Sync check for signed in state to prevent login screen flash
-        if (_firedartAuth.isSignedIn) {
+        bool isSignedIn = false;
+        try {
+          isSignedIn = _firedartAuth.isSignedIn;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Firedart check signed in failed: $e');
+          }
+        }
+
+        if (isSignedIn) {
           _currentUser = User(
             id: _firedartAuth.userId,
             email: '',
@@ -176,14 +194,22 @@ class AuthService extends ChangeNotifier {
         }
 
         // Listen to Firedart auth changes
-        _firedartAuth.signInState.listen((signedIn) async {
-          if (signedIn) {
-            final fdUser = await _firedartAuth.getUser();
-            _onFiredartAuthChanged(fdUser);
-          } else {
-            _onFiredartAuthChanged(null);
+        try {
+          _firedartAuth.signInState.listen((signedIn) async {
+            if (signedIn) {
+              final fdUser = await _firedartAuth.getUser();
+              _onFiredartAuthChanged(fdUser);
+            } else {
+              _onFiredartAuthChanged(null);
+            }
+          });
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Firedart listen failed: $e');
           }
-        });
+          _isInitialized = true;
+          notifyListeners();
+        }
       } else {
         // Local-only mode or platform not supported
         _isInitialized = true;

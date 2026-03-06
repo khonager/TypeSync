@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firedart/firedart.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -14,9 +15,19 @@ class HiveTokenStore extends TokenStore {
   HiveTokenStore._(this._box) : super();
 
   /// Initialize and open the Hive box before returning the store
-  static Future<HiveTokenStore> create() async {
-    final box = await Hive.openBox<dynamic>(_boxName);
-    return HiveTokenStore._(box);
+  ///
+  /// Returns a [HiveTokenStore] if successful, or a [MemoryTokenStore]
+  /// if Hive initialization fails (e.g. lock file error).
+  static Future<TokenStore> create() async {
+    try {
+      final box = await Hive.openBox<dynamic>(_boxName);
+      return HiveTokenStore._(box);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('HiveTokenStore initialization failed: $e');
+      }
+      return MemoryTokenStore();
+    }
   }
 
   @override
@@ -48,4 +59,20 @@ class HiveTokenStore extends TokenStore {
   void delete() {
     _box.delete(_key);
   }
+}
+
+/// A fallback TokenStore that keeps tokens in memory only.
+///
+/// Used when persistent storage fails (e.g. Hive lock error).
+class MemoryTokenStore extends TokenStore {
+  Token? _token;
+
+  @override
+  Token? read() => _token;
+
+  @override
+  void write(Token? token) => _token = token;
+
+  @override
+  void delete() => _token = null;
 }

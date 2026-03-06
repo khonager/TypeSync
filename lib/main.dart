@@ -57,12 +57,16 @@ void main() async {
   // Initialize Firedart for Linux support
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
     try {
-      // Initialize Auth with persistent TokenStore
+      // Initialize Auth with persistent TokenStore (or memory fallback if Hive fails)
       final tokenStore = await HiveTokenStore.create();
-      firedart.FirebaseAuth.initialize(
-        DefaultFirebaseOptions.linux.apiKey,
-        tokenStore,
-      );
+      
+      // Ensure we don't initialize multiple times
+      if (!firedart.FirebaseAuth.initialized) {
+        firedart.FirebaseAuth.initialize(
+          DefaultFirebaseOptions.linux.apiKey,
+          tokenStore,
+        );
+      }
 
       // Initialize Firestore if Firebase core failed (common on Linux)
       firedart.Firestore.initialize(DefaultFirebaseOptions.linux.projectId);
