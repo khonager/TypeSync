@@ -19,6 +19,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/utils/web_download_stub.dart'
+    if (dart.library.html) '../../../core/utils/web_download_web.dart' as web_download;
+
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
@@ -769,24 +772,15 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _exportWeb(Uint8List bytes, String fileName) async {
-    // For Web, we use a simple JS-less way if possible, but standard is anchor click.
-    // In Flutter, we can use a package or a simple trick with url_launcher if we had a blob URL.
-    // However, the most "native" way is anchor element.
-    // Since I cannot easily add 'dart:html' without potential issues in newer Flutter, 
-    // I will use a data URI with url_launcher as a fallback that is "native" to the browser.
-    final base64String = base64Encode(bytes);
-    final url = 'data:application/octet-stream;base64,$base64String';
-    final uri = Uri.parse(url);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+    try {
+      web_download.downloadFile(bytes, fileName);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Download started')),
         );
       }
-    } else {
-      throw 'Could not launch download link';
+    } catch (e) {
+      throw 'Could not trigger download: $e';
     }
   }
 
