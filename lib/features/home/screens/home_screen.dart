@@ -821,7 +821,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Change color'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Show color picker
+                _showFolderColorPicker(folderId);
               },
             ),
             ListTile(
@@ -1175,6 +1175,65 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  void _showFolderColorPicker(String folderId) {
+    if (!mounted) return;
+
+    final folder = context.read<FoldersProvider>().getFolderById(folderId);
+    final currentColor = folder?.backgroundColor;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Folder Color'),
+          content: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ColorOption(
+                  color: Colors.transparent,
+                  onTap: () =>
+                      _setFolderBackgroundColor(folderId, null, dialogContext),
+                  isSelected: currentColor == null || currentColor.isEmpty,
+                  label: 'None',
+                ),
+                ...AppColorPalette.noteBackgroundColors.map(
+                  (colorOption) => _ColorOption(
+                    color: colorOption.color,
+                    onTap: () => _setFolderBackgroundColor(
+                      folderId,
+                      colorOption.hex,
+                      dialogContext,
+                    ),
+                    isSelected: currentColor == colorOption.hex,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _setFolderBackgroundColor(
+    String folderId,
+    String? color,
+    BuildContext dialogContext,
+  ) {
+    Navigator.pop(dialogContext);
+    context.read<FoldersProvider>().setFolderColor(folderId, color);
   }
 
   void _setNoteBackgroundColor(
