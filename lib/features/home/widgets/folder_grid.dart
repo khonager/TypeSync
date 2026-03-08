@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/color_utils.dart';
 
 /// Grid view for folders
 class FolderGrid extends StatelessWidget {
@@ -162,7 +163,7 @@ class _FolderGridItemState extends State<FolderGridItem> {
                 child: Icon(
                   showBorder ? Icons.folder_open : Icons.folder,
                   size: 48,
-                  color: Colors.white54,
+                  color: Colors.white.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -173,7 +174,11 @@ class _FolderGridItemState extends State<FolderGridItem> {
             widget.folder.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: widget.folder.backgroundColor != null
+                      ? AppColorPalette.getContrastingTextColor(bgColor)
+                      : null,
+                ),
             textAlign: TextAlign.center,
           ),
           // Subtitle if present
@@ -276,7 +281,14 @@ class FolderListItem extends StatelessWidget {
                     children: [
                       Text(
                         folder.name,
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: folder.backgroundColor != null
+                                      ? AppColorPalette.getContrastingTextColor(
+                                          bgColor,
+                                        )
+                                      : null,
+                                ),
                       ),
                       if (folder.subtitle != null &&
                           folder.subtitle!.isNotEmpty)

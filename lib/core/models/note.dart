@@ -6,12 +6,93 @@ library;
 /// metadata, and sync information for each note.
 
 import 'package:equatable/equatable.dart';
+import 'package:uuid/uuid.dart';
 
 /// Note type enum
 enum NoteType {
   text,
   markdown,
   pdf,
+}
+
+/// File attachment metadata for a note.
+class NoteAttachment extends Equatable {
+  final String id;
+  final String name;
+  final String path;
+  final String? mimeType;
+  final int size;
+  final DateTime addedAt;
+
+  const NoteAttachment({
+    required this.id,
+    required this.name,
+    required this.path,
+    required this.size,
+    required this.addedAt,
+    this.mimeType,
+  });
+
+  factory NoteAttachment.create({
+    required String name,
+    required String path,
+    required int size,
+    String? mimeType,
+  }) {
+    return NoteAttachment(
+      id: const Uuid().v4(),
+      name: name,
+      path: path,
+      mimeType: mimeType,
+      size: size,
+      addedAt: DateTime.now(),
+    );
+  }
+
+  NoteAttachment copyWith({
+    String? id,
+    String? name,
+    String? path,
+    String? mimeType,
+    int? size,
+    DateTime? addedAt,
+  }) {
+    return NoteAttachment(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      path: path ?? this.path,
+      mimeType: mimeType ?? this.mimeType,
+      size: size ?? this.size,
+      addedAt: addedAt ?? this.addedAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'path': path,
+      'mimeType': mimeType,
+      'size': size,
+      'addedAt': addedAt.toIso8601String(),
+    };
+  }
+
+  factory NoteAttachment.fromJson(Map<String, dynamic> json) {
+    return NoteAttachment(
+      id: json['id'] as String? ?? const Uuid().v4(),
+      name: json['name'] as String? ?? 'Attachment',
+      path: json['path'] as String? ?? '',
+      mimeType: json['mimeType'] as String?,
+      size: json['size'] as int? ?? 0,
+      addedAt: json['addedAt'] != null
+          ? DateTime.parse(json['addedAt'] as String)
+          : DateTime.now(),
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, name, path, mimeType, size, addedAt];
 }
 
 /// Note model representing a single document
@@ -72,6 +153,12 @@ class Note extends Equatable {
   /// PDF file path if type is pdf
   final String? pdfPath;
 
+  /// File attachments attached to this note
+  final List<NoteAttachment> attachments;
+
+  /// Whether this note should remain local-only and never sync to cloud
+  final bool localOnly;
+
   /// Whether this note has an unresolved merge conflict
   final bool hasConflict;
 
@@ -97,6 +184,8 @@ class Note extends Equatable {
     this.lineCount = 0,
     this.size = 0,
     this.pdfPath,
+    this.attachments = const [],
+    this.localOnly = false,
     this.hasConflict = false,
     this.conflictContent,
   });
@@ -143,6 +232,8 @@ class Note extends Equatable {
     int? size,
     String? userId,
     String? pdfPath,
+    List<NoteAttachment>? attachments,
+    bool? localOnly,
     bool backgroundColorSet = false,
     bool? hasConflict,
     String? conflictContent,
@@ -169,6 +260,8 @@ class Note extends Equatable {
       size: size ?? this.size,
       userId: userId ?? this.userId,
       pdfPath: pdfPath ?? this.pdfPath,
+      attachments: attachments ?? this.attachments,
+      localOnly: localOnly ?? this.localOnly,
       hasConflict: hasConflict ?? this.hasConflict,
       conflictContent: clearConflictContent
           ? null
@@ -196,6 +289,9 @@ class Note extends Equatable {
       'size': size,
       'userId': userId,
       'pdfPath': pdfPath,
+      'attachments':
+          attachments.map((attachment) => attachment.toJson()).toList(),
+      'localOnly': localOnly,
       // We explicitly don't sync conflict state up to the cloud;
       // the cloud is just the source of truth for the remote version.
       // But if we did want to serialize them locally somehow, we might.
@@ -205,18 +301,35 @@ class Note extends Equatable {
 
   /// Creates a note from a JSON map (from Firebase)
   factory Note.fromJson(Map<String, dynamic> json) {
+    final rawType = json['type'];
+    int typeIndex;
+    if (rawType is int) {
+      typeIndex = rawType;
+    } else if (rawType is String) {
+      typeIndex = int.tryParse(rawType) ?? 0;
+    } else {
+      typeIndex = 0;
+    }
+    if (typeIndex < 0 || typeIndex >= NoteType.values.length) {
+      typeIndex = 0;
+    }
+
     return Note(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      content: json['content'] as String,
-      type: NoteType.values[json['type'] as int],
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'No name',
+      content: json['content'] as String? ?? '',
+      type: NoteType.values[typeIndex],
       folderId: json['folderId'] as String?,
       tags: json['tags'] != null
           ? List<String>.from(json['tags'] as List<dynamic>)
           : <String>[],
       backgroundColor: json['backgroundColor'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : DateTime.now(),
       syncedAt: json['syncedAt'] != null
           ? DateTime.parse(json['syncedAt'] as String)
           : null,
@@ -226,8 +339,17 @@ class Note extends Equatable {
       characterCount: json['characterCount'] as int? ?? 0,
       lineCount: json['lineCount'] as int? ?? 0,
       size: json['size'] as int? ?? 0,
-      userId: json['userId'] as String,
+      userId: json['userId'] as String? ?? '',
       pdfPath: json['pdfPath'] as String?,
+      attachments: (json['attachments'] as List<dynamic>?)
+              ?.map(
+                (attachment) => NoteAttachment.fromJson(
+                  Map<String, dynamic>.from(attachment as Map),
+                ),
+              )
+              .toList() ??
+          <NoteAttachment>[],
+      localOnly: json['localOnly'] as bool? ?? false,
       hasConflict: false, // from server is never conflicted
       conflictContent: null,
     );
@@ -253,6 +375,8 @@ class Note extends Equatable {
         size,
         userId,
         pdfPath,
+        attachments,
+        localOnly,
         hasConflict,
         conflictContent,
       ];

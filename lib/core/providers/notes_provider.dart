@@ -21,6 +21,7 @@ import '../services/sync_service.dart';
 class NotesProvider extends ChangeNotifier {
   // Local storage box
   Box<Note>? _notesBox;
+  String? _activeUserId;
 
   // In-memory notes list
   List<Note> _notes = [];
@@ -63,8 +64,9 @@ class NotesProvider extends ChangeNotifier {
     return sorted.take(10).toList();
   }
 
-  /// Get notes with unsynced changes
-  List<Note> get dirtyNotes => _notes.where((n) => n.isDirty).toList();
+  /// Get notes with unsynced changes that are eligible for cloud sync.
+  List<Note> get dirtyNotes =>
+      _notes.where((n) => n.isDirty && !n.localOnly).toList();
 
   /// Search notes by title and content
   List<Note> searchNotes(String query) {
@@ -103,7 +105,15 @@ class NotesProvider extends ChangeNotifier {
         Hive.registerAdapter(NoteTypeAdapter());
       }
 
+      if (_activeUserId != null &&
+          _activeUserId != userId &&
+          _notesBox != null &&
+          _notesBox!.isOpen) {
+        await _notesBox!.close();
+      }
+
       _notesBox = await Hive.openBox<Note>('notes_$userId');
+      _activeUserId = userId;
       _notes = _notesBox!.values.toList();
 
       _errorMessage = null;
@@ -151,6 +161,7 @@ class NotesProvider extends ChangeNotifier {
     String? folderId,
     NoteType type = NoteType.text,
     int? size,
+    bool localOnly = false,
   }) async {
     try {
       final note = Note.create(
@@ -162,6 +173,7 @@ class NotesProvider extends ChangeNotifier {
         type: type,
       ).copyWith(
         size: size ?? (type == NoteType.pdf ? 0 : content.length),
+        localOnly: localOnly,
       );
 
       // Save locally
@@ -241,8 +253,10 @@ class NotesProvider extends ChangeNotifier {
     _notes[index] = updatedNote;
     await _notesBox?.put(noteId, updatedNote);
 
-    // Trigger sync (debounced in sync service)
-    _syncService?.triggerSync();
+    // Trigger cloud sync only for syncable notes.
+    if (!updatedNote.localOnly) {
+      _syncService?.triggerSync();
+    }
 
     notifyListeners();
   }
@@ -355,6 +369,11 @@ class NotesProvider extends ChangeNotifier {
 
       if (localIndex >= 0) {
         final localNote = _notes[localIndex];
+
+        // Local-only notes intentionally do not accept cloud writes.
+        if (localNote.localOnly) {
+          continue;
+        }
 
         if (localNote.isDirty &&
             cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
@@ -477,6 +496,39 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Clone all local notes from one workspace box to another.
+  ///
+  /// Returns number of notes copied.
+  Future<int> cloneWorkspace({
+    required String sourceUserId,
+    required String targetUserId,
+    bool overwriteTarget = false,
+  }) async {
+    if (sourceUserId == targetUserId) return 0;
+
+    final sourceBox = await Hive.openBox<Note>('notes_$sourceUserId');
+    final targetBox = await Hive.openBox<Note>('notes_$targetUserId');
+
+    if (!overwriteTarget && targetBox.isNotEmpty) {
+      return 0;
+    }
+    if (overwriteTarget) {
+      await targetBox.clear();
+    }
+
+    int copied = 0;
+    for (final note in sourceBox.values) {
+      final cloned = note.copyWith(
+        userId: targetUserId,
+        isDirty: true,
+        syncedAt: null,
+      );
+      await targetBox.put(cloned.id, cloned);
+      copied++;
+    }
+    return copied;
+  }
+
   /// Clear error message
   void clearError() {
     _errorMessage = null;
@@ -497,27 +549,75 @@ class NoteAdapter extends TypeAdapter<Note> {
 
   @override
   Note read(BinaryReader reader) {
+    final id = reader.readString();
+    final title = reader.readString();
+    final content = reader.readString();
+    final type = NoteType.values[reader.readInt()];
+    final folderIdRaw = reader.readString();
+    final tags = reader.readStringList();
+    final backgroundColorRaw = reader.readString();
+    final createdAt = DateTime.parse(reader.readString());
+    final updatedAt = DateTime.parse(reader.readString());
+    final hasSyncedAt = reader.readBool();
+    final syncedAtRaw = hasSyncedAt ? reader.readString() : null;
+    final isDirty = reader.readBool();
+    final isFavorite = reader.readBool();
+    final isDeleted = reader.readBool();
+    final characterCount = reader.readInt();
+    final lineCount = reader.readInt();
+    final userId = reader.readString();
+    final pdfPathRaw = reader.readString();
+    final hasConflict = reader.availableBytes > 0 ? reader.readBool() : false;
+    final conflictContentRaw =
+        reader.availableBytes > 0 ? reader.readString() : '';
+    final size = reader.availableBytes > 0 ? reader.readInt() : 0;
+
+    final attachments = <NoteAttachment>[];
+    if (reader.availableBytes > 0) {
+      final attachmentCount = reader.readInt();
+      for (int i = 0; i < attachmentCount; i++) {
+        final attachmentId = reader.readString();
+        final attachmentName = reader.readString();
+        final attachmentPath = reader.readString();
+        final mimeTypeRaw = reader.readString();
+        attachments.add(
+          NoteAttachment(
+            id: attachmentId,
+            name: attachmentName,
+            path: attachmentPath,
+            mimeType: mimeTypeRaw.isEmpty ? null : mimeTypeRaw,
+            size: reader.readInt(),
+            addedAt: DateTime.parse(reader.readString()),
+          ),
+        );
+      }
+    }
+
+    final localOnly = reader.availableBytes > 0 ? reader.readBool() : false;
+
     return Note(
-      id: reader.readString(),
-      title: reader.readString(),
-      content: reader.readString(),
-      type: NoteType.values[reader.readInt()],
-      folderId: reader.readString(),
-      tags: reader.readStringList(),
-      backgroundColor: reader.readString(),
-      createdAt: DateTime.parse(reader.readString()),
-      updatedAt: DateTime.parse(reader.readString()),
-      syncedAt: reader.readBool() ? DateTime.parse(reader.readString()) : null,
-      isDirty: reader.readBool(),
-      isFavorite: reader.readBool(),
-      isDeleted: reader.readBool(),
-      characterCount: reader.readInt(),
-      lineCount: reader.readInt(),
-      userId: reader.readString(),
-      pdfPath: reader.readString(),
-      hasConflict: reader.availableBytes > 0 ? reader.readBool() : false,
-      conflictContent: reader.availableBytes > 0 ? reader.readString() : null,
-      size: reader.availableBytes > 0 ? reader.readInt() : 0,
+      id: id,
+      title: title,
+      content: content,
+      type: type,
+      folderId: folderIdRaw.isEmpty ? null : folderIdRaw,
+      tags: tags,
+      backgroundColor: backgroundColorRaw.isEmpty ? null : backgroundColorRaw,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      syncedAt: syncedAtRaw != null ? DateTime.parse(syncedAtRaw) : null,
+      isDirty: isDirty,
+      isFavorite: isFavorite,
+      isDeleted: isDeleted,
+      characterCount: characterCount,
+      lineCount: lineCount,
+      userId: userId,
+      pdfPath: pdfPathRaw.isEmpty ? null : pdfPathRaw,
+      hasConflict: hasConflict,
+      conflictContent: conflictContentRaw.isEmpty ? null : conflictContentRaw,
+      size: size,
+      attachments: attachments,
+      localOnly: localOnly,
     );
   }
 
@@ -546,6 +646,16 @@ class NoteAdapter extends TypeAdapter<Note> {
     writer.writeBool(obj.hasConflict);
     writer.writeString(obj.conflictContent ?? '');
     writer.writeInt(obj.size);
+    writer.writeInt(obj.attachments.length);
+    for (final attachment in obj.attachments) {
+      writer.writeString(attachment.id);
+      writer.writeString(attachment.name);
+      writer.writeString(attachment.path);
+      writer.writeString(attachment.mimeType ?? '');
+      writer.writeInt(attachment.size);
+      writer.writeString(attachment.addedAt.toIso8601String());
+    }
+    writer.writeBool(obj.localOnly);
   }
 }
 

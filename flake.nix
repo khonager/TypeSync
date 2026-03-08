@@ -103,6 +103,7 @@
               curl
               unzip
               which
+              zenity
               google-chrome
               mesa-demos
               nodejs_22
@@ -126,6 +127,7 @@
 
           profile = ''
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
+            export PATH="${pkgs.zenity}/bin:$PATH"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"

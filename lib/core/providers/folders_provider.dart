@@ -16,6 +16,7 @@ import '../services/sync_service.dart';
 class FoldersProvider extends ChangeNotifier {
   // Local storage box
   Box<Folder>? _foldersBox;
+  String? _activeUserId;
 
   // In-memory folders list
   List<Folder> _folders = [];
@@ -101,7 +102,15 @@ class FoldersProvider extends ChangeNotifier {
         Hive.registerAdapter(FolderAdapter());
       }
 
+      if (_activeUserId != null &&
+          _activeUserId != userId &&
+          _foldersBox != null &&
+          _foldersBox!.isOpen) {
+        await _foldersBox!.close();
+      }
+
       _foldersBox = await Hive.openBox<Folder>('folders_$userId');
+      _activeUserId = userId;
       _folders = _foldersBox!.values.toList();
 
       _errorMessage = null;
@@ -328,6 +337,39 @@ class FoldersProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Clone all local folders from one workspace box to another.
+  ///
+  /// Returns number of folders copied.
+  Future<int> cloneWorkspace({
+    required String sourceUserId,
+    required String targetUserId,
+    bool overwriteTarget = false,
+  }) async {
+    if (sourceUserId == targetUserId) return 0;
+
+    final sourceBox = await Hive.openBox<Folder>('folders_$sourceUserId');
+    final targetBox = await Hive.openBox<Folder>('folders_$targetUserId');
+
+    if (!overwriteTarget && targetBox.isNotEmpty) {
+      return 0;
+    }
+    if (overwriteTarget) {
+      await targetBox.clear();
+    }
+
+    int copied = 0;
+    for (final folder in sourceBox.values) {
+      final cloned = folder.copyWith(
+        userId: targetUserId,
+        isDirty: true,
+        syncedAt: null,
+      );
+      await targetBox.put(cloned.id, cloned);
+      copied++;
+    }
+    return copied;
   }
 
   @override
