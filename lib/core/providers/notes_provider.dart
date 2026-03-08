@@ -64,8 +64,9 @@ class NotesProvider extends ChangeNotifier {
     return sorted.take(10).toList();
   }
 
-  /// Get notes with unsynced changes
-  List<Note> get dirtyNotes => _notes.where((n) => n.isDirty).toList();
+  /// Get notes with unsynced changes that are eligible for cloud sync.
+  List<Note> get dirtyNotes =>
+      _notes.where((n) => n.isDirty && !n.localOnly).toList();
 
   /// Search notes by title and content
   List<Note> searchNotes(String query) {
@@ -252,8 +253,10 @@ class NotesProvider extends ChangeNotifier {
     _notes[index] = updatedNote;
     await _notesBox?.put(noteId, updatedNote);
 
-    // Trigger sync (debounced in sync service)
-    _syncService?.triggerSync();
+    // Trigger cloud sync only for syncable notes.
+    if (!updatedNote.localOnly) {
+      _syncService?.triggerSync();
+    }
 
     notifyListeners();
   }

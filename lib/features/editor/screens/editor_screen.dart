@@ -608,11 +608,16 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
     final extension = p.extension(attachment.name).toLowerCase();
     if (attachment.path.startsWith('data:')) {
-      final separatorIndex = attachment.path.indexOf(',');
-      if (separatorIndex <= 0) {
+      Uint8List bytes;
+      try {
+        final separatorIndex = attachment.path.indexOf(',');
+        if (separatorIndex <= 0) {
+          return _buildAttachmentUnavailable(attachment);
+        }
+        bytes = base64Decode(attachment.path.substring(separatorIndex + 1));
+      } catch (_) {
         return _buildAttachmentUnavailable(attachment);
       }
-      final bytes = base64Decode(attachment.path.substring(separatorIndex + 1));
 
       if (extension == '.pdf') {
         return PdfPreview(
@@ -643,6 +648,11 @@ class _EditorScreenState extends State<EditorScreen> {
       }
 
       return _buildAttachmentInfo(attachment);
+    }
+
+    if (kIsWeb) {
+      // Web cannot access device-local absolute file paths from other platforms.
+      return _buildAttachmentUnavailable(attachment);
     }
 
     final file = File(attachment.path);
@@ -689,6 +699,10 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildAttachmentUnavailable(NoteAttachment attachment) {
+    final isProbablyLocalPath = !attachment.path.startsWith('data:') &&
+        !attachment.path.startsWith('http://') &&
+        !attachment.path.startsWith('https://');
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -698,6 +712,13 @@ class _EditorScreenState extends State<EditorScreen> {
             const Icon(Icons.warning_amber_rounded, size: 40),
             const SizedBox(height: 8),
             Text('Attachment unavailable: ${attachment.name}'),
+            if (kIsWeb && isProbablyLocalPath) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'This file was attached using a device-local path and is not readable in web.',
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ),
       ),
