@@ -497,27 +497,71 @@ class NoteAdapter extends TypeAdapter<Note> {
 
   @override
   Note read(BinaryReader reader) {
+    final id = reader.readString();
+    final title = reader.readString();
+    final content = reader.readString();
+    final type = NoteType.values[reader.readInt()];
+    final folderIdRaw = reader.readString();
+    final tags = reader.readStringList();
+    final backgroundColorRaw = reader.readString();
+    final createdAt = DateTime.parse(reader.readString());
+    final updatedAt = DateTime.parse(reader.readString());
+    final hasSyncedAt = reader.readBool();
+    final syncedAtRaw = hasSyncedAt ? reader.readString() : null;
+    final isDirty = reader.readBool();
+    final isFavorite = reader.readBool();
+    final isDeleted = reader.readBool();
+    final characterCount = reader.readInt();
+    final lineCount = reader.readInt();
+    final userId = reader.readString();
+    final pdfPathRaw = reader.readString();
+    final hasConflict = reader.availableBytes > 0 ? reader.readBool() : false;
+    final conflictContentRaw = reader.availableBytes > 0 ? reader.readString() : '';
+    final size = reader.availableBytes > 0 ? reader.readInt() : 0;
+
+    final attachments = <NoteAttachment>[];
+    if (reader.availableBytes > 0) {
+      final attachmentCount = reader.readInt();
+      for (int i = 0; i < attachmentCount; i++) {
+        final attachmentId = reader.readString();
+        final attachmentName = reader.readString();
+        final attachmentPath = reader.readString();
+        final mimeTypeRaw = reader.readString();
+        attachments.add(
+          NoteAttachment(
+            id: attachmentId,
+            name: attachmentName,
+            path: attachmentPath,
+            mimeType: mimeTypeRaw.isEmpty ? null : mimeTypeRaw,
+            size: reader.readInt(),
+            addedAt: DateTime.parse(reader.readString()),
+          ),
+        );
+      }
+    }
+
     return Note(
-      id: reader.readString(),
-      title: reader.readString(),
-      content: reader.readString(),
-      type: NoteType.values[reader.readInt()],
-      folderId: reader.readString(),
-      tags: reader.readStringList(),
-      backgroundColor: reader.readString(),
-      createdAt: DateTime.parse(reader.readString()),
-      updatedAt: DateTime.parse(reader.readString()),
-      syncedAt: reader.readBool() ? DateTime.parse(reader.readString()) : null,
-      isDirty: reader.readBool(),
-      isFavorite: reader.readBool(),
-      isDeleted: reader.readBool(),
-      characterCount: reader.readInt(),
-      lineCount: reader.readInt(),
-      userId: reader.readString(),
-      pdfPath: reader.readString(),
-      hasConflict: reader.availableBytes > 0 ? reader.readBool() : false,
-      conflictContent: reader.availableBytes > 0 ? reader.readString() : null,
-      size: reader.availableBytes > 0 ? reader.readInt() : 0,
+      id: id,
+      title: title,
+      content: content,
+      type: type,
+      folderId: folderIdRaw.isEmpty ? null : folderIdRaw,
+      tags: tags,
+      backgroundColor: backgroundColorRaw.isEmpty ? null : backgroundColorRaw,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      syncedAt: syncedAtRaw != null ? DateTime.parse(syncedAtRaw) : null,
+      isDirty: isDirty,
+      isFavorite: isFavorite,
+      isDeleted: isDeleted,
+      characterCount: characterCount,
+      lineCount: lineCount,
+      userId: userId,
+      pdfPath: pdfPathRaw.isEmpty ? null : pdfPathRaw,
+      hasConflict: hasConflict,
+      conflictContent: conflictContentRaw.isEmpty ? null : conflictContentRaw,
+      size: size,
+      attachments: attachments,
     );
   }
 
@@ -546,6 +590,15 @@ class NoteAdapter extends TypeAdapter<Note> {
     writer.writeBool(obj.hasConflict);
     writer.writeString(obj.conflictContent ?? '');
     writer.writeInt(obj.size);
+    writer.writeInt(obj.attachments.length);
+    for (final attachment in obj.attachments) {
+      writer.writeString(attachment.id);
+      writer.writeString(attachment.name);
+      writer.writeString(attachment.path);
+      writer.writeString(attachment.mimeType ?? '');
+      writer.writeInt(attachment.size);
+      writer.writeString(attachment.addedAt.toIso8601String());
+    }
   }
 }
 

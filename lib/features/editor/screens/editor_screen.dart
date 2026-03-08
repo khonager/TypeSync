@@ -13,11 +13,11 @@ import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../core/utils/web_download_stub.dart'
     if (dart.library.html) '../../../core/utils/web_download_web.dart' as web_download;
@@ -87,6 +87,8 @@ class _EditorScreenState extends State<EditorScreen> {
   // Drag and drop state
   bool _isDragging = false;
   bool _isUpdatingFromExternal = false;
+  String? _activeAttachmentId;
+  bool _sideBySideAttachments = false;
 
   @override
   void initState() {
@@ -228,7 +230,9 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     // React to external changes from provider
     final notesProvider = context.watch<NotesProvider>();
-    final providerNote = notesProvider.getNoteById(widget.noteId!);
+    final providerNote = widget.noteId != null
+        ? notesProvider.getNoteById(widget.noteId!)
+        : (_note != null ? notesProvider.getNoteById(_note!.id) : null);
 
     if (providerNote != null && _note != null) {
       if (providerNote.updatedAt.isAfter(_note!.updatedAt) ||
@@ -305,90 +309,69 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           if (_note?.hasConflict == true) _buildConflictBanner(),
           Expanded(
-            child: _note?.type == NoteType.pdf && _note?.pdfPath != null
-                ? _buildPdfViewer()
-                : DropTarget(
-                    onDragEntered: (details) {
-                      setState(() {
-                        _isDragging = true;
-                      });
-                    },
-                    onDragExited: (details) {
-                      setState(() {
-                        _isDragging = false;
-                      });
-                    },
-                    onDragDone: (details) {
-                      _handleDroppedFiles(details.files);
-                      setState(() {
-                        _isDragging = false;
-                      });
-                    },
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        // Editor area
-                        Container(
-                          width: double.infinity,
-                          height: double.infinity,
-                          color: bgColor ??
-                              Theme.of(context).scaffoldBackgroundColor,
-                          padding: const EdgeInsets.all(16),
-                          child: QuillEditor(
-                            controller: _quillController,
-                            focusNode: _focusNode,
-                            scrollController: _scrollController,
-                          ),
-                        ),
-
-                        // Floating toolbar
-                        EditorToolbar(
-                          controller: _quillController,
-                          onInsertPdf: _insertPdf,
-                        ),
-                        // Drag overlay
-                        if (_isDragging)
-                          Container(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.2),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.all(32),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.cloud_upload,
-                                      size: 64,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'Drop files here to import',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleLarge,
-                                    ),
-                                  ],
-                                ),
-                              ),
+            child: DropTarget(
+              onDragEntered: (details) {
+                setState(() {
+                  _isDragging = true;
+                });
+              },
+              onDragExited: (details) {
+                setState(() {
+                  _isDragging = false;
+                });
+              },
+              onDragDone: (details) {
+                _handleDroppedFiles(details.files);
+                setState(() {
+                  _isDragging = false;
+                });
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _buildEditorWithAttachments(bgColor),
+                  EditorToolbar(
+                    controller: _quillController,
+                    onInsertPdf: _insertPdf,
+                  ),
+                  if (_isDragging)
+                    Container(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.2),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(32),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
                             ),
                           ),
-                      ],
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.cloud_upload,
+                                size: 64,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Drop files here to attach',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -422,6 +405,311 @@ class _EditorScreenState extends State<EditorScreen> {
         ],
       ),
     );
+  }
+
+  List<NoteAttachment> _effectiveAttachments() {
+    if (_note == null) return const <NoteAttachment>[];
+
+    final attachments = List<NoteAttachment>.from(_note!.attachments);
+    if (_note!.pdfPath != null &&
+        _note!.pdfPath!.isNotEmpty &&
+        !attachments.any((attachment) => attachment.path == _note!.pdfPath)) {
+      attachments.insert(
+        0,
+        NoteAttachment(
+          id: 'legacy-pdf-${_note!.id}',
+          name: '${_note!.title}.pdf',
+          path: _note!.pdfPath!,
+          mimeType: 'application/pdf',
+          size: _note!.size,
+          addedAt: _note!.updatedAt,
+        ),
+      );
+    }
+
+    return attachments;
+  }
+
+  NoteAttachment? _activeAttachment(List<NoteAttachment> attachments) {
+    if (attachments.isEmpty) return null;
+    if (_activeAttachmentId == null) return attachments.first;
+
+    for (final attachment in attachments) {
+      if (attachment.id == _activeAttachmentId) {
+        return attachment;
+      }
+    }
+    return attachments.first;
+  }
+
+  bool _isDesktopLayout() {
+    if (kIsWeb) return true;
+    return Platform.isLinux || Platform.isMacOS || Platform.isWindows;
+  }
+
+  Widget _buildEditorWithAttachments(Color? bgColor) {
+    final attachments = _effectiveAttachments();
+    final activeAttachment = _activeAttachment(attachments);
+    final isDesktop = _isDesktopLayout();
+    final canSideBySide = isDesktop && MediaQuery.of(context).size.width >= 1100;
+    final showSideBySide = canSideBySide && _sideBySideAttachments && activeAttachment != null;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildAttachmentsSection(attachments, activeAttachment, canSideBySide),
+          const SizedBox(height: 12),
+          Expanded(
+            child: showSideBySide
+                ? Row(
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: _buildAttachmentPreview(activeAttachment),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 6,
+                        child: _buildEditorSurface(bgColor),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      if (activeAttachment != null)
+                        Container(
+                          height: 260,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Card(
+                            clipBehavior: Clip.antiAlias,
+                            child: _buildAttachmentPreview(activeAttachment),
+                          ),
+                        ),
+                      Expanded(child: _buildEditorSurface(bgColor)),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditorSurface(Color? bgColor) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.25),
+        ),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: QuillEditor(
+        controller: _quillController,
+        focusNode: _focusNode,
+        scrollController: _scrollController,
+      ),
+    );
+  }
+
+  Widget _buildAttachmentsSection(
+    List<NoteAttachment> attachments,
+    NoteAttachment? activeAttachment,
+    bool canSideBySide,
+  ) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.attach_file),
+                const SizedBox(width: 8),
+                Text(
+                  'Attachments (${attachments.length})',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const Spacer(),
+                if (canSideBySide)
+                  IconButton(
+                    tooltip: _sideBySideAttachments
+                        ? 'Switch to stacked view'
+                        : 'Switch to side-by-side view',
+                    onPressed: () {
+                      setState(() {
+                        _sideBySideAttachments = !_sideBySideAttachments;
+                      });
+                    },
+                    icon: Icon(
+                      _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+                    ),
+                  ),
+                TextButton.icon(
+                  onPressed: _insertPdf,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Attach'),
+                ),
+              ],
+            ),
+            if (attachments.isNotEmpty) const SizedBox(height: 8),
+            if (attachments.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: attachments
+                    .map(
+                      (attachment) => ChoiceChip(
+                        selected: activeAttachment?.id == attachment.id,
+                        label: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 240),
+                          child: Text(
+                            attachment.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        onSelected: (selected) {
+                          setState(() {
+                            _activeAttachmentId = selected ? attachment.id : null;
+                          });
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentPreview(NoteAttachment attachment) {
+    final extension = p.extension(attachment.name).toLowerCase();
+    final file = File(attachment.path);
+
+    if (!file.existsSync()) {
+      return _buildAttachmentUnavailable(attachment);
+    }
+
+    if (extension == '.pdf') {
+      return PdfViewerWidget(pdfFile: file);
+    }
+
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].contains(extension)) {
+      return Container(
+        color: Colors.black12,
+        child: Center(child: Image.file(file, fit: BoxFit.contain)),
+      );
+    }
+
+    if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
+        .contains(extension)) {
+      return FutureBuilder<String>(
+        future: file.readAsString(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return _buildAttachmentUnavailable(attachment);
+          }
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: Text(snapshot.data!, style: Theme.of(context).textTheme.bodyMedium),
+          );
+        },
+      );
+    }
+
+    return _buildAttachmentInfo(attachment);
+  }
+
+  Widget _buildAttachmentUnavailable(NoteAttachment attachment) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.warning_amber_rounded, size: 40),
+            const SizedBox(height: 8),
+            Text('Attachment unavailable: ${attachment.name}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentInfo(NoteAttachment attachment) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.insert_drive_file_outlined, size: 52),
+            const SizedBox(height: 12),
+            Text(attachment.name, textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Text(
+              '${(attachment.size / 1024).toStringAsFixed(1)} KB',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () => _openAttachmentExternally(attachment),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open externally'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAttachmentExternally(NoteAttachment attachment) async {
+    try {
+      final file = File(attachment.path);
+      if (!await file.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File not found: ${attachment.name}')),
+          );
+        }
+        return;
+      }
+
+      final uri = Uri.file(file.absolute.path);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      if (Platform.isLinux) {
+        await Process.run('xdg-open', [file.absolute.path]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [file.absolute.path]);
+      } else if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', file.absolute.path]);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to open file: $e')),
+        );
+      }
+    }
   }
 
   void _showConflictDialog() {
@@ -472,8 +760,8 @@ class _EditorScreenState extends State<EditorScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.picture_as_pdf),
-              title: const Text('Insert PDF'),
+              leading: const Icon(Icons.attach_file),
+              title: const Text('Attach file'),
               onTap: () {
                 Navigator.pop(context);
                 _insertPdf();
@@ -530,7 +818,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Storage is full. Please upgrade to add PDFs.'),
+            content: Text('Storage is full. Please upgrade to add attachments.'),
           ),
         );
       }
@@ -540,62 +828,17 @@ class _EditorScreenState extends State<EditorScreen> {
     try {
       final filePath = await FilePickerHelper.pickFile(
         context: context,
-        dialogTitle: 'Select PDF file',
-        allowedExtensions: ['pdf'],
+        dialogTitle: 'Select attachment',
       );
 
       if (filePath != null) {
-        final file = File(filePath);
-        final fileName = file.path.split('/').last;
-
-        // Copy PDF to app storage
-        if (!mounted) return;
-        final authService = context.read<AuthService>();
-        final userId = authService.userId;
-        if (userId == null) return;
-
-        await LocalFileService.instance.initialize(userId);
-        final storedPath = await LocalFileService.instance.copyFileToStorage(
-          filePath,
-          fileName: fileName,
-        );
-
-        final fileSize = await file.length();
-
-        if (storedPath != null && _note != null) {
-          // Update note to be a PDF type
-          if (!mounted) return;
-          final notesProvider = context.read<NotesProvider>();
-          final updatedNote = _note!.copyWith(
-            type: NoteType.pdf,
-            pdfPath: storedPath,
-            title: fileName.replaceAll('.pdf', ''),
-            size: fileSize,
-          );
-          await notesProvider.updateNote(updatedNote);
-
-          // Refresh the note
-          setState(() {
-            _note = updatedNote;
-          });
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('PDF imported: $fileName')),
-            );
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to import PDF')),
-            );
-          }
-        }
+        final fileName = p.basename(filePath);
+        await _attachFileToCurrentNote(filePath: filePath, fileName: fileName);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error importing PDF: $e')),
+          SnackBar(content: Text('Error attaching file: $e')),
         );
       }
     }
@@ -816,89 +1059,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Widget _buildPdfViewer() {
-    if (_note?.pdfPath == null) {
-      return const Center(
-        child: Text('PDF file not found'),
-      );
-    }
-
-    final pdfPath = _note!.pdfPath!;
-    final pdfFile = File(pdfPath);
-
-    return FutureBuilder<bool>(
-      future: Future(() => pdfFile.existsSync()),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snapshot.hasData || !snapshot.data!) {
-          return _buildPdfErrorView(pdfFile);
-        }
-
-        // Use custom PDF viewer that works on all platforms
-        return PdfViewerWidget(pdfFile: pdfFile);
-      },
-    );
-  }
-
-  Widget _buildPdfErrorView(File pdfFile) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.picture_as_pdf, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            'PDF Viewer',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            pdfFile.path,
-            style: Theme.of(context).textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () async {
-              // Try to open PDF in external viewer
-              final uri = Uri.file(pdfFile.absolute.path);
-              try {
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                } else {
-                  // Try using xdg-open on Linux
-                  if (Platform.isLinux) {
-                    await Process.run('xdg-open', [pdfFile.absolute.path]);
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content:
-                              Text('Unable to open PDF in external viewer'),
-                        ),
-                      );
-                    }
-                  }
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error opening PDF: $e')),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Open in external viewer'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _handleDroppedFiles(List<XFile> files) async {
     final storageService = context.read<StorageService>();
     if (storageService.isStorageFull) {
@@ -916,7 +1076,6 @@ class _EditorScreenState extends State<EditorScreen> {
       try {
         final filePath = file.path;
         final fileName = file.name;
-        final fileExtension = fileName.split('.').last.toLowerCase();
 
         // Read file content
         final fileData = File(filePath);
@@ -929,105 +1088,122 @@ class _EditorScreenState extends State<EditorScreen> {
           continue;
         }
 
-        // Handle different file types
-        if (fileExtension == 'txt' ||
-            fileExtension == 'md' ||
-            fileExtension == 'markdown') {
-          // Text files - insert content into current note
-          final content = await fileData.readAsString();
-          final selection = _quillController.selection;
-          final offset =
-              selection.isCollapsed ? selection.start : selection.start;
-
-          // Insert file content
-          _quillController.document
-              .insert(offset, '\n\n--- Imported from $fileName ---\n\n');
-          _quillController.document
-              .insert(offset + 35 + fileName.length, content);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Imported $fileName into note')),
-            );
-          }
-        } else if (fileExtension == 'pdf') {
-          // PDF files - import as PDF note
-          if (!mounted) continue;
-          final authService = context.read<AuthService>();
-          final userId = authService.userId;
-          if (userId == null) return;
-
-          await LocalFileService.instance.initialize(userId);
-          final storedPath = await LocalFileService.instance.copyFileToStorage(
-            filePath,
-            fileName: fileName,
-          );
-
-          if (storedPath != null) {
-            // Create a new PDF note
-            if (!mounted) continue;
-            final notesProvider = context.read<NotesProvider>();
-            final pdfNote = await notesProvider.createNote(
-              userId: userId,
-              folderId: _note?.folderId,
-              title: fileName.replaceAll('.pdf', ''),
-              content: '',
-              type: NoteType.pdf,
-            );
-
-            if (pdfNote != null) {
-              final updatedNote = pdfNote.copyWith(pdfPath: storedPath);
-              await notesProvider.updateNote(updatedNote);
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('PDF imported: $fileName')),
-                );
-                // Optionally open the PDF note
-                // AppRouter.openEditor(context, noteId: pdfNote.id);
-              }
-            }
-          } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to import PDF: $fileName')),
-              );
-            }
-          }
-        } else if (['jpg', 'jpeg', 'png', 'gif', 'webp']
-            .contains(fileExtension)) {
-          // Image files - insert reference
-          final selection = _quillController.selection;
-          final offset =
-              selection.isCollapsed ? selection.start : selection.start;
-          _quillController.document
-              .insert(offset, '\n\n[Image: $fileName]\n\n');
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Image reference added: $fileName')),
-            );
-          }
-        } else {
-          // Other files - insert reference
-          final selection = _quillController.selection;
-          final offset =
-              selection.isCollapsed ? selection.start : selection.start;
-          _quillController.document.insert(offset, '\n\n[File: $fileName]\n\n');
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('File reference added: $fileName')),
-            );
-          }
-        }
+        await _attachFileToCurrentNote(filePath: filePath, fileName: fileName);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to import ${file.name}: $e')),
+            SnackBar(content: Text('Failed to attach ${file.name}: $e')),
           );
         }
       }
+    }
+  }
+
+  Future<void> _attachFileToCurrentNote({
+    required String filePath,
+    required String fileName,
+  }) async {
+    if (_note == null) return;
+    if (!mounted) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final authService = context.read<AuthService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    final sourceFile = File(filePath);
+    if (!await sourceFile.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('File not found: $fileName')),
+        );
+      }
+      return;
+    }
+
+    await LocalFileService.instance.initialize(userId);
+    final storedPath = await LocalFileService.instance.copyFileToStorage(
+      filePath,
+      fileName: fileName,
+    );
+
+    if (storedPath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to attach $fileName')),
+        );
+      }
+      return;
+    }
+
+    final size = await sourceFile.length();
+    final ext = p.extension(fileName).toLowerCase();
+    final mimeType = _mimeTypeForExtension(ext);
+    final attachment = NoteAttachment.create(
+      name: fileName,
+      path: storedPath,
+      mimeType: mimeType,
+      size: size,
+    );
+
+    final alreadyExists = _note!.attachments.any(
+      (existing) => existing.path == storedPath || existing.name == attachment.name,
+    );
+    if (alreadyExists) {
+      return;
+    }
+
+    final updatedNote = _note!.copyWith(
+      attachments: [..._note!.attachments, attachment],
+      type: _note!.type == NoteType.pdf ? NoteType.text : _note!.type,
+      pdfPath: _note!.pdfPath,
+    );
+
+    final success = await notesProvider.updateNote(updatedNote);
+    if (!success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update note with $fileName')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _note = updatedNote;
+      _activeAttachmentId = attachment.id;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Attached: $fileName')),
+    );
+  }
+
+  String? _mimeTypeForExtension(String extension) {
+    switch (extension) {
+      case '.pdf':
+        return 'application/pdf';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.txt':
+        return 'text/plain';
+      case '.md':
+      case '.markdown':
+        return 'text/markdown';
+      case '.json':
+        return 'application/json';
+      case '.csv':
+        return 'text/csv';
+      default:
+        return null;
     }
   }
 
