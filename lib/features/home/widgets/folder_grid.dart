@@ -285,7 +285,8 @@ class FolderListItem extends StatelessWidget {
                             Theme.of(context).textTheme.titleMedium?.copyWith(
                                   color: folder.backgroundColor != null
                                       ? AppColorPalette.getContrastingTextColor(
-                                          bgColor)
+                                          bgColor,
+                                        )
                                       : null,
                                 ),
                       ),

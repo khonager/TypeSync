@@ -466,7 +466,10 @@ class _EditorScreenState extends State<EditorScreen> {
       child: Column(
         children: [
           _buildAttachmentsSection(
-              attachments, activeAttachment, canSideBySide),
+            attachments,
+            activeAttachment,
+            canSideBySide,
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: showSideBySide
@@ -673,8 +676,10 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return SingleChildScrollView(
             padding: const EdgeInsets.all(12),
-            child: Text(snapshot.data!,
-                style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(
+              snapshot.data!,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           );
         },
       );
@@ -912,13 +917,16 @@ class _EditorScreenState extends State<EditorScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                    content: Text('Unable to read file bytes on web')),
+                  content: Text('Unable to read file bytes on web'),
+                ),
               );
             }
             return;
           }
           await _attachFileToCurrentNote(
-              fileName: pickedFile.name, bytes: bytes);
+            fileName: pickedFile.name,
+            bytes: bytes,
+          );
           return;
         }
 
@@ -927,7 +935,9 @@ class _EditorScreenState extends State<EditorScreen> {
           return;
         }
         await _attachFileToCurrentNote(
-            filePath: filePath, fileName: pickedFile.name);
+          filePath: filePath,
+          fileName: pickedFile.name,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1072,7 +1082,8 @@ class _EditorScreenState extends State<EditorScreen> {
           // unless stored in Firebase.
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('PDF export on Web is not yet implemented')),
+              content: Text('PDF export on Web is not yet implemented'),
+            ),
           );
           return;
         }
@@ -1152,8 +1163,12 @@ class _EditorScreenState extends State<EditorScreen> {
     await Share.shareXFiles([xFile], text: 'Exported Note: $fileName');
   }
 
-  Future<void> _exportDesktop(String textContent, Uint8List? bytes,
-      String fileName, String extension) async {
+  Future<void> _exportDesktop(
+    String textContent,
+    Uint8List? bytes,
+    String fileName,
+    String extension,
+  ) async {
     final savePath = await FilePickerHelper.saveFile(
       context: context,
       dialogTitle: 'Export Note',

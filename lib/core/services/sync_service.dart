@@ -369,7 +369,8 @@ class SyncService extends ChangeNotifier {
               notes.add(Note.fromJson(data));
             } catch (e) {
               debugPrint(
-                  'SyncService [Linux]: Skipping malformed note ${doc.id}: $e');
+                'SyncService [Linux]: Skipping malformed note ${doc.id}: $e',
+              );
             }
           }
           onNotesUpdated?.call(notes);
