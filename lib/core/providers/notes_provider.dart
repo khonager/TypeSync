@@ -21,6 +21,7 @@ import '../services/sync_service.dart';
 class NotesProvider extends ChangeNotifier {
   // Local storage box
   Box<Note>? _notesBox;
+  String? _activeUserId;
 
   // In-memory notes list
   List<Note> _notes = [];
@@ -103,7 +104,15 @@ class NotesProvider extends ChangeNotifier {
         Hive.registerAdapter(NoteTypeAdapter());
       }
 
+      if (_activeUserId != null &&
+          _activeUserId != userId &&
+          _notesBox != null &&
+          _notesBox!.isOpen) {
+        await _notesBox!.close();
+      }
+
       _notesBox = await Hive.openBox<Note>('notes_$userId');
+      _activeUserId = userId;
       _notes = _notesBox!.values.toList();
 
       _errorMessage = null;
@@ -151,6 +160,7 @@ class NotesProvider extends ChangeNotifier {
     String? folderId,
     NoteType type = NoteType.text,
     int? size,
+    bool localOnly = false,
   }) async {
     try {
       final note = Note.create(
@@ -162,6 +172,7 @@ class NotesProvider extends ChangeNotifier {
         type: type,
       ).copyWith(
         size: size ?? (type == NoteType.pdf ? 0 : content.length),
+        localOnly: localOnly,
       );
 
       // Save locally
@@ -356,6 +367,11 @@ class NotesProvider extends ChangeNotifier {
       if (localIndex >= 0) {
         final localNote = _notes[localIndex];
 
+        // Local-only notes intentionally do not accept cloud writes.
+        if (localNote.localOnly) {
+          continue;
+        }
+
         if (localNote.isDirty &&
             cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
             localNote.content != cloudNote.content) {
@@ -477,6 +493,39 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Clone all local notes from one workspace box to another.
+  ///
+  /// Returns number of notes copied.
+  Future<int> cloneWorkspace({
+    required String sourceUserId,
+    required String targetUserId,
+    bool overwriteTarget = false,
+  }) async {
+    if (sourceUserId == targetUserId) return 0;
+
+    final sourceBox = await Hive.openBox<Note>('notes_$sourceUserId');
+    final targetBox = await Hive.openBox<Note>('notes_$targetUserId');
+
+    if (!overwriteTarget && targetBox.isNotEmpty) {
+      return 0;
+    }
+    if (overwriteTarget) {
+      await targetBox.clear();
+    }
+
+    int copied = 0;
+    for (final note in sourceBox.values) {
+      final cloned = note.copyWith(
+        userId: targetUserId,
+        isDirty: true,
+        syncedAt: null,
+      );
+      await targetBox.put(cloned.id, cloned);
+      copied++;
+    }
+    return copied;
+  }
+
   /// Clear error message
   void clearError() {
     _errorMessage = null;
@@ -540,6 +589,8 @@ class NoteAdapter extends TypeAdapter<Note> {
       }
     }
 
+    final localOnly = reader.availableBytes > 0 ? reader.readBool() : false;
+
     return Note(
       id: id,
       title: title,
@@ -562,6 +613,7 @@ class NoteAdapter extends TypeAdapter<Note> {
       conflictContent: conflictContentRaw.isEmpty ? null : conflictContentRaw,
       size: size,
       attachments: attachments,
+      localOnly: localOnly,
     );
   }
 
@@ -599,6 +651,7 @@ class NoteAdapter extends TypeAdapter<Note> {
       writer.writeInt(attachment.size);
       writer.writeString(attachment.addedAt.toIso8601String());
     }
+    writer.writeBool(obj.localOnly);
   }
 }
 

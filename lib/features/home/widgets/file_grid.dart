@@ -137,6 +137,16 @@ class FileGridItem extends StatelessWidget {
                             color: Colors.amber,
                           ),
                         ),
+                      if (note.localOnly)
+                        const Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Icon(
+                            Icons.cloud_off_outlined,
+                            size: 14,
+                            color: Colors.orangeAccent,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -194,6 +204,16 @@ class FileGridItem extends StatelessWidget {
                           Icons.star,
                           size: 16,
                           color: Colors.amber,
+                        ),
+                      ),
+                    if (note.localOnly)
+                      const Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Icon(
+                          Icons.cloud_off_outlined,
+                          size: 14,
+                          color: Colors.orangeAccent,
                         ),
                       ),
                   ],
@@ -333,6 +353,15 @@ class FileListItem extends StatelessWidget {
                               Icons.star,
                               size: 16,
                               color: Colors.amber,
+                            ),
+                          if (note.localOnly)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.cloud_off_outlined,
+                                size: 16,
+                                color: Colors.orangeAccent,
+                              ),
                             ),
                         ],
                       ),

@@ -7,6 +7,7 @@ library;
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -66,10 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeData() async {
     debugPrint('HomeScreen: _initializeData IS CALLED!');
     final authService = context.read<AuthService>();
-    final userId = authService.userId;
+    final cloudUserId = authService.userId;
 
     // Use 'guest' ID if not logged in (Guest Mode)
-    final effectiveUserId = userId ?? 'guest';
+    final effectiveUserId = authService.storageUserId ?? 'guest';
 
     // Initialize local file service
     await LocalFileService.instance.initialize(effectiveUserId);
@@ -85,12 +86,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Sync the sync service with auth preferences
     final syncService = context.read<SyncService>();
-    syncService.setSyncEnabled(authService.syncEnabled);
+    syncService.setSyncEnabled(authService.effectiveSyncEnabled);
 
     // Only start sync if user is logged in (not guest) and sync is enabled
     // We check actual userId (not effective) to determine if we can sync
-    if (userId != null && authService.isLoggedIn && authService.syncEnabled) {
-      syncService.startListening(userId);
+    if (cloudUserId != null &&
+        authService.isLoggedIn &&
+        authService.effectiveSyncEnabled) {
+      syncService.startListening(cloudUserId);
 
       // Connect providers to sync service
       context.read<NotesProvider>().setSyncService(syncService);
@@ -123,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Check for data migration (Guest/Local -> User)
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _checkDataMigration(userId);
+          _checkDataMigration(cloudUserId);
         });
       }
     } else {
@@ -613,15 +616,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final filePath = await FilePickerHelper.pickFile(
+      final pickedFile = await FilePickerHelper.pickPlatformFile(
         context: context,
         dialogTitle: 'Select Document',
       );
 
-      if (filePath != null) {
-        final file = File(filePath);
-        final fileName = file.path.split(Platform.pathSeparator).last;
-        await _importFile(filePath, fileName);
+      if (pickedFile != null) {
+        if (kIsWeb) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Importing from browser file bytes is not wired in Home yet. Use the editor attachment flow.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+
+        final filePath = pickedFile.path;
+        if (filePath == null || filePath.isEmpty) return;
+        await _importFile(filePath, pickedFile.name);
       }
     } catch (e) {
       if (mounted) {
@@ -1027,6 +1043,26 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () {
                 Navigator.pop(bottomSheetContext);
                 _exportNote(noteId);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                note?.localOnly == true
+                    ? Icons.cloud_off_outlined
+                    : Icons.cloud_done_outlined,
+              ),
+              title: Text(
+                note?.localOnly == true
+                    ? 'Stored locally only'
+                    : 'Synced with cloud',
+              ),
+              onTap: () async {
+                Navigator.pop(bottomSheetContext);
+                final current = context.read<NotesProvider>().getNoteById(noteId);
+                if (current == null) return;
+                await context
+                    .read<NotesProvider>()
+                    .updateNote(current.copyWith(localOnly: !current.localOnly));
               },
             ),
             ListTile(

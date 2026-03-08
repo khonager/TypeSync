@@ -68,6 +68,9 @@ class AuthService extends ChangeNotifier {
   // Sync enabled preference (for logged-in users)
   bool _syncEnabled = true;
 
+  // Workspace mode preference (for logged-in users)
+  bool _localOnlyMode = false;
+
   // Loading state
   bool _isLoading = false;
 
@@ -97,6 +100,12 @@ class AuthService extends ChangeNotifier {
   /// Whether sync is enabled (only relevant for logged-in users)
   bool get syncEnabled => _syncEnabled;
 
+  /// Whether local-only workspace mode is enabled.
+  bool get localOnlyMode => _localOnlyMode;
+
+  /// Whether cloud sync should actively run.
+  bool get effectiveSyncEnabled => _syncEnabled && !_localOnlyMode;
+
   /// Loading state for async operations
   bool get isLoading => _isLoading;
 
@@ -118,6 +127,17 @@ class AuthService extends ChangeNotifier {
       return _firedartAuth.isSignedIn ? _firedartAuth.userId : null;
     }
     return _auth?.currentUser?.uid;
+  }
+
+  /// Local storage workspace ID. When local-only mode is enabled for a logged-in
+  /// user, this points to an isolated local workspace.
+  String? get storageUserId {
+    final uid = userId;
+    if (uid == null) return null;
+    if (isLoggedIn && _localOnlyMode) {
+      return 'local_$uid';
+    }
+    return uid;
   }
 
   /// Whether user is logged in (not guest)
@@ -232,6 +252,7 @@ class AuthService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _syncEnabled = prefs.getBool('sync_enabled') ?? true;
+      _localOnlyMode = prefs.getBool('local_only_mode') ?? false;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading preferences: $e');
@@ -247,6 +268,17 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error saving sync preference: $e');
+    }
+  }
+
+  Future<void> _saveLocalOnlyMode(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('local_only_mode', enabled);
+      _localOnlyMode = enabled;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error saving local-only preference: $e');
     }
   }
 
@@ -433,6 +465,14 @@ class AuthService extends ChangeNotifier {
       return;
     }
     await _saveSyncEnabled(enabled);
+  }
+
+  /// Toggle isolated local workspace mode for logged-in users.
+  Future<void> setLocalOnlyMode(bool enabled) async {
+    if (_isGuestMode) {
+      return;
+    }
+    await _saveLocalOnlyMode(enabled);
   }
 
   /// Sign out the current user

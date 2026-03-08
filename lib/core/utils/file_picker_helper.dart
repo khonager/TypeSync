@@ -5,13 +5,15 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 
 
 /// Helper class for file picking with Linux fallbacks
 class FilePickerHelper {
-  /// Pick a file with native platform picker
-  static Future<String?> pickFile({
+  /// Pick file metadata. On web, `PlatformFile.bytes` is available and
+  /// `PlatformFile.path` is null.
+  static Future<PlatformFile?> pickPlatformFile({
     required BuildContext context,
     String? dialogTitle,
     List<String>? allowedExtensions,
@@ -21,15 +23,36 @@ class FilePickerHelper {
         type: allowedExtensions != null ? FileType.custom : FileType.any,
         allowedExtensions: allowedExtensions,
         allowMultiple: false,
+        withData: kIsWeb,
       );
 
-      if (result != null && result.files.single.path != null) {
-        return result.files.single.path;
+      if (result != null && result.files.isNotEmpty) {
+        return result.files.single;
       }
     } catch (e) {
       debugPrint('File picker failed: $e');
     }
     return null;
+  }
+
+  /// Pick a file with native platform picker
+  static Future<String?> pickFile({
+    required BuildContext context,
+    String? dialogTitle,
+    List<String>? allowedExtensions,
+  }) async {
+    final picked = await pickPlatformFile(
+      context: context,
+      dialogTitle: dialogTitle,
+      allowedExtensions: allowedExtensions,
+    );
+    if (picked == null) return null;
+
+    if (kIsWeb) {
+      // Web does not expose a filesystem path.
+      return null;
+    }
+    return picked.path;
   }
 
   /// Pick a directory with native platform picker

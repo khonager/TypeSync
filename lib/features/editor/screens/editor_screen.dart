@@ -18,6 +18,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:printing/printing.dart';
 
 import '../../../core/utils/web_download_stub.dart'
     if (dart.library.html) '../../../core/utils/web_download_web.dart' as web_download;
@@ -596,6 +597,43 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
     final extension = p.extension(attachment.name).toLowerCase();
+    if (attachment.path.startsWith('data:')) {
+      final separatorIndex = attachment.path.indexOf(',');
+      if (separatorIndex <= 0) {
+        return _buildAttachmentUnavailable(attachment);
+      }
+      final bytes = base64Decode(attachment.path.substring(separatorIndex + 1));
+
+      if (extension == '.pdf') {
+        return PdfPreview(
+          build: (_) => bytes,
+          allowPrinting: true,
+          allowSharing: true,
+          canChangeOrientation: false,
+          canChangePageFormat: false,
+          canDebug: false,
+        );
+      }
+
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].contains(extension)) {
+        return Container(
+          color: Colors.black12,
+          child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+        );
+      }
+
+      if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
+          .contains(extension)) {
+        final text = utf8.decode(bytes, allowMalformed: true);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+        );
+      }
+
+      return _buildAttachmentInfo(attachment);
+    }
+
     final file = File(attachment.path);
 
     if (!file.existsSync()) {
@@ -680,6 +718,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _openAttachmentExternally(NoteAttachment attachment) async {
     try {
+      if (attachment.path.startsWith('data:')) {
+        final uri = Uri.parse(attachment.path);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+        return;
+      }
+
       final file = File(attachment.path);
       if (!await file.exists()) {
         if (mounted) {
@@ -799,6 +845,23 @@ class _EditorScreenState extends State<EditorScreen> {
               },
             ),
             ListTile(
+              leading: Icon(
+                _note?.localOnly == true
+                    ? Icons.cloud_off_outlined
+                    : Icons.cloud_done_outlined,
+              ),
+              title: Text(
+                _note?.localOnly == true
+                    ? 'Stored locally only'
+                    : 'Synced with cloud',
+              ),
+              subtitle: const Text('Toggle note-level cloud sync'),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleLocalOnlyForCurrentNote();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('Export'),
               onTap: () {
@@ -826,14 +889,31 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     try {
-      final filePath = await FilePickerHelper.pickFile(
+      final pickedFile = await FilePickerHelper.pickPlatformFile(
         context: context,
         dialogTitle: 'Select attachment',
       );
 
-      if (filePath != null) {
-        final fileName = p.basename(filePath);
-        await _attachFileToCurrentNote(filePath: filePath, fileName: fileName);
+      if (pickedFile != null) {
+        if (kIsWeb) {
+          final bytes = pickedFile.bytes;
+          if (bytes == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Unable to read file bytes on web')),
+              );
+            }
+            return;
+          }
+          await _attachFileToCurrentNote(fileName: pickedFile.name, bytes: bytes);
+          return;
+        }
+
+        final filePath = pickedFile.path;
+        if (filePath == null || filePath.isEmpty) {
+          return;
+        }
+        await _attachFileToCurrentNote(filePath: filePath, fileName: pickedFile.name);
       }
     } catch (e) {
       if (mounted) {
@@ -935,6 +1015,27 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() {
         _note = _note!.copyWith(isFavorite: !_note!.isFavorite);
       });
+    }
+  }
+
+  Future<void> _toggleLocalOnlyForCurrentNote() async {
+    if (_note == null) return;
+    final updated = _note!.copyWith(localOnly: !_note!.localOnly);
+    final success = await context.read<NotesProvider>().updateNote(updated);
+    if (!mounted) return;
+    if (success) {
+      setState(() {
+        _note = updated;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updated.localOnly
+                ? 'Note set to local-only'
+                : 'Note set to cloud-sync',
+          ),
+        ),
+      );
     }
   }
 
@@ -1100,8 +1201,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _attachFileToCurrentNote({
-    required String filePath,
     required String fileName,
+    String? filePath,
+    Uint8List? bytes,
   }) async {
     if (_note == null) return;
     if (!mounted) return;
@@ -1111,34 +1213,46 @@ class _EditorScreenState extends State<EditorScreen> {
     final userId = authService.userId;
     if (userId == null) return;
 
-    final sourceFile = File(filePath);
-    if (!await sourceFile.exists()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('File not found: $fileName')),
-        );
-      }
-      return;
-    }
-
-    await LocalFileService.instance.initialize(userId);
-    final storedPath = await LocalFileService.instance.copyFileToStorage(
-      filePath,
-      fileName: fileName,
-    );
-
-    if (storedPath == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to attach $fileName')),
-        );
-      }
-      return;
-    }
-
-    final size = await sourceFile.length();
     final ext = p.extension(fileName).toLowerCase();
     final mimeType = _mimeTypeForExtension(ext);
+    String storedPath;
+    int size;
+
+    if (bytes != null) {
+      final mime = mimeType ?? 'application/octet-stream';
+      storedPath = 'data:$mime;base64,${base64Encode(bytes)}';
+      size = bytes.length;
+    } else {
+      if (filePath == null || filePath.isEmpty) return;
+      final sourceFile = File(filePath);
+      if (!await sourceFile.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('File not found: $fileName')),
+          );
+        }
+        return;
+      }
+
+      await LocalFileService.instance.initialize(userId);
+      final copiedPath = await LocalFileService.instance.copyFileToStorage(
+        filePath,
+        fileName: fileName,
+      );
+
+      if (copiedPath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to attach $fileName')),
+          );
+        }
+        return;
+      }
+
+      storedPath = copiedPath;
+      size = await sourceFile.length();
+    }
+
     final attachment = NoteAttachment.create(
       name: fileName,
       path: storedPath,

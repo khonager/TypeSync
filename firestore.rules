@@ -2,18 +2,78 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
+    function ownsRequestData() {
+      return isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    function ownsExistingData() {
+      return isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function ownerUnchanged() {
+      return request.resource.data.userId == resource.data.userId;
+    }
+
+    // User profile document
+    match /users/{userId} {
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow read, update, delete: if isSignedIn() && request.auth.uid == userId;
+
+      // Nested app settings
+      match /settings/{settingId} {
+        allow create, read, update, delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // User-owned entities with `userId` field
+    match /notes/{docId} {
+      allow create: if ownsRequestData();
+      allow read: if ownsExistingData();
+      allow update: if ownsExistingData() && ownerUnchanged();
+      allow delete: if ownsExistingData();
+    }
+
+    match /folders/{docId} {
+      allow create: if ownsRequestData();
+      // Transitional support for legacy docs missing `userId`.
+      // This allows authenticated clients to read legacy docs and "claim" them
+      // by writing their own uid once. After migration, normal owner rules apply.
+      allow read: if ownsExistingData() || (isSignedIn() && !(resource.data.userId is string));
+      allow update: if (ownsExistingData() && ownerUnchanged()) ||
+          (isSignedIn() &&
+            !(resource.data.userId is string) &&
+            request.resource.data.userId == request.auth.uid);
+      allow delete: if ownsExistingData();
+    }
+
+    match /calendar_events/{docId} {
+      allow create: if ownsRequestData();
+      allow read: if ownsExistingData();
+      allow update: if ownsExistingData() && ownerUnchanged();
+      allow delete: if ownsExistingData();
+    }
+
+    match /homework/{docId} {
+      allow create: if ownsRequestData();
+      allow read: if ownsExistingData();
+      allow update: if ownsExistingData() && ownerUnchanged();
+      allow delete: if ownsExistingData();
+    }
+
+    match /timetable_entries/{docId} {
+      allow create: if ownsRequestData();
+      allow read: if ownsExistingData();
+      allow update: if ownsExistingData() && ownerUnchanged();
+      allow delete: if ownsExistingData();
+    }
+
+    // Deny everything else by default
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2027, 3, 3);
+      allow read, write: if false;
     }
   }
 }

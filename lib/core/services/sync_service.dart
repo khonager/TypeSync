@@ -111,6 +111,9 @@ class SyncService extends ChangeNotifier {
 
   /// Set whether sync is enabled
   void setSyncEnabled(bool enabled) {
+    if (_syncEnabled == enabled) {
+      return;
+    }
     if (!enabled) {
       stopListening();
     }
@@ -208,8 +211,14 @@ class SyncService extends ChangeNotifier {
           debugPrint(
             'SyncService: Received ${snapshot.docs.length} notes from Firestore',
           );
-          final notes =
-              snapshot.docs.map((doc) => Note.fromJson(doc.data())).toList();
+          final notes = <Note>[];
+          for (final doc in snapshot.docs) {
+            try {
+              notes.add(Note.fromJson(doc.data()));
+            } catch (e) {
+              debugPrint('SyncService: Skipping malformed note ${doc.id}: $e');
+            }
+          }
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
 
@@ -352,11 +361,16 @@ class SyncService extends ChangeNotifier {
           debugPrint(
             'SyncService [Linux]: Received ${filteredDocs.length} notes from Firestore',
           );
-          final notes = filteredDocs.map((doc) {
-            final data = doc.map;
-            data['id'] = doc.id;
-            return Note.fromJson(data);
-          }).toList();
+          final notes = <Note>[];
+          for (final doc in filteredDocs) {
+            try {
+              final data = doc.map;
+              data['id'] = doc.id;
+              notes.add(Note.fromJson(data));
+            } catch (e) {
+              debugPrint('SyncService [Linux]: Skipping malformed note ${doc.id}: $e');
+            }
+          }
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
 
@@ -514,6 +528,7 @@ class SyncService extends ChangeNotifier {
   /// Sync a single note to Firebase
   Future<bool> syncNote(Note note) async {
     if (!_isOnline || !_syncEnabled) return false;
+    if (note.localOnly) return true;
 
     try {
       _setStatus(SyncStatus.syncing);
@@ -830,7 +845,12 @@ class SyncService extends ChangeNotifier {
       return true;
     }
 
-    final hasNotes = dirtyNotes != null && dirtyNotes.isNotEmpty;
+    final syncableNotes = dirtyNotes
+            ?.where((note) => !note.localOnly)
+            .toList() ??
+        const <Note>[];
+
+    final hasNotes = syncableNotes.isNotEmpty;
     final hasFolders = dirtyFolders != null && dirtyFolders.isNotEmpty;
     final hasEvents = dirtyEvents != null && dirtyEvents.isNotEmpty;
     final hasHomework = dirtyHomework != null && dirtyHomework.isNotEmpty;
@@ -854,7 +874,7 @@ class SyncService extends ChangeNotifier {
         final futures = <Future<void>>[];
 
         if (hasNotes) {
-          for (final note in dirtyNotes) {
+          for (final note in syncableNotes) {
             futures.add(
               fdFirestore.collection('notes').document(note.id).set(
                     note
@@ -925,7 +945,7 @@ class SyncService extends ChangeNotifier {
         );
 
         if (hasNotes) {
-          for (final note in dirtyNotes) {
+          for (final note in syncableNotes) {
             final ref = firestore.collection('notes').doc(note.id);
             batch.set(
               ref,

@@ -18,7 +18,8 @@ class ServiceOrchestrator extends StatefulWidget {
 }
 
 class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
-  String? _lastUserId;
+  String? _lastWorkspaceId;
+  bool? _lastSyncEnabled;
 
   @override
   void didChangeDependencies() {
@@ -29,27 +30,39 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
   void _checkAuthState() {
     final authService = context.read<AuthService>();
     final syncService = context.read<SyncService>();
-    final userId = authService.userId;
+    final workspaceId = authService.storageUserId;
+    final cloudUserId = authService.userId;
+    final syncEnabled = authService.isLoggedIn && authService.effectiveSyncEnabled;
 
-    // Check if user ID changed
-    if (userId != _lastUserId) {
-      _lastUserId = userId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      syncService.setSyncEnabled(authService.effectiveSyncEnabled);
+    });
 
-      if (userId != null) {
+    // Check if workspace ID or sync mode changed
+    if (workspaceId != _lastWorkspaceId || syncEnabled != _lastSyncEnabled) {
+      _lastWorkspaceId = workspaceId;
+      _lastSyncEnabled = syncEnabled;
+
+      if (workspaceId != null) {
         // User logged in
         debugPrint(
-          'ServiceOrchestrator: User logged in ($userId), initializing services',
+          'ServiceOrchestrator: Workspace active ($workspaceId), initializing services',
         );
 
         // Initialize LocalFileService
-        LocalFileService.instance.initialize(userId).catchError((e) {
+        LocalFileService.instance.initialize(workspaceId).catchError((e) {
           debugPrint(
             'ServiceOrchestrator: Failed to initialize LocalFileService: $e',
           );
         });
 
-        // Start SyncService listening
-        syncService.startListening(userId);
+        // Start/stop cloud sync depending on mode.
+        if (syncEnabled && cloudUserId != null) {
+          syncService.startListening(cloudUserId);
+        } else {
+          syncService.stopListening();
+        }
       } else {
         // User logged out
         debugPrint('ServiceOrchestrator: User logged out, stopping services');

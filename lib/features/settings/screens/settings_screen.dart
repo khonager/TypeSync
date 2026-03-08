@@ -10,8 +10,12 @@ import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/local_folder_sync_service.dart';
+import '../../../core/services/local_file_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
+import '../../../core/providers/calendar_provider.dart';
+import '../../../core/providers/homework_provider.dart';
+import '../../../core/providers/timetable_provider.dart';
 import '../../../core/routes/app_router.dart';
 
 /// Settings screen with app preferences
@@ -124,18 +128,39 @@ class SettingsScreen extends StatelessWidget {
             _SettingsTile(
               icon: Icons.sync,
               title: 'Cloud Sync',
-              subtitle: authService.syncEnabled
+              subtitle: authService.localOnlyMode
+                  ? 'Disabled while Local Workspace is active'
+                  : authService.syncEnabled
                   ? 'Syncing with cloud enabled'
                   : 'Syncing with cloud disabled',
               trailing: Switch(
-                value: authService.syncEnabled,
+                value: authService.effectiveSyncEnabled,
                 onChanged: (value) async {
+                  if (authService.localOnlyMode) return;
                   await authService.setSyncEnabled(value);
-                  syncService.setSyncEnabled(value);
-                  if (value && authService.userId != null) {
+                  syncService.setSyncEnabled(authService.effectiveSyncEnabled);
+                  if (authService.effectiveSyncEnabled &&
+                      authService.userId != null) {
                     // Restart sync if enabled
                     syncService.startListening(authService.userId!);
+                  } else {
+                    syncService.stopListening();
                   }
+                },
+              ),
+            ),
+
+          if (authService.isLoggedIn)
+            _SettingsTile(
+              icon: Icons.laptop_mac_outlined,
+              title: 'Local Workspace Mode',
+              subtitle: authService.localOnlyMode
+                  ? 'Using isolated local clone (no cloud writes)'
+                  : 'Use synced cloud workspace',
+              trailing: Switch(
+                value: authService.localOnlyMode,
+                onChanged: (value) async {
+                  await _toggleLocalWorkspaceMode(context, value);
                 },
               ),
             ),
@@ -201,6 +226,89 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleLocalWorkspaceMode(
+    BuildContext context,
+    bool enabled,
+  ) async {
+    final authService = context.read<AuthService>();
+    final syncService = context.read<SyncService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
+
+    if (!authService.isLoggedIn || authService.userId == null) {
+      return;
+    }
+
+    final sourceWorkspace = authService.storageUserId ?? authService.userId!;
+    await authService.setLocalOnlyMode(enabled);
+    final targetWorkspace = authService.storageUserId ?? authService.userId!;
+
+    if (enabled && sourceWorkspace != targetWorkspace) {
+      final clonedNotes = await notesProvider.cloneWorkspace(
+        sourceUserId: sourceWorkspace,
+        targetUserId: targetWorkspace,
+        overwriteTarget: false,
+      );
+      final clonedFolders = await foldersProvider.cloneWorkspace(
+        sourceUserId: sourceWorkspace,
+        targetUserId: targetWorkspace,
+        overwriteTarget: false,
+      );
+
+      if (context.mounted && (clonedNotes > 0 || clonedFolders > 0)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Cloned $clonedNotes notes and $clonedFolders folders to local workspace',
+            ),
+          ),
+        );
+      }
+    }
+
+    await LocalFileService.instance.initialize(targetWorkspace);
+    await notesProvider.initialize(targetWorkspace);
+    await foldersProvider.initialize(targetWorkspace);
+    await calendarProvider.initialize(targetWorkspace);
+    await homeworkProvider.initialize(targetWorkspace);
+    await timetableProvider.initialize(targetWorkspace);
+
+    syncService.setSyncEnabled(authService.effectiveSyncEnabled);
+    if (authService.effectiveSyncEnabled && authService.userId != null) {
+      syncService.startListening(authService.userId!);
+      notesProvider.setSyncService(syncService);
+      foldersProvider.setSyncService(syncService);
+      calendarProvider.setSyncService(syncService);
+      homeworkProvider.setSyncService(syncService);
+      timetableProvider.setSyncService(syncService);
+      themeService.setSyncService(syncService);
+    } else {
+      syncService.stopListening();
+      notesProvider.setSyncService(null);
+      foldersProvider.setSyncService(null);
+      calendarProvider.setSyncService(null);
+      homeworkProvider.setSyncService(null);
+      timetableProvider.setSyncService(null);
+      themeService.setSyncService(null);
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Local workspace enabled'
+                : 'Returned to cloud workspace',
+          ),
+        ),
+      );
+    }
   }
 
   void _showColorPicker(BuildContext context, ThemeService themeService) {

@@ -17,8 +17,8 @@ class SyncStatusIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
 
-    // Don't show sync indicator in guest mode
-    if (authService.isGuestMode) {
+    // Don't show sync indicator in guest mode or local-only workspace mode
+    if (authService.isGuestMode || authService.localOnlyMode) {
       return const SizedBox.shrink();
     }
 
