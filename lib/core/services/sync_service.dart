@@ -368,7 +368,8 @@ class SyncService extends ChangeNotifier {
               data['id'] = doc.id;
               notes.add(Note.fromJson(data));
             } catch (e) {
-              debugPrint('SyncService [Linux]: Skipping malformed note ${doc.id}: $e');
+              debugPrint(
+                  'SyncService [Linux]: Skipping malformed note ${doc.id}: $e');
             }
           }
           onNotesUpdated?.call(notes);
@@ -845,10 +846,8 @@ class SyncService extends ChangeNotifier {
       return true;
     }
 
-    final syncableNotes = dirtyNotes
-            ?.where((note) => !note.localOnly)
-            .toList() ??
-        const <Note>[];
+    final syncableNotes =
+        dirtyNotes?.where((note) => !note.localOnly).toList() ?? const <Note>[];
 
     final hasNotes = syncableNotes.isNotEmpty;
     final hasFolders = dirtyFolders != null && dirtyFolders.isNotEmpty;

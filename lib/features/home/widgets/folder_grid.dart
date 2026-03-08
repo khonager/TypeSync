@@ -281,11 +281,13 @@ class FolderListItem extends StatelessWidget {
                     children: [
                       Text(
                         folder.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: folder.backgroundColor != null
-                                  ? AppColorPalette.getContrastingTextColor(bgColor)
-                                  : null,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: folder.backgroundColor != null
+                                      ? AppColorPalette.getContrastingTextColor(
+                                          bgColor)
+                                      : null,
+                                ),
                       ),
                       if (folder.subtitle != null &&
                           folder.subtitle!.isNotEmpty)

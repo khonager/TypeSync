@@ -289,7 +289,8 @@ class Note extends Equatable {
       'size': size,
       'userId': userId,
       'pdfPath': pdfPath,
-      'attachments': attachments.map((attachment) => attachment.toJson()).toList(),
+      'attachments':
+          attachments.map((attachment) => attachment.toJson()).toList(),
       'localOnly': localOnly,
       // We explicitly don't sync conflict state up to the cloud;
       // the cloud is just the source of truth for the remote version.

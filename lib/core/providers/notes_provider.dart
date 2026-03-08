@@ -565,7 +565,8 @@ class NoteAdapter extends TypeAdapter<Note> {
     final userId = reader.readString();
     final pdfPathRaw = reader.readString();
     final hasConflict = reader.availableBytes > 0 ? reader.readBool() : false;
-    final conflictContentRaw = reader.availableBytes > 0 ? reader.readString() : '';
+    final conflictContentRaw =
+        reader.availableBytes > 0 ? reader.readString() : '';
     final size = reader.availableBytes > 0 ? reader.readInt() : 0;
 
     final attachments = <NoteAttachment>[];

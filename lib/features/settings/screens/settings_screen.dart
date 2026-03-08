@@ -131,8 +131,8 @@ class SettingsScreen extends StatelessWidget {
               subtitle: authService.localOnlyMode
                   ? 'Disabled while Local Workspace is active'
                   : authService.syncEnabled
-                  ? 'Syncing with cloud enabled'
-                  : 'Syncing with cloud disabled',
+                      ? 'Syncing with cloud enabled'
+                      : 'Syncing with cloud disabled',
               trailing: Switch(
                 value: authService.effectiveSyncEnabled,
                 onChanged: (value) async {
@@ -302,9 +302,7 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            enabled
-                ? 'Local workspace enabled'
-                : 'Returned to cloud workspace',
+            enabled ? 'Local workspace enabled' : 'Returned to cloud workspace',
           ),
         ),
       );

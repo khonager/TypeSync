@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 
-
 /// Helper class for file picking with Linux fallbacks
 class FilePickerHelper {
   /// Pick file metadata. On web, `PlatformFile.bytes` is available and

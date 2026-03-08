@@ -1058,11 +1058,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               onTap: () async {
                 Navigator.pop(bottomSheetContext);
-                final current = context.read<NotesProvider>().getNoteById(noteId);
+                final current =
+                    context.read<NotesProvider>().getNoteById(noteId);
                 if (current == null) return;
-                await context
-                    .read<NotesProvider>()
-                    .updateNote(current.copyWith(localOnly: !current.localOnly));
+                await context.read<NotesProvider>().updateNote(
+                    current.copyWith(localOnly: !current.localOnly));
               },
             ),
             ListTile(

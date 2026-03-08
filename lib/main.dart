@@ -59,7 +59,7 @@ void main() async {
     try {
       // Initialize Auth with persistent TokenStore (or memory fallback if Hive fails)
       final tokenStore = await HiveTokenStore.create();
-      
+
       // Ensure we don't initialize multiple times
       if (!firedart.FirebaseAuth.initialized) {
         firedart.FirebaseAuth.initialize(

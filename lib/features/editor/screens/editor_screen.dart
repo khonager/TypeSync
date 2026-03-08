@@ -21,7 +21,8 @@ import 'package:path/path.dart' as p;
 import 'package:printing/printing.dart';
 
 import '../../../core/utils/web_download_stub.dart'
-    if (dart.library.html) '../../../core/utils/web_download_web.dart' as web_download;
+    if (dart.library.html) '../../../core/utils/web_download_web.dart'
+    as web_download;
 
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
@@ -452,8 +453,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final attachments = _effectiveAttachments();
     final activeAttachment = _activeAttachment(attachments);
     final isDesktop = _isDesktopLayout();
-    final canSideBySide = isDesktop && MediaQuery.of(context).size.width >= 1100;
-    final showSideBySide = canSideBySide && _sideBySideAttachments && activeAttachment != null;
+    final canSideBySide =
+        isDesktop && MediaQuery.of(context).size.width >= 1100;
+    final showSideBySide =
+        canSideBySide && _sideBySideAttachments && activeAttachment != null;
 
     return Container(
       width: double.infinity,
@@ -462,7 +465,8 @@ class _EditorScreenState extends State<EditorScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          _buildAttachmentsSection(attachments, activeAttachment, canSideBySide),
+          _buildAttachmentsSection(
+              attachments, activeAttachment, canSideBySide),
           const SizedBox(height: 12),
           Expanded(
             child: showSideBySide
@@ -554,7 +558,9 @@ class _EditorScreenState extends State<EditorScreen> {
                       });
                     },
                     icon: Icon(
-                      _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+                      _sideBySideAttachments
+                          ? Icons.splitscreen
+                          : Icons.view_agenda,
                     ),
                   ),
                 TextButton.icon(
@@ -582,7 +588,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         ),
                         onSelected: (selected) {
                           setState(() {
-                            _activeAttachmentId = selected ? attachment.id : null;
+                            _activeAttachmentId =
+                                selected ? attachment.id : null;
                           });
                         },
                       ),
@@ -615,7 +622,8 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].contains(extension)) {
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+          .contains(extension)) {
         return Container(
           color: Colors.black12,
           child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
@@ -644,7 +652,8 @@ class _EditorScreenState extends State<EditorScreen> {
       return PdfViewerWidget(pdfFile: file);
     }
 
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].contains(extension)) {
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+        .contains(extension)) {
       return Container(
         color: Colors.black12,
         child: Center(child: Image.file(file, fit: BoxFit.contain)),
@@ -664,7 +673,8 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return SingleChildScrollView(
             padding: const EdgeInsets.all(12),
-            child: Text(snapshot.data!, style: Theme.of(context).textTheme.bodyMedium),
+            child: Text(snapshot.data!,
+                style: Theme.of(context).textTheme.bodyMedium),
           );
         },
       );
@@ -881,7 +891,8 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Storage is full. Please upgrade to add attachments.'),
+            content:
+                Text('Storage is full. Please upgrade to add attachments.'),
           ),
         );
       }
@@ -900,12 +911,14 @@ class _EditorScreenState extends State<EditorScreen> {
           if (bytes == null) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Unable to read file bytes on web')),
+                const SnackBar(
+                    content: Text('Unable to read file bytes on web')),
               );
             }
             return;
           }
-          await _attachFileToCurrentNote(fileName: pickedFile.name, bytes: bytes);
+          await _attachFileToCurrentNote(
+              fileName: pickedFile.name, bytes: bytes);
           return;
         }
 
@@ -913,7 +926,8 @@ class _EditorScreenState extends State<EditorScreen> {
         if (filePath == null || filePath.isEmpty) {
           return;
         }
-        await _attachFileToCurrentNote(filePath: filePath, fileName: pickedFile.name);
+        await _attachFileToCurrentNote(
+            filePath: filePath, fileName: pickedFile.name);
       }
     } catch (e) {
       if (mounted) {
@@ -1052,12 +1066,13 @@ class _EditorScreenState extends State<EditorScreen> {
       if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
         // Export PDF file
         if (kIsWeb) {
-          // On Web, we'd typicaly use the URL or bytes. 
+          // On Web, we'd typicaly use the URL or bytes.
           // Assuming pdfPath is a URL or we need to fetch it.
-          // For now, if it's a local path representation, it might not work on Web directly 
+          // For now, if it's a local path representation, it might not work on Web directly
           // unless stored in Firebase.
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PDF export on Web is not yet implemented')),
+            const SnackBar(
+                content: Text('PDF export on Web is not yet implemented')),
           );
           return;
         }
@@ -1137,12 +1152,14 @@ class _EditorScreenState extends State<EditorScreen> {
     await Share.shareXFiles([xFile], text: 'Exported Note: $fileName');
   }
 
-  Future<void> _exportDesktop(String textContent, Uint8List? bytes, String fileName, String extension) async {
+  Future<void> _exportDesktop(String textContent, Uint8List? bytes,
+      String fileName, String extension) async {
     final savePath = await FilePickerHelper.saveFile(
       context: context,
       dialogTitle: 'Export Note',
       fileName: fileName,
-      fileExtension: extension.startsWith('.') ? extension.substring(1) : extension,
+      fileExtension:
+          extension.startsWith('.') ? extension.substring(1) : extension,
     );
 
     if (savePath != null) {
@@ -1261,7 +1278,8 @@ class _EditorScreenState extends State<EditorScreen> {
     );
 
     final alreadyExists = _note!.attachments.any(
-      (existing) => existing.path == storedPath || existing.name == attachment.name,
+      (existing) =>
+          existing.path == storedPath || existing.name == attachment.name,
     );
     if (alreadyExists) {
       return;

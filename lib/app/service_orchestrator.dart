@@ -32,7 +32,8 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
     final syncService = context.read<SyncService>();
     final workspaceId = authService.storageUserId;
     final cloudUserId = authService.userId;
-    final syncEnabled = authService.isLoggedIn && authService.effectiveSyncEnabled;
+    final syncEnabled =
+        authService.isLoggedIn && authService.effectiveSyncEnabled;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
