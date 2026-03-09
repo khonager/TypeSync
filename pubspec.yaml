@@ -68,6 +68,7 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.6
+  share_plus: ^6.0.0
   material_design_icons_flutter: ^7.0.7296
 
   url_launcher: any
