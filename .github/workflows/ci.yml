@@ -252,7 +252,7 @@ jobs:
     name: Build Web
     runs-on: ubuntu-latest
     needs: analyze
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/stable' || github.ref == 'refs/heads/unstable')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stable'
 
     steps:
       - name: Checkout code
@@ -284,6 +284,93 @@ jobs:
           name: web-bundle
           path: typesync-web.tar.gz
           if-no-files-found: error
+
+  # ============================================
+  # DEPLOY WEB HOSTING - STABLE
+  # ============================================
+  deploy-web-stable:
+    name: Deploy Web (Stable)
+    runs-on: ubuntu-latest
+    needs: build-web
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stable'
+    concurrency:
+      group: deploy-web-stable
+      cancel-in-progress: true
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: release/
+          if-no-files-found: error
+
+      - name: Extract Web bundle
+        run: |
+          mkdir -p build/web
+          tar -xzf release/typesync-web.tar.gz -C build/web
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED }}
+          projectId: typesynced
+          channelId: live
+
+  # ============================================
+  # DEPLOY WEB HOSTING - UNSTABLE (DEV)
+  # ============================================
+  deploy-web-unstable:
+    name: Deploy Web (Unstable Dev)
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
+    concurrency:
+      group: deploy-web-unstable
+      cancel-in-progress: true
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Dev Web
+        run: flutter build web --release --dart-define=IS_DEV=true
+
+      - name: Validate Firebase deploy secret
+        env:
+          FIREBASE_SERVICE_ACCOUNT_TYPESYNCED: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_TYPESYNCED" ] && [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Missing Firebase service account secret. Set FIREBASE_SERVICE_ACCOUNT_TYPESYNCED (preferred) or FIREBASE_SERVICE_ACCOUNT."
+            exit 1
+          fi
+
+      - name: Deploy to Firebase Hosting Dev channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: typesynced
+          channelId: dev
 
   # ============================================
   # RELEASE - STABLE BRANCH
@@ -469,14 +556,22 @@ jobs:
             echo "::error::Linux bundle not found"
             exit 1
           fi
-          mv release/app-debug.apk release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
-          mv release/typesync-linux-x64.tar.gz release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+          mv release/app-debug.apk release/TypeSync-dev-android.apk
+          mv release/typesync-linux-x64.tar.gz release/TypeSync-dev-linux-x64.tar.gz
+
+      - name: Delete old dev release
+        uses: dev-drprasad/delete-older-releases@v0.3.3
+        with:
+          keep_latest: 0
+          delete_tag_pattern: dev-latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update dev release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev
-          name: TypeSync Dev Build
+          tag_name: dev-latest
+          name: Latest Dev Build
           body: |
             ## TypeSync Development Build
 
@@ -486,11 +581,11 @@ jobs:
             Date: ${{ github.event.head_commit.timestamp }}
 
             ### Downloads
-            - **Android APK**: TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
-            - **Linux**: TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+            - **Android APK**: TypeSync-dev-android.apk
+            - **Linux**: TypeSync-dev-linux-x64.tar.gz
           files: |
-            release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-android.apk
-            release/TypeSync-dev-${{ steps.commit.outputs.short_sha }}-linux-x64.tar.gz
+            release/TypeSync-dev-android.apk
+            release/TypeSync-dev-linux-x64.tar.gz
           draft: false
           prerelease: true
         env:
