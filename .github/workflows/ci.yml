@@ -329,6 +329,7 @@ jobs:
   deploy-web-unstable:
     name: Deploy Web (Unstable Dev)
     runs-on: ubuntu-latest
+    needs: analyze
     if: github.event_name == 'push' && github.ref == 'refs/heads/unstable'
     concurrency:
       group: deploy-web-unstable
