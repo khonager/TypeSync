@@ -354,11 +354,21 @@ jobs:
       - name: Build Dev Web
         run: flutter build web --release --dart-define=IS_DEV=true
 
+      - name: Validate Firebase deploy secret
+        env:
+          FIREBASE_SERVICE_ACCOUNT_TYPESYNCED: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_TYPESYNCED" ] && [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Missing Firebase service account secret. Set FIREBASE_SERVICE_ACCOUNT_TYPESYNCED (preferred) or FIREBASE_SERVICE_ACCOUNT."
+            exit 1
+          fi
+
       - name: Deploy to Firebase Hosting Dev channel
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TYPESYNCED || secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: typesynced
           channelId: dev
 
