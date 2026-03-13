@@ -187,7 +187,9 @@ class SyncService extends ChangeNotifier {
     stopListening();
     _currentUserId = userId;
     _diagnostics.info(
-        'SyncService', 'Starting sync listeners for user $userId');
+      'SyncService',
+      'Starting sync listeners for user $userId',
+    );
 
     if (!_syncEnabled) {
       _diagnostics.warning(
