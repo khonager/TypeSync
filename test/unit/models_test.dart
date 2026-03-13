@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:typesync/core/models/folder.dart';
 import 'package:typesync/core/models/user.dart';
 
 void main() {
@@ -68,6 +69,31 @@ void main() {
       expect(restored.subscriptionTier, original.subscriptionTier);
       expect(restored.storageUsedBytes, original.storageUsedBytes);
       expect(restored.emailVerified, original.emailVerified);
+    });
+  });
+
+  group('Folder Model', () {
+    test('copyWith can clear nullable fields', () {
+      final original = Folder(
+        id: 'folder-1',
+        name: 'School',
+        subtitle: 'Notes',
+        parentId: 'parent-1',
+        backgroundColor: '#ffffff',
+        createdAt: DateTime(2024, 1, 1),
+        updatedAt: DateTime(2024, 1, 1),
+        userId: 'user-1',
+      );
+
+      final updated = original.copyWith(
+        subtitle: null,
+        parentId: null,
+        backgroundColor: null,
+      );
+
+      expect(updated.subtitle, isNull);
+      expect(updated.parentId, isNull);
+      expect(updated.backgroundColor, isNull);
     });
   });
 }

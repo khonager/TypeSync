@@ -386,12 +386,18 @@ class FolderAdapter extends TypeAdapter<Folder> {
 
   @override
   Folder read(BinaryReader reader) {
+    final id = reader.readString();
+    final name = reader.readString();
+    final subtitleRaw = reader.readString();
+    final parentIdRaw = reader.readString();
+    final backgroundColorRaw = reader.readString();
+
     return Folder(
-      id: reader.readString(),
-      name: reader.readString(),
-      subtitle: reader.readString(),
-      parentId: reader.readString(),
-      backgroundColor: reader.readString(),
+      id: id,
+      name: name,
+      subtitle: subtitleRaw.isEmpty ? null : subtitleRaw,
+      parentId: parentIdRaw.isEmpty ? null : parentIdRaw,
+      backgroundColor: backgroundColorRaw.isEmpty ? null : backgroundColorRaw,
       icon: reader.readString(),
       createdAt: DateTime.parse(reader.readString()),
       updatedAt: DateTime.parse(reader.readString()),
