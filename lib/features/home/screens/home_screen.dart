@@ -220,7 +220,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Repaired $repairedCount item${repairedCount == 1 ? '' : 's'}'),
+        content: Text(
+            'Repaired $repairedCount item${repairedCount == 1 ? '' : 's'}'),
       ),
     );
   }

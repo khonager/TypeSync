@@ -107,12 +107,10 @@ class Folder extends Equatable {
     return Folder(
       id: id ?? this.id,
       name: name ?? this.name,
-      subtitle: identical(subtitle, _noChange)
-          ? this.subtitle
-          : subtitle as String?,
-      parentId: identical(parentId, _noChange)
-          ? this.parentId
-          : parentId as String?,
+      subtitle:
+          identical(subtitle, _noChange) ? this.subtitle : subtitle as String?,
+      parentId:
+          identical(parentId, _noChange) ? this.parentId : parentId as String?,
       backgroundColor: identical(backgroundColor, _noChange)
           ? this.backgroundColor
           : backgroundColor as String?,
