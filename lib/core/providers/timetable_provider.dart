@@ -231,6 +231,14 @@ class TimetableProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> closeWorkspace() async {
+    _entries = [];
+    if (_entriesBox != null && _entriesBox!.isOpen) {
+      await _entriesBox!.close();
+    }
+    _entriesBox = null;
+  }
+
   @override
   void dispose() {
     _syncSubscription?.cancel();

@@ -283,6 +283,8 @@ class FoldersProvider extends ChangeNotifier {
 
   /// Handle folders updated from cloud
   void handleCloudUpdate(List<Folder> cloudFolders) {
+    final cloudIds = cloudFolders.map((folder) => folder.id).toSet();
+
     for (final cloudFolder in cloudFolders) {
       final localIndex = _folders.indexWhere((f) => f.id == cloudFolder.id);
 
@@ -297,6 +299,24 @@ class FoldersProvider extends ChangeNotifier {
       } else {
         _folders.add(cloudFolder);
         _foldersBox?.put(cloudFolder.id, cloudFolder);
+      }
+    }
+
+    final staleFolderIds = _folders
+        .where(
+          (folder) =>
+              folder.userId == _activeUserId &&
+              !folder.isDirty &&
+              !folder.isDeleted &&
+              !cloudIds.contains(folder.id),
+        )
+        .map((folder) => folder.id)
+        .toList();
+
+    if (staleFolderIds.isNotEmpty) {
+      _folders.removeWhere((folder) => staleFolderIds.contains(folder.id));
+      for (final folderId in staleFolderIds) {
+        _foldersBox?.delete(folderId);
       }
     }
 
@@ -370,6 +390,15 @@ class FoldersProvider extends ChangeNotifier {
       copied++;
     }
     return copied;
+  }
+
+  Future<void> closeWorkspace() async {
+    _folders = [];
+    _activeUserId = null;
+    if (_foldersBox != null && _foldersBox!.isOpen) {
+      await _foldersBox!.close();
+    }
+    _foldersBox = null;
   }
 
   @override

@@ -5,6 +5,8 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:typesync/core/models/folder.dart';
+import 'package:typesync/core/models/note.dart';
+import 'package:typesync/core/services/data_repair_service.dart';
 import 'package:typesync/core/models/user.dart';
 
 void main() {
@@ -94,6 +96,62 @@ void main() {
       expect(updated.subtitle, isNull);
       expect(updated.parentId, isNull);
       expect(updated.backgroundColor, isNull);
+    });
+  });
+
+  group('Data Repair Service', () {
+    test('detects and describes legacy folder and note repairs', () {
+      final folder = Folder(
+        id: 'folder-1',
+        name: 'Legacy Folder',
+        subtitle: '   ',
+        backgroundColor: 'blue',
+        icon: '',
+        createdAt: DateTime(2024, 1, 1),
+        updatedAt: DateTime(2024, 1, 1),
+        userId: 'old-user',
+      );
+
+      final note = Note(
+        id: 'note-1',
+        title: 'Legacy Note',
+        content: 'Hello',
+        folderId: 'missing-folder',
+        backgroundColor: ' ',
+        createdAt: DateTime(2024, 1, 1),
+        updatedAt: DateTime(2024, 1, 1),
+        userId: 'old-user',
+      );
+
+      final service = DataRepairService();
+      final plan = service.buildRepairPlanFromItems(
+        currentUserId: 'user-1',
+        folders: [folder],
+        notes: [note],
+      );
+
+      expect(plan.folders, hasLength(1));
+      expect(plan.notes, hasLength(1));
+      expect(
+        plan.folders.single.changes,
+        containsAll([
+          'clear empty subtitle',
+          'restore missing folder icon',
+          'clear invalid folder color',
+          'assign to your account',
+        ]),
+      );
+      expect(
+        plan.notes.single.changes,
+        containsAll([
+          'remove missing folder link',
+          'clear invalid note color',
+          'assign to your account',
+        ]),
+      );
+      expect(plan.folders.single.repairedFolder?.icon, 'folder');
+      expect(plan.folders.single.repairedFolder?.backgroundColor, isNull);
+      expect(plan.notes.single.repairedNote?.folderId, isNull);
     });
   });
 }

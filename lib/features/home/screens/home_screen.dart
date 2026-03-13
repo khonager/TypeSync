@@ -4,6 +4,7 @@
 /// Based on the design mockup with dark theme.
 library;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -26,6 +27,8 @@ import '../../../core/services/migration_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
+import '../../../core/services/data_repair_service.dart';
+import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
@@ -54,6 +57,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Drag and drop state
   bool _isDragging = false;
+
+  Timer? _repairAuditTimer;
+  String? _lastRepairPromptSignature;
+  bool _isRepairDialogOpen = false;
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
 
   @override
   void initState() {
@@ -84,6 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<FoldersProvider>().initialize(effectiveUserId);
     if (!mounted) return;
 
+    _scheduleRepairAudit();
+
     // Sync the sync service with auth preferences
     final syncService = context.read<SyncService>();
     syncService.setSyncEnabled(authService.effectiveSyncEnabled);
@@ -106,9 +116,11 @@ class _HomeScreenState extends State<HomeScreen> {
       // Set up sync callbacks
       syncService.onNotesUpdated = (notes) {
         context.read<NotesProvider>().handleCloudUpdate(notes);
+        _scheduleRepairAudit();
       };
       syncService.onFoldersUpdated = (folders) {
         context.read<FoldersProvider>().handleCloudUpdate(folders);
+        _scheduleRepairAudit();
       };
       syncService.onCalendarUpdated = (events) {
         context.read<CalendarProvider>().handleCloudUpdate(events);
@@ -138,6 +150,130 @@ class _HomeScreenState extends State<HomeScreen> {
       context.read<TimetableProvider>().setSyncService(null);
       context.read<ThemeService>().setSyncService(null);
     }
+  }
+
+  void _scheduleRepairAudit() {
+    _repairAuditTimer?.cancel();
+    _repairAuditTimer = Timer(const Duration(milliseconds: 800), () {
+      _maybePromptRepairPlan();
+    });
+  }
+
+  Future<void> _maybePromptRepairPlan() async {
+    if (!mounted || _isRepairDialogOpen) {
+      return;
+    }
+
+    final authService = context.read<AuthService>();
+    final currentUserId = authService.storageUserId;
+    if (currentUserId == null) {
+      _diagnostics.warning(
+        'RepairAudit',
+        'Skipped repair audit because there is no active workspace user id',
+      );
+      return;
+    }
+
+    final repairService = DataRepairService();
+    final plan = repairService.buildRepairPlan(
+      currentUserId: currentUserId,
+      foldersProvider: context.read<FoldersProvider>(),
+      notesProvider: context.read<NotesProvider>(),
+    );
+
+    if (!plan.hasChanges || plan.signature == _lastRepairPromptSignature) {
+      if (!plan.hasChanges) {
+        _diagnostics.info('RepairAudit', 'No repairable legacy items found');
+      }
+      return;
+    }
+
+    _diagnostics.info(
+      'RepairAudit',
+      'Found ${plan.totalItems} repairable legacy item${plan.totalItems == 1 ? '' : 's'}',
+    );
+
+    _isRepairDialogOpen = true;
+    final shouldRepair = await _showRepairDialog(plan);
+    _isRepairDialogOpen = false;
+    _lastRepairPromptSignature = plan.signature;
+
+    if (shouldRepair != true || !mounted) {
+      _diagnostics.info('RepairAudit', 'User declined legacy item repair');
+      return;
+    }
+
+    final repairedCount = await repairService.applyRepairPlan(
+      plan: plan,
+      foldersProvider: context.read<FoldersProvider>(),
+      notesProvider: context.read<NotesProvider>(),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _diagnostics.info(
+      'RepairAudit',
+      'Applied repairs to $repairedCount item${repairedCount == 1 ? '' : 's'}',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Repaired $repairedCount item${repairedCount == 1 ? '' : 's'}'),
+      ),
+    );
+  }
+
+  Future<bool?> _showRepairDialog(RepairPlan plan) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Repair legacy items?'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TypeSync found ${plan.totalItems} item${plan.totalItems == 1 ? '' : 's'} that can be repaired safely.',
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: plan.allItems.map((candidate) {
+                      final typeLabel = candidate.type == RepairItemType.folder
+                          ? 'Folder'
+                          : 'Note';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          '$typeLabel: ${candidate.name}\nWill change: ${candidate.changes.join(', ')}',
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkDataMigration(String userId) async {
@@ -253,6 +389,12 @@ class _HomeScreenState extends State<HomeScreen> {
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _repairAuditTimer?.cancel();
+    super.dispose();
   }
 
   Widget _buildBody(

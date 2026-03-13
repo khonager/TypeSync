@@ -264,6 +264,14 @@ class CalendarProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> closeWorkspace() async {
+    _events = [];
+    if (_eventsBox != null && _eventsBox!.isOpen) {
+      await _eventsBox!.close();
+    }
+    _eventsBox = null;
+  }
+
   @override
   void dispose() {
     _syncSubscription?.cancel();
