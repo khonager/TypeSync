@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
@@ -885,19 +886,22 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
     final extension = p.extension(attachment.name).toLowerCase();
+    final mimeType = attachment.mimeType?.toLowerCase();
     if (attachment.path.startsWith('data:')) {
       Uint8List bytes;
+      String? dataMimeType;
       try {
         final separatorIndex = attachment.path.indexOf(',');
         if (separatorIndex <= 0) {
           return _buildAttachmentUnavailable(attachment);
         }
+        dataMimeType = _mimeTypeFromDataUri(attachment.path);
         bytes = base64Decode(attachment.path.substring(separatorIndex + 1));
       } catch (_) {
         return _buildAttachmentUnavailable(attachment);
       }
 
-      if (extension == '.pdf') {
+      if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
         return PdfPreview(
           build: (_) => bytes,
           allowPrinting: true,
@@ -908,28 +912,33 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-          .contains(extension)) {
+      if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
+        return _buildSvgMemoryPreview(attachment, bytes);
+      }
+
+      if (_isRasterImageAttachment(extension, mimeType ?? dataMimeType)) {
         return Container(
           color: Colors.black12,
-          child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+          child: Center(
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _buildAttachmentInfo(attachment),
+            ),
+          ),
         );
       }
 
-      if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
-          .contains(extension)) {
+      if (_isTextAttachment(extension, mimeType ?? dataMimeType)) {
         final text = utf8.decode(bytes, allowMalformed: true);
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
-        );
+        return _buildTextAttachmentPreview(text);
       }
 
       return _buildAttachmentInfo(attachment);
     }
 
     if (_isRemoteAttachmentPath(attachment.path)) {
-      if (extension == '.pdf') {
+      if (_isPdfAttachment(extension, mimeType)) {
         if (kIsWeb) {
           return RemotePdfEmbed(url: attachment.path);
         }
@@ -954,23 +963,53 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-          .contains(extension)) {
+      if (_isSvgAttachment(extension, mimeType)) {
+        return FutureBuilder<Uint8List?>(
+          future: _fetchAttachmentBytes(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final bytes = snapshot.data;
+            if (bytes == null) {
+              return _buildAttachmentInfo(attachment);
+            }
+            return _buildSvgMemoryPreview(attachment, bytes);
+          },
+        );
+      }
+
+      if (_isRasterImageAttachment(extension, mimeType)) {
         return Container(
           color: Colors.black12,
           child: Center(
             child: Image.network(
               attachment.path,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  _buildAttachmentUnavailable(attachment),
+              errorBuilder: (_, __, ___) => FutureBuilder<Uint8List?>(
+                future: _fetchAttachmentBytes(attachment.path),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final bytes = snapshot.data;
+                  if (bytes == null) {
+                    return _buildAttachmentInfo(attachment);
+                  }
+                  return Image.memory(
+                    bytes,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) =>
+                        _buildAttachmentInfo(attachment),
+                  );
+                },
+              ),
             ),
           ),
         );
       }
 
-      if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
-          .contains(extension)) {
+      if (_isTextAttachment(extension, mimeType)) {
         return FutureBuilder<String?>(
           future: _fetchAttachmentText(attachment.path),
           builder: (context, snapshot) {
@@ -978,15 +1017,9 @@ class _EditorScreenState extends State<EditorScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (!snapshot.hasData) {
-              return _buildAttachmentUnavailable(attachment);
+              return _buildAttachmentInfo(attachment);
             }
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                snapshot.data!,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            );
+            return _buildTextAttachmentPreview(snapshot.data!);
           },
         );
       }
@@ -1005,20 +1038,28 @@ class _EditorScreenState extends State<EditorScreen> {
       return _buildAttachmentUnavailable(attachment);
     }
 
-    if (extension == '.pdf') {
+    if (_isPdfAttachment(extension, mimeType)) {
       return PdfViewerWidget(pdfFile: file);
     }
 
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-        .contains(extension)) {
+    if (_isSvgAttachment(extension, mimeType)) {
+      return _buildSvgFilePreview(attachment, file);
+    }
+
+    if (_isRasterImageAttachment(extension, mimeType)) {
       return Container(
         color: Colors.black12,
-        child: Center(child: Image.file(file, fit: BoxFit.contain)),
+        child: Center(
+          child: Image.file(
+            file,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => _buildAttachmentInfo(attachment),
+          ),
+        ),
       );
     }
 
-    if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
-        .contains(extension)) {
+    if (_isTextAttachment(extension, mimeType)) {
       return FutureBuilder<String>(
         future: file.readAsString(),
         builder: (context, snapshot) {
@@ -1026,20 +1067,124 @@ class _EditorScreenState extends State<EditorScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData) {
-            return _buildAttachmentUnavailable(attachment);
+            return _buildAttachmentInfo(attachment);
           }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              snapshot.data!,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          );
+          return _buildTextAttachmentPreview(snapshot.data!);
         },
       );
     }
 
     return _buildAttachmentInfo(attachment);
+  }
+
+  Widget _buildTextAttachmentPreview(String text) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: SelectableText(
+        text,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
+
+  Widget _buildSvgMemoryPreview(NoteAttachment attachment, Uint8List bytes) {
+    return Container(
+      color: Colors.black12,
+      child: Center(
+        child: SvgPicture.memory(
+          bytes,
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) =>
+              const Center(child: CircularProgressIndicator()),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSvgFilePreview(NoteAttachment attachment, File file) {
+    return Container(
+      color: Colors.black12,
+      child: Center(
+        child: SvgPicture.file(
+          file,
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) =>
+              const Center(child: CircularProgressIndicator()),
+        ),
+      ),
+    );
+  }
+
+  bool _isPdfAttachment(String extension, String? mimeType) {
+    return extension == '.pdf' || mimeType == 'application/pdf';
+  }
+
+  bool _isSvgAttachment(String extension, String? mimeType) {
+    return extension == '.svg' || mimeType == 'image/svg+xml';
+  }
+
+  bool _isRasterImageAttachment(String extension, String? mimeType) {
+    return const {
+          '.jpg',
+          '.jpeg',
+          '.png',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.ico',
+          '.tif',
+          '.tiff',
+          '.avif',
+        }.contains(extension) ||
+        (mimeType?.startsWith('image/') == true && mimeType != 'image/svg+xml');
+  }
+
+  bool _isTextAttachment(String extension, String? mimeType) {
+    return const {
+          '.txt',
+          '.md',
+          '.markdown',
+          '.json',
+          '.yaml',
+          '.yml',
+          '.csv',
+          '.log',
+          '.xml',
+          '.html',
+          '.htm',
+          '.css',
+          '.js',
+          '.ts',
+          '.dart',
+          '.py',
+          '.java',
+          '.c',
+          '.cc',
+          '.cpp',
+          '.h',
+          '.hpp',
+          '.sh',
+          '.sql',
+          '.ini',
+          '.toml',
+          '.env',
+        }.contains(extension) ||
+        mimeType == 'application/json' ||
+        mimeType == 'application/xml' ||
+        mimeType == 'image/svg+xml' ||
+        mimeType?.startsWith('text/') == true;
+  }
+
+  String? _mimeTypeFromDataUri(String path) {
+    if (!path.startsWith('data:')) return null;
+    final separatorIndex = path.indexOf(',');
+    if (separatorIndex <= 5) return null;
+    final metadata = path.substring(5, separatorIndex);
+    final semicolonIndex = metadata.indexOf(';');
+    final mimeType =
+        semicolonIndex >= 0 ? metadata.substring(0, semicolonIndex) : metadata;
+    if (mimeType.isEmpty) return null;
+    return mimeType.toLowerCase();
   }
 
   Widget _buildAttachmentUnavailable(NoteAttachment attachment) {
@@ -1860,6 +2005,15 @@ class _EditorScreenState extends State<EditorScreen> {
         return 'image/gif';
       case '.webp':
         return 'image/webp';
+      case '.svg':
+        return 'image/svg+xml';
+      case '.bmp':
+        return 'image/bmp';
+      case '.ico':
+        return 'image/x-icon';
+      case '.tif':
+      case '.tiff':
+        return 'image/tiff';
       case '.txt':
         return 'text/plain';
       case '.md':
@@ -1869,6 +2023,42 @@ class _EditorScreenState extends State<EditorScreen> {
         return 'application/json';
       case '.csv':
         return 'text/csv';
+      case '.yaml':
+      case '.yml':
+        return 'application/yaml';
+      case '.xml':
+        return 'application/xml';
+      case '.html':
+      case '.htm':
+        return 'text/html';
+      case '.css':
+        return 'text/css';
+      case '.js':
+        return 'text/javascript';
+      case '.ts':
+        return 'text/plain';
+      case '.dart':
+        return 'text/x-dart';
+      case '.py':
+        return 'text/x-python';
+      case '.java':
+        return 'text/x-java-source';
+      case '.c':
+      case '.cc':
+      case '.cpp':
+      case '.h':
+      case '.hpp':
+        return 'text/plain';
+      case '.sh':
+        return 'application/x-sh';
+      case '.sql':
+        return 'application/sql';
+      case '.toml':
+        return 'application/toml';
+      case '.ini':
+      case '.log':
+      case '.env':
+        return 'text/plain';
       default:
         return null;
     }
