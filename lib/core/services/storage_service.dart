@@ -4,14 +4,18 @@
 /// Handles file uploads to Firebase Storage with size tracking.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firedart/firedart.dart' as fd;
+import 'package:http/http.dart' as http;
 
 import '../models/user.dart';
+import '../../firebase_options.dart';
 import 'diagnostics_service.dart';
 
 /// Service for managing cloud storage and subscriptions
@@ -23,6 +27,7 @@ class StorageService extends ChangeNotifier {
   FirebaseStorage? _storage;
   FirebaseFirestore? _firestore;
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+  final http.Client _httpClient = http.Client();
 
   FirebaseStorage get _firebaseStorage {
     try {
@@ -222,6 +227,24 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_shouldUseLinuxStorageRest) {
+        final downloadUrl = await _uploadDataLinux(
+          userId: userId,
+          destinationPath: destinationPath,
+          data: await file.readAsBytes(),
+          contentType: contentType,
+        );
+        await _incrementStorageUsage(userId, fileSize);
+        _errorMessage = null;
+        _isLoading = false;
+        _diagnostics.info(
+          'StorageService',
+          'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
+        );
+        notifyListeners();
+        return downloadUrl;
+      }
+
       // Upload to Firebase Storage
       final ref =
           _firebaseStorage.ref().child('users/$userId/$destinationPath');
@@ -302,6 +325,24 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (_shouldUseLinuxStorageRest) {
+        final downloadUrl = await _uploadDataLinux(
+          userId: userId,
+          destinationPath: destinationPath,
+          data: data,
+          contentType: contentType,
+        );
+        await _incrementStorageUsage(userId, fileSize);
+        _errorMessage = null;
+        _isLoading = false;
+        _diagnostics.info(
+          'StorageService',
+          'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
+        );
+        notifyListeners();
+        return downloadUrl;
+      }
+
       final ref =
           _firebaseStorage.ref().child('users/$userId/$destinationPath');
       final metadata = contentType == null
@@ -356,6 +397,18 @@ class StorageService extends ChangeNotifier {
     required String filePath,
   }) async {
     try {
+      if (_shouldUseLinuxStorageRest) {
+        final fileSize = await _fetchLinuxObjectSize(
+          _storageObjectPath(userId, filePath),
+        );
+        await _deleteLinuxObject(_storageObjectPath(userId, filePath));
+        _storageUsedBytes =
+            (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
+        await _writeStorageUsage(userId);
+        notifyListeners();
+        return true;
+      }
+
       final ref = _firebaseStorage.ref().child('users/$userId/$filePath');
 
       // Get file size before deleting
@@ -396,6 +449,18 @@ class StorageService extends ChangeNotifier {
     required String localPath,
   }) async {
     try {
+      if (_shouldUseLinuxStorageRest) {
+        final file = File(localPath);
+        final response = await _httpClient.get(
+          Uri.parse(_buildDownloadUrl(_storageObjectPath(userId, remotePath))),
+        );
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(_extractHttpError(response));
+        }
+        await file.writeAsBytes(response.bodyBytes);
+        return file;
+      }
+
       final ref = _firebaseStorage.ref().child('users/$userId/$remotePath');
       final file = File(localPath);
 
@@ -527,6 +592,160 @@ class StorageService extends ChangeNotifier {
       }
     }
     return total;
+  }
+
+  bool get _shouldUseLinuxStorageRest =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
+
+  String get _storageBucket {
+    if (Firebase.apps.isNotEmpty) {
+      return Firebase.app().options.storageBucket ??
+          DefaultFirebaseOptions.currentPlatform.storageBucket ??
+          '';
+    }
+    return DefaultFirebaseOptions.currentPlatform.storageBucket ?? '';
+  }
+
+  String _storageObjectPath(String userId, String path) => 'users/$userId/$path';
+
+  Future<String> _uploadDataLinux({
+    required String userId,
+    required String destinationPath,
+    required List<int> data,
+    String? contentType,
+  }) async {
+    final idToken = await _linuxIdToken();
+    final uploadUri = _linuxFunctionUri('upload_storage_object');
+
+    final response = await _httpClient.post(
+      uploadUri,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode({
+        'userId': userId,
+        'destinationPath': destinationPath,
+        'contentType': contentType ?? 'application/octet-stream',
+        'dataBase64': base64Encode(data),
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractHttpError(response));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final downloadUrl = body['downloadUrl'] as String?;
+    if (downloadUrl == null || downloadUrl.isEmpty) {
+      throw Exception('Upload succeeded without a download URL');
+    }
+    return downloadUrl;
+  }
+
+  Future<int> _fetchLinuxObjectSize(String objectPath) async {
+    final idToken = await _linuxIdToken();
+    final uri = Uri.https(
+      'firebasestorage.googleapis.com',
+      '/v0/b/$_storageBucket/o/${Uri.encodeComponent(objectPath)}',
+    );
+    final response = await _httpClient.get(
+      uri,
+      headers: {'Authorization': 'Bearer $idToken'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractHttpError(response));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final sizeValue = body['size'];
+    if (sizeValue is int) return sizeValue;
+    if (sizeValue is String) return int.tryParse(sizeValue) ?? 0;
+    return 0;
+  }
+
+  Future<void> _deleteLinuxObject(String objectPath) async {
+    final idToken = await _linuxIdToken();
+    final uri = Uri.https(
+      'firebasestorage.googleapis.com',
+      '/v0/b/$_storageBucket/o/${Uri.encodeComponent(objectPath)}',
+    );
+    final response = await _httpClient.delete(
+      uri,
+      headers: {'Authorization': 'Bearer $idToken'},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractHttpError(response));
+    }
+  }
+
+  String _buildDownloadUrl(String objectPath, {String? downloadToken}) {
+    return Uri.https(
+      'firebasestorage.googleapis.com',
+      '/v0/b/$_storageBucket/o/${Uri.encodeComponent(objectPath)}',
+      {
+        'alt': 'media',
+        if (downloadToken != null) 'token': downloadToken,
+      },
+    ).toString();
+  }
+
+  Uri _linuxFunctionUri(String functionName) {
+    return Uri.https(
+      'us-central1-${DefaultFirebaseOptions.currentPlatform.projectId}.cloudfunctions.net',
+      functionName,
+    );
+  }
+
+  Future<String> _linuxIdToken() async {
+    if (!fd.FirebaseAuth.initialized) {
+      throw Exception('Firedart auth is not initialized');
+    }
+    final auth = fd.FirebaseAuth.instance;
+    if (!auth.isSignedIn) {
+      throw Exception('No signed-in Linux user for storage upload');
+    }
+    return auth.tokenProvider.idToken;
+  }
+
+  Future<void> _incrementStorageUsage(String userId, int fileSize) async {
+    _storageUsedBytes += fileSize;
+    await _writeStorageUsage(userId);
+  }
+
+  Future<void> _writeStorageUsage(String userId) async {
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      final fdFirestore = _firedartFirestore;
+      if (fdFirestore != null) {
+        await fdFirestore.collection('users').document(userId).update({
+          'storageUsedBytes': _storageUsedBytes,
+        });
+      }
+    } else {
+      await _firebaseFirestore.collection('users').doc(userId).update({
+        'storageUsedBytes': _storageUsedBytes,
+      });
+    }
+  }
+
+  String _extractHttpError(http.Response response) {
+    try {
+      final json = jsonDecode(response.body);
+      if (json is Map<String, dynamic>) {
+        final error = json['error'];
+        if (error is Map<String, dynamic>) {
+          final message = error['message'];
+          if (message is String && message.isNotEmpty) {
+            return 'HTTP ${response.statusCode}: $message';
+          }
+        }
+      }
+    } catch (_) {
+      // Fall back to raw body.
+    }
+    if (response.body.isNotEmpty) {
+      return 'HTTP ${response.statusCode}: ${response.body}';
+    }
+    return 'HTTP ${response.statusCode}';
   }
 
   String _describeStorageError(Object error) {
