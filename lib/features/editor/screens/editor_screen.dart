@@ -30,6 +30,8 @@ import '../../../core/utils/web_download_stub.dart'
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/local_file_service.dart';
+import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
@@ -1373,6 +1375,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _showMoreOptions() {
+    final authService = context.read<AuthService>();
+
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -1418,23 +1422,34 @@ class _EditorScreenState extends State<EditorScreen> {
                 _toggleFavorite();
               },
             ),
-            ListTile(
-              leading: Icon(
-                _note?.localOnly == true
-                    ? Icons.cloud_off_outlined
-                    : Icons.cloud_done_outlined,
+            if (authService.isGuestMode)
+              ListTile(
+                leading: const Icon(Icons.login),
+                title: const Text('Sign in to sync'),
+                subtitle: const Text('Sync this note across your devices'),
+                onTap: () {
+                  Navigator.pop(context);
+                  AppRouter.navigateTo(context, AppRouter.login);
+                },
+              )
+            else
+              ListTile(
+                leading: Icon(
+                  _note?.localOnly == true
+                      ? Icons.cloud_off_outlined
+                      : Icons.cloud_done_outlined,
+                ),
+                title: Text(
+                  _note?.localOnly == true
+                      ? 'Stored locally only'
+                      : 'Synced with cloud',
+                ),
+                subtitle: const Text('Toggle note-level cloud sync'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _toggleLocalOnlyForCurrentNote();
+                },
               ),
-              title: Text(
-                _note?.localOnly == true
-                    ? 'Stored locally only'
-                    : 'Synced with cloud',
-              ),
-              subtitle: const Text('Toggle note-level cloud sync'),
-              onTap: () {
-                Navigator.pop(context);
-                _toggleLocalOnlyForCurrentNote();
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('Export'),
@@ -1451,7 +1466,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _insertPdf() async {
     final storageService = context.read<StorageService>();
-    if (storageService.isStorageFull) {
+    final authService = context.read<AuthService>();
+    final shouldUseLocalAttachments =
+        authService.isGuestMode || _note?.localOnly == true;
+
+    if (!shouldUseLocalAttachments && storageService.isStorageFull) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1751,7 +1770,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _handleDroppedFiles(List<XFile> files) async {
     final storageService = context.read<StorageService>();
-    if (storageService.isStorageFull) {
+    final authService = context.read<AuthService>();
+    final shouldUseLocalAttachments =
+        authService.isGuestMode || _note?.localOnly == true;
+
+    if (!shouldUseLocalAttachments && storageService.isStorageFull) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1805,23 +1828,35 @@ class _EditorScreenState extends State<EditorScreen> {
     final ext = p.extension(fileName).toLowerCase();
     final mimeType = _mimeTypeForExtension(ext);
     final storageService = context.read<StorageService>();
+    final localFileService = LocalFileService.instance;
+    final shouldUseLocalStorage =
+        authService.isGuestMode || _note!.localOnly;
     String? storedPath;
     int size;
     final attachmentId = const Uuid().v4();
-    final storagePath = _buildCloudFilePath(
-      noteId: _note!.id,
-      itemId: attachmentId,
-      fileName: fileName,
-      bucket: 'attachments',
-    );
+    final storagePath = shouldUseLocalStorage
+        ? null
+        : _buildCloudFilePath(
+            noteId: _note!.id,
+            itemId: attachmentId,
+            fileName: fileName,
+            bucket: 'attachments',
+          );
 
     if (bytes != null) {
-      storedPath = await storageService.uploadData(
-        userId: userId,
-        data: bytes,
-        destinationPath: storagePath,
-        contentType: mimeType,
-      );
+      if (shouldUseLocalStorage) {
+        storedPath = await localFileService.writeBytesToStorage(
+          bytes,
+          fileName: fileName,
+        );
+      } else {
+        storedPath = await storageService.uploadData(
+          userId: userId,
+          data: bytes,
+          destinationPath: storagePath!,
+          contentType: mimeType,
+        );
+      }
       size = bytes.length;
     } else {
       if (filePath == null || filePath.isEmpty) return;
@@ -1835,18 +1870,27 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
-      storedPath = await storageService.uploadFile(
-        userId: userId,
-        filePath: filePath,
-        destinationPath: storagePath,
-        contentType: mimeType,
-      );
+      if (shouldUseLocalStorage) {
+        storedPath = await localFileService.copyFileToStorage(
+          filePath,
+          fileName: fileName,
+        );
+      } else {
+        storedPath = await storageService.uploadFile(
+          userId: userId,
+          filePath: filePath,
+          destinationPath: storagePath!,
+          contentType: mimeType,
+        );
+      }
       size = await sourceFile.length();
     }
 
     if (storedPath == null) {
       if (mounted) {
-        final errorMessage = storageService.errorMessage;
+        final errorMessage = shouldUseLocalStorage
+            ? 'Failed to save $fileName locally'
+            : storageService.errorMessage;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage ?? 'Failed to attach $fileName')),
         );

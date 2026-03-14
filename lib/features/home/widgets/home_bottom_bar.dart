@@ -4,8 +4,10 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/routes/app_router.dart';
+import '../../../core/services/auth_service.dart';
 
 /// Bottom navigation bar for home screen
 ///
@@ -24,6 +26,9 @@ class HomeBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authService = context.watch<AuthService>();
+    final isGuest = authService.isGuestMode;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       decoration: BoxDecoration(
@@ -62,9 +67,12 @@ class HomeBottomBar extends StatelessWidget {
 
             // Profile button
             _BottomBarButton(
-              icon: Icons.person_outline,
-              label: 'Profile',
-              onTap: () => AppRouter.navigateTo(context, AppRouter.profile),
+              icon: isGuest ? Icons.login : Icons.person_outline,
+              label: isGuest ? 'Sign In' : 'Profile',
+              onTap: () => AppRouter.navigateTo(
+                context,
+                isGuest ? AppRouter.login : AppRouter.profile,
+              ),
             ),
           ],
         ),

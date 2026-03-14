@@ -105,6 +105,41 @@ class LocalFileService {
     }
   }
 
+  /// Write raw bytes to app storage and return the stored path.
+  Future<String?> writeBytesToStorage(
+    List<int> bytes, {
+    required String fileName,
+  }) async {
+    if (!_initialized || _appFilesDirectory == null) {
+      debugPrint('LocalFileService not initialized');
+      return null;
+    }
+
+    try {
+      String destPath = path.join(_appFilesDirectory!.path, fileName);
+      File destFile = File(destPath);
+
+      if (await destFile.exists()) {
+        final nameWithoutExt = path.basenameWithoutExtension(fileName);
+        final ext = path.extension(fileName);
+        int counter = 1;
+        String newName;
+        do {
+          newName = '$nameWithoutExt ($counter)$ext';
+          destPath = path.join(_appFilesDirectory!.path, newName);
+          destFile = File(destPath);
+          counter++;
+        } while (await destFile.exists());
+      }
+
+      await destFile.writeAsBytes(bytes, flush: true);
+      return destPath;
+    } catch (e) {
+      debugPrint('Failed to write file to storage: $e');
+      return null;
+    }
+  }
+
   /// Get file path in app storage
   ///
   /// Returns the full path if file exists, null otherwise

@@ -39,6 +39,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     // user just verified their email in the browser.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authService = context.read<AuthService>();
+      if (authService.isGuestMode) {
+        return;
+      }
       await authService.refreshCurrentUser();
       final userId = authService.userId;
       if (userId != null && mounted) {
@@ -55,7 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed &&
+        !context.read<AuthService>().isGuestMode) {
       context.read<AuthService>().refreshCurrentUser();
     }
   }
@@ -65,6 +69,41 @@ class _ProfileScreenState extends State<ProfileScreen>
     final authService = context.watch<AuthService>();
     final storageService = context.watch<StorageService>();
     final user = authService.currentUser;
+
+    if (authService.isGuestMode) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text('Sign In'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.login, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  'Sign in to use cloud sync and account features.',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () =>
+                      AppRouter.navigateAndClearStack(context, AppRouter.login),
+                  child: const Text('Go to Sign In'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
