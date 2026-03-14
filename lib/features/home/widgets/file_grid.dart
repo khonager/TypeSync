@@ -100,6 +100,7 @@ class FileGridItem extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           onLongPress: onLongPress,
+          onSecondaryTap: onLongPress,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -169,6 +170,7 @@ class FileGridItem extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onLongPress,
+        onSecondaryTap: onLongPress,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -310,6 +312,7 @@ class FileListItem extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
+          onSecondaryTap: onLongPress,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16),

@@ -129,6 +129,7 @@ class FolderGridItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -240,6 +241,7 @@ class FolderListItem extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
+          onSecondaryTap: onLongPress,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16),
