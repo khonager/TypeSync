@@ -58,10 +58,9 @@ class _ServiceOrchestratorState extends State<ServiceOrchestrator> {
           );
         });
 
-        // Start/stop cloud sync depending on mode.
-        if (syncEnabled && cloudUserId != null) {
-          syncService.startListening(cloudUserId);
-        } else {
+        // HomeScreen owns sync startup once provider callbacks are attached.
+        // We only stop listeners here when sync becomes unavailable.
+        if (!syncEnabled || cloudUserId == null) {
           syncService.stopListening();
         }
       } else {

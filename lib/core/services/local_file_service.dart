@@ -9,10 +9,14 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
+import 'diagnostics_service.dart';
+
 /// Service for managing local file storage
 ///
 /// Handles copying files to app storage and managing file paths.
 class LocalFileService {
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   static LocalFileService? _instance;
   static LocalFileService get instance {
     _instance ??= LocalFileService._();
@@ -49,6 +53,10 @@ class LocalFileService {
       }
 
       _initialized = true;
+      _diagnostics.info(
+        'LocalFileService',
+        'WORKSPACE_FLOW initialized local files workspace=$userId path=${_appFilesDirectory!.path}',
+      );
     } catch (e) {
       debugPrint('Failed to initialize LocalFileService: $e');
       rethrow;
@@ -302,6 +310,10 @@ class LocalFileService {
       final appDir = await getApplicationDocumentsDirectory();
       final workspaceDir =
           Directory(path.join(appDir.path, 'typesync_files', userId));
+      _diagnostics.info(
+        'LocalFileService',
+        'WORKSPACE_FLOW deleting local files workspace=$userId path=${workspaceDir.path}',
+      );
 
       if (await workspaceDir.exists()) {
         await workspaceDir.delete(recursive: true);
@@ -317,6 +329,66 @@ class LocalFileService {
     } catch (e) {
       debugPrint('Failed to delete workspace files: $e');
       return false;
+    }
+  }
+
+  Future<int> cloneWorkspaceFiles(
+    String sourceUserId,
+    String targetUserId,
+  ) async {
+    if (kIsWeb || sourceUserId == targetUserId) {
+      return 0;
+    }
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final sourceDir =
+          Directory(path.join(appDir.path, 'typesync_files', sourceUserId));
+      final targetDir =
+          Directory(path.join(appDir.path, 'typesync_files', targetUserId));
+      _diagnostics.info(
+        'LocalFileService',
+        'GUEST_IMPORT cloning local files source=$sourceUserId target=$targetUserId sourcePath=${sourceDir.path} targetPath=${targetDir.path}',
+      );
+
+      if (!await sourceDir.exists()) {
+        _diagnostics.info(
+          'LocalFileService',
+          'GUEST_IMPORT no local file directory found for source=$sourceUserId',
+        );
+        return 0;
+      }
+
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+
+      var copied = 0;
+      await for (final entity in sourceDir.list(recursive: true)) {
+        final relativePath = path.relative(entity.path, from: sourceDir.path);
+        final targetPath = path.join(targetDir.path, relativePath);
+
+        if (entity is Directory) {
+          await Directory(targetPath).create(recursive: true);
+          continue;
+        }
+
+        if (entity is File) {
+          final targetFile = File(targetPath);
+          await targetFile.parent.create(recursive: true);
+          await entity.copy(targetFile.path);
+          copied++;
+        }
+      }
+
+      _diagnostics.info(
+        'LocalFileService',
+        'GUEST_IMPORT cloned local files source=$sourceUserId target=$targetUserId copied=$copied',
+      );
+      return copied;
+    } catch (e) {
+      debugPrint('Failed to clone workspace files: $e');
+      return 0;
     }
   }
 }

@@ -9,9 +9,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
+import '../services/diagnostics_service.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing note state
@@ -19,6 +21,9 @@ import '../services/sync_service.dart';
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class NotesProvider extends ChangeNotifier {
+  static const String emptyDocumentJson = '[{"insert":"\\n"}]';
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   // Local storage box
   Box<Note>? _notesBox;
   String? _activeUserId;
@@ -97,6 +102,7 @@ class NotesProvider extends ChangeNotifier {
     Future.microtask(() => notifyListeners());
 
     try {
+      final boxName = 'notes_$userId';
       // Open Hive box for notes
       if (!Hive.isAdapterRegistered(0)) {
         Hive.registerAdapter(NoteAdapter());
@@ -109,17 +115,33 @@ class NotesProvider extends ChangeNotifier {
           _activeUserId != userId &&
           _notesBox != null &&
           _notesBox!.isOpen) {
+        _diagnostics.info(
+          'NotesProvider',
+          'HIVE_BOX closing notes box for previous workspace=$_activeUserId',
+        );
         await _notesBox!.close();
       }
 
-      _notesBox = await Hive.openBox<Note>('notes_$userId');
+      _diagnostics.info(
+        'NotesProvider',
+        'HIVE_BOX opening notes box name=$boxName requestedType=Note alreadyOpen=${Hive.isBoxOpen(boxName)}',
+      );
+      _notesBox = await Hive.openBox<Note>(boxName);
       _activeUserId = userId;
       _notes = _notesBox!.values.toList();
+      _diagnostics.info(
+        'NotesProvider',
+        'WORKSPACE_FLOW notes initialized workspace=$userId boxType=${_notesBox.runtimeType} noteCount=${_notes.length}',
+      );
 
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load notes';
       debugPrint('Notes initialization error: $e');
+      _diagnostics.error(
+        'NotesProvider',
+        'HIVE_BOX failed to initialize notes workspace=$userId error=$e',
+      );
     }
 
     _isLoading = false;
@@ -157,7 +179,7 @@ class NotesProvider extends ChangeNotifier {
   Future<Note?> createNote({
     required String userId,
     String title = 'No name',
-    String content = '',
+    String content = emptyDocumentJson,
     String? folderId,
     NoteType type = NoteType.text,
     int? size,
@@ -172,7 +194,7 @@ class NotesProvider extends ChangeNotifier {
         folderId: folderId,
         type: type,
       ).copyWith(
-        size: size ?? (type == NoteType.pdf ? 0 : content.length),
+        size: size ?? (type == NoteType.pdf ? 0 : 1),
         localOnly: localOnly,
       );
 
@@ -365,6 +387,14 @@ class NotesProvider extends ChangeNotifier {
   /// Handle notes updated from cloud
   void handleCloudUpdate(List<Note> cloudNotes) {
     final cloudIds = cloudNotes.map((note) => note.id).toSet();
+    final localVisibleCount = _notes
+        .where((note) => !note.isDeleted && note.userId == _activeUserId)
+        .length;
+
+    _diagnostics.info(
+      'NotesProvider',
+      'SYNC_LIFECYCLE applying cloud notes workspace=$_activeUserId cloudCount=${cloudNotes.length} localVisibleBefore=$localVisibleCount',
+    );
 
     for (final cloudNote in cloudNotes) {
       final localIndex = _notes.indexWhere((n) => n.id == cloudNote.id);
@@ -410,6 +440,15 @@ class NotesProvider extends ChangeNotifier {
       }
     }
 
+    if (cloudNotes.isEmpty && localVisibleCount > 0) {
+      _diagnostics.warning(
+        'NotesProvider',
+        'SYNC_LIFECYCLE skipping empty cloud prune workspace=$_activeUserId localVisibleBefore=$localVisibleCount',
+      );
+      notifyListeners();
+      return;
+    }
+
     final staleNoteIds = _notes
         .where(
           (note) =>
@@ -427,8 +466,16 @@ class NotesProvider extends ChangeNotifier {
       for (final noteId in staleNoteIds) {
         _notesBox?.delete(noteId);
       }
+      _diagnostics.warning(
+        'NotesProvider',
+        'SYNC_LIFECYCLE pruned stale notes workspace=$_activeUserId prunedCount=${staleNoteIds.length}',
+      );
     }
 
+    _diagnostics.info(
+      'NotesProvider',
+      'SYNC_LIFECYCLE cloud notes applied workspace=$_activeUserId visibleAfter=${notes.length}',
+    );
     notifyListeners();
   }
 
@@ -527,33 +574,102 @@ class NotesProvider extends ChangeNotifier {
   }) async {
     if (sourceUserId == targetUserId) return 0;
 
-    final sourceBox = await Hive.openBox<Note>('notes_$sourceUserId');
-    final targetBox = await Hive.openBox<Note>('notes_$targetUserId');
+    final sourceBoxName = 'notes_$sourceUserId';
+    final targetBoxName = 'notes_$targetUserId';
+    final sourceBoxResult = await _openCloneBox(sourceBoxName, sourceUserId);
+    final targetBoxResult = await _openCloneBox(targetBoxName, targetUserId);
+    final sourceBox = sourceBoxResult.box;
+    final targetBox = targetBoxResult.box;
 
-    if (!overwriteTarget && targetBox.isNotEmpty) {
-      return 0;
-    }
-    if (overwriteTarget) {
-      await targetBox.clear();
-    }
+    try {
+      if (overwriteTarget) {
+        await targetBox.clear();
+      }
 
-    int copied = 0;
-    for (final note in sourceBox.values) {
-      final cloned = note.copyWith(
-        userId: targetUserId,
-        isDirty: true,
-        syncedAt: null,
+      var copied = 0;
+      var skipped = 0;
+      final sourceValues =
+          List<Note>.from((sourceBox.values as Iterable).whereType<Note>());
+      final targetCountBefore =
+          (targetBox.values as Iterable).whereType<Note>().length;
+
+      for (final note in sourceValues) {
+        if (!overwriteTarget && targetBox.containsKey(note.id) == true) {
+          skipped++;
+          continue;
+        }
+
+        final cloned = note.copyWith(
+          userId: targetUserId,
+          isDirty: true,
+          syncedAt: null,
+          pdfPath: _rewriteWorkspacePath(
+            note.pdfPath,
+            sourceUserId: sourceUserId,
+            targetUserId: targetUserId,
+          ),
+          attachments: note.attachments
+              .map(
+                (attachment) => attachment.copyWith(
+                  path: _rewriteWorkspacePath(
+                        attachment.path,
+                        sourceUserId: sourceUserId,
+                        targetUserId: targetUserId,
+                      ) ??
+                      attachment.path,
+                ),
+              )
+              .toList(),
+        );
+        await targetBox.put(cloned.id, cloned);
+        copied++;
+      }
+
+      _diagnostics.info(
+        'NotesProvider',
+        'GUEST_IMPORT cloned notes source=$sourceUserId target=$targetUserId sourceCount=${sourceValues.length} targetCountBefore=$targetCountBefore copied=$copied skipped=$skipped targetCountAfter=${(targetBox.values as Iterable).whereType<Note>().length}',
       );
-      await targetBox.put(cloned.id, cloned);
-      copied++;
+
+      return copied;
+    } finally {
+      if (!sourceBoxResult.wasOpen) {
+        await sourceBox.close();
+      }
+      if (!targetBoxResult.wasOpen) {
+        await targetBox.close();
+      }
     }
-    return copied;
   }
 
   /// Clear error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  String? _rewriteWorkspacePath(
+    String? originalPath, {
+    required String sourceUserId,
+    required String targetUserId,
+  }) {
+    if (originalPath == null || originalPath.isEmpty) {
+      return originalPath;
+    }
+
+    if (originalPath.startsWith('http://') ||
+        originalPath.startsWith('https://') ||
+        originalPath.startsWith('data:')) {
+      return originalPath;
+    }
+
+    final sourceSegment = p.join('typesync_files', sourceUserId) + p.separator;
+    final targetSegment = p.join('typesync_files', targetUserId) + p.separator;
+
+    if (!originalPath.contains(sourceSegment)) {
+      return originalPath;
+    }
+
+    return originalPath.replaceFirst(sourceSegment, targetSegment);
   }
 
   Future<void> closeWorkspace() async {
@@ -570,6 +686,38 @@ class NotesProvider extends ChangeNotifier {
     _syncSubscription?.cancel();
     super.dispose();
   }
+
+  Future<_OpenedCloneBox> _openCloneBox(
+    String boxName,
+    String workspaceId,
+  ) async {
+    final wasOpen = Hive.isBoxOpen(boxName);
+    if (wasOpen) {
+      final box = Hive.box(boxName);
+      _diagnostics.info(
+        'NotesProvider',
+        'HIVE_BOX reusing open notes box name=$boxName workspace=$workspaceId runtimeType=${box.runtimeType}',
+      );
+      return _OpenedCloneBox(box: box, wasOpen: true);
+    }
+
+    _diagnostics.info(
+      'NotesProvider',
+      'HIVE_BOX opening clone notes box name=$boxName workspace=$workspaceId requestedType=Note',
+    );
+    final box = await Hive.openBox<Note>(boxName);
+    return _OpenedCloneBox(box: box, wasOpen: false);
+  }
+}
+
+class _OpenedCloneBox {
+  const _OpenedCloneBox({
+    required this.box,
+    required this.wasOpen,
+  });
+
+  final dynamic box;
+  final bool wasOpen;
 }
 
 // Hive type adapter for Note

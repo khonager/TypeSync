@@ -2151,8 +2151,22 @@ class _EditorScreenState extends State<EditorScreen> {
         _isUpdatingFromExternal = false;
       });
     } catch (e) {
+      final document = Document()..insert(0, providerNote.content);
+      setState(() {
+        _isUpdatingFromExternal = true;
+        _quillController.document = document;
+        _quillController.updateSelection(
+          const TextSelection.collapsed(offset: 0),
+          ChangeSource.local,
+        );
+        _note = providerNote;
+        _lastSavedContent = providerNote.content;
+        _characterCount = providerNote.characterCount;
+        _lineCount = providerNote.lineCount;
+        _titleController.text = providerNote.title;
+        _isUpdatingFromExternal = false;
+      });
       debugPrint('Error updating from external source: $e');
-      _isUpdatingFromExternal = false;
     }
   }
 }
