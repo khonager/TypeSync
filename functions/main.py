@@ -4,10 +4,14 @@
 
 from firebase_functions import https_fn
 from firebase_functions.options import set_global_options
-from firebase_admin import initialize_app, firestore
+from firebase_admin import initialize_app, firestore, auth, storage
 import requests
 import os
 import datetime
+import base64
+import json
+import uuid
+from urllib.parse import quote
 
 # For cost control, you can set the maximum number of containers that can be
 # running at the same time. This helps mitigate the impact of unexpected
@@ -17,6 +21,121 @@ import datetime
 set_global_options(max_instances=10)
 
 initialize_app()
+
+
+def _bearer_token(req: https_fn.Request) -> str | None:
+    auth_header = req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    return auth_header[len("Bearer ") :].strip() or None
+
+
+def _verified_uid(req: https_fn.Request) -> str:
+    token = _bearer_token(req)
+    if not token:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Missing bearer token."
+        )
+
+    try:
+        decoded = auth.verify_id_token(token)
+    except Exception as exc:
+        print(f"Auth verification failed: {exc}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Invalid auth token."
+        )
+
+    uid = decoded.get("uid")
+    if not uid:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authenticated user missing uid."
+        )
+    return uid
+
+
+@https_fn.on_request()
+def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
+    if req.method != "POST":
+        return https_fn.Response("Method not allowed", status=405)
+
+    uid = _verified_uid(req)
+
+    try:
+        payload = req.get_json(silent=True) or {}
+        target_uid = payload.get("userId")
+        destination_path = payload.get("destinationPath")
+        data_b64 = payload.get("dataBase64")
+        content_type = payload.get("contentType") or "application/octet-stream"
+    except Exception as exc:
+        print(f"Bad upload payload: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": "Invalid JSON body"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    if target_uid != uid:
+        return https_fn.Response(
+            json.dumps({"error": "userId does not match authenticated user"}),
+            status=403,
+            content_type="application/json",
+        )
+
+    if not destination_path or not data_b64:
+        return https_fn.Response(
+            json.dumps({"error": "destinationPath and dataBase64 are required"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    object_path = f"users/{uid}/{destination_path}"
+
+    try:
+        file_bytes = base64.b64decode(data_b64)
+    except Exception as exc:
+        print(f"Base64 decode failed: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": "Invalid base64 payload"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    download_token = str(uuid.uuid4())
+
+    try:
+        bucket = storage.bucket()
+        blob = bucket.blob(object_path)
+        blob.metadata = {"firebaseStorageDownloadTokens": download_token}
+        blob.upload_from_string(file_bytes, content_type=content_type)
+
+        bucket_name = bucket.name
+        download_url = (
+            f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/"
+            f"{quote(object_path, safe='')}?alt=media&token={download_token}"
+        )
+
+        return https_fn.Response(
+            json.dumps(
+                {
+                    "downloadUrl": download_url,
+                    "size": len(file_bytes),
+                    "bucket": bucket_name,
+                    "path": object_path,
+                }
+            ),
+            status=200,
+            content_type="application/json",
+        )
+    except Exception as exc:
+        print(f"Storage upload failed: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": f"Upload failed: {exc}"}),
+            status=500,
+            content_type="application/json",
+        )
 
 @https_fn.on_call()
 def verify_gumroad_license(req: https_fn.CallableRequest) -> dict:

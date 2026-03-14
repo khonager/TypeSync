@@ -19,6 +19,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
     if (dart.library.html) '../../../core/utils/web_download_web.dart'
@@ -27,11 +30,12 @@ import '../../../core/utils/web_download_stub.dart'
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/local_file_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
+import '../../../core/widgets/remote_pdf_embed_stub.dart'
+    if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
@@ -91,6 +95,11 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isUpdatingFromExternal = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
+  bool _hasStartedCloudMigration = false;
+  bool _hideAttachmentPreview = false;
+  double _sideBySideAttachmentFraction = 0.46;
+  double _stackedAttachmentHeight = 320;
+  bool _attachmentsExpanded = false;
 
   @override
   void initState() {
@@ -162,6 +171,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Calculate initial stats
     _updateStats();
+
+    if (_note != null && !_hasStartedCloudMigration) {
+      _hasStartedCloudMigration = true;
+      unawaited(_ensureCloudBackedFiles());
+    }
   }
 
   void _onContentChanged() {
@@ -457,6 +471,8 @@ class _EditorScreenState extends State<EditorScreen> {
         isDesktop && MediaQuery.of(context).size.width >= 1100;
     final showSideBySide =
         canSideBySide && _sideBySideAttachments && activeAttachment != null;
+    final showAttachmentPreview =
+        activeAttachment != null && !_hideAttachmentPreview;
 
     return Container(
       width: double.infinity,
@@ -465,46 +481,171 @@ class _EditorScreenState extends State<EditorScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          _buildAttachmentsSection(
-            attachments,
-            activeAttachment,
-            canSideBySide,
-          ),
-          const SizedBox(height: 12),
+          if (attachments.isNotEmpty) ...[
+            _buildAttachmentsSection(
+              attachments,
+              activeAttachment,
+              canSideBySide,
+              showAttachmentPreview,
+            ),
+            const SizedBox(height: 12),
+          ],
           Expanded(
             child: showSideBySide
-                ? Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: _buildAttachmentPreview(activeAttachment),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 6,
-                        child: _buildEditorSurface(bgColor),
-                      ),
-                    ],
+                ? _buildSideBySideEditorLayout(
+                    activeAttachment,
+                    bgColor,
+                    showAttachmentPreview,
                   )
-                : Column(
-                    children: [
-                      if (activeAttachment != null)
-                        Container(
-                          height: 260,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: Card(
-                            clipBehavior: Clip.antiAlias,
-                            child: _buildAttachmentPreview(activeAttachment),
-                          ),
-                        ),
-                      Expanded(child: _buildEditorSurface(bgColor)),
-                    ],
+                : _buildStackedEditorLayout(
+                    activeAttachment,
+                    bgColor,
+                    showAttachmentPreview,
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSideBySideEditorLayout(
+    NoteAttachment? activeAttachment,
+    Color? bgColor,
+    bool showAttachmentPreview,
+  ) {
+    if (!showAttachmentPreview || activeAttachment == null) {
+      return _buildEditorSurface(bgColor);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const dividerWidth = 18.0;
+        final availableWidth = constraints.maxWidth - dividerWidth;
+        final attachmentWidth =
+            (availableWidth * _sideBySideAttachmentFraction).clamp(
+          280.0,
+          availableWidth - 320.0,
+        );
+        final editorWidth = availableWidth - attachmentWidth;
+
+        return Row(
+          children: [
+            SizedBox(
+              width: attachmentWidth,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: _buildAttachmentPreview(activeAttachment),
+              ),
+            ),
+            _buildHorizontalResizeHandle(availableWidth),
+            SizedBox(
+              width: editorWidth,
+              child: _buildEditorSurface(bgColor),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStackedEditorLayout(
+    NoteAttachment? activeAttachment,
+    Color? bgColor,
+    bool showAttachmentPreview,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!showAttachmentPreview || activeAttachment == null) {
+          return _buildEditorSurface(bgColor);
+        }
+
+        const dividerHeight = 18.0;
+        final availableHeight = constraints.maxHeight - dividerHeight;
+        final attachmentHeight = _stackedAttachmentHeight.clamp(
+          180.0,
+          availableHeight - 180.0,
+        );
+        final editorHeight = availableHeight - attachmentHeight;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: attachmentHeight,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: _buildAttachmentPreview(activeAttachment),
+              ),
+            ),
+            _buildVerticalResizeHandle(availableHeight),
+            SizedBox(
+              height: editorHeight,
+              child: _buildEditorSurface(bgColor),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHorizontalResizeHandle(double availableWidth) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) {
+          setState(() {
+            final nextWidth = availableWidth * _sideBySideAttachmentFraction +
+                details.delta.dx;
+            _sideBySideAttachmentFraction =
+                (nextWidth / availableWidth).clamp(0.25, 0.72);
+          });
+        },
+        child: SizedBox(
+          width: 18,
+          child: Center(
+            child: Container(
+              width: 4,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerticalResizeHandle(double availableHeight) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeRow,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: (details) {
+          setState(() {
+            _stackedAttachmentHeight =
+                (_stackedAttachmentHeight + details.delta.dy)
+                    .clamp(180.0, availableHeight - 180.0);
+          });
+        },
+        child: SizedBox(
+          height: 18,
+          child: Center(
+            child: Container(
+              width: 72,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -533,49 +674,183 @@ class _EditorScreenState extends State<EditorScreen> {
     List<NoteAttachment> attachments,
     NoteAttachment? activeAttachment,
     bool canSideBySide,
+    bool showAttachmentPreview,
   ) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.attach_file),
-                const SizedBox(width: 8),
-                Text(
-                  'Attachments (${attachments.length})',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const Spacer(),
-                if (canSideBySide)
-                  IconButton(
-                    tooltip: _sideBySideAttachments
-                        ? 'Switch to stacked view'
-                        : 'Switch to side-by-side view',
-                    onPressed: () {
-                      setState(() {
-                        _sideBySideAttachments = !_sideBySideAttachments;
-                      });
-                    },
-                    icon: Icon(
-                      _sideBySideAttachments
-                          ? Icons.splitscreen
-                          : Icons.view_agenda,
-                    ),
-                  ),
-                TextButton.icon(
-                  onPressed: _insertPdf,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Attach'),
-                ),
-              ],
+    if (attachments.length == 1 && activeAttachment != null) {
+      return _buildSingleAttachmentBar(
+        activeAttachment,
+        canSideBySide,
+        showAttachmentPreview,
+      );
+    }
+
+    return _buildMultiAttachmentBar(
+      attachments,
+      activeAttachment,
+      canSideBySide,
+      showAttachmentPreview,
+    );
+  }
+
+  Widget _buildSingleAttachmentBar(
+    NoteAttachment attachment,
+    bool canSideBySide,
+    bool showAttachmentPreview,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.attach_file,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              attachment.name,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (attachments.isNotEmpty) const SizedBox(height: 8),
-            if (attachments.isNotEmpty)
-              Wrap(
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '1 attachment',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(width: 8),
+          if (canSideBySide)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: _sideBySideAttachments
+                  ? 'Switch to stacked view'
+                  : 'Switch to side-by-side view',
+              onPressed: () {
+                setState(() {
+                  _sideBySideAttachments = !_sideBySideAttachments;
+                });
+              },
+              icon: Icon(
+                _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+              ),
+            ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: showAttachmentPreview
+                ? 'Hide attachment preview'
+                : 'Show attachment preview',
+            onPressed: () {
+              setState(() {
+                _hideAttachmentPreview = !_hideAttachmentPreview;
+              });
+            },
+            icon: Icon(
+              showAttachmentPreview
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _insertPdf,
+            icon: const Icon(Icons.add),
+            label: const Text('Attach'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiAttachmentBar(
+    List<NoteAttachment> attachments,
+    NoteAttachment? activeAttachment,
+    bool canSideBySide,
+    bool showAttachmentPreview,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.attach_file,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${attachments.length} attachments'
+                  '${activeAttachment != null ? ' • ${activeAttachment.name}' : ''}',
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _attachmentsExpanded = !_attachmentsExpanded;
+                  });
+                },
+                child: Text(_attachmentsExpanded ? 'Collapse' : 'Expand'),
+              ),
+              if (canSideBySide)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: _sideBySideAttachments
+                      ? 'Switch to stacked view'
+                      : 'Switch to side-by-side view',
+                  onPressed: () {
+                    setState(() {
+                      _sideBySideAttachments = !_sideBySideAttachments;
+                    });
+                  },
+                  icon: Icon(
+                    _sideBySideAttachments
+                        ? Icons.splitscreen
+                        : Icons.view_agenda,
+                  ),
+                ),
+              if (activeAttachment != null)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: showAttachmentPreview
+                      ? 'Hide attachment preview'
+                      : 'Show attachment preview',
+                  onPressed: () {
+                    setState(() {
+                      _hideAttachmentPreview = !_hideAttachmentPreview;
+                    });
+                  },
+                  icon: Icon(
+                    showAttachmentPreview
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              TextButton.icon(
+                onPressed: _insertPdf,
+                icon: const Icon(Icons.add),
+                label: const Text('Attach'),
+              ),
+            ],
+          ),
+          if (_attachmentsExpanded) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: attachments
@@ -583,7 +858,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       (attachment) => ChoiceChip(
                         selected: activeAttachment?.id == attachment.id,
                         label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 240),
+                          constraints: const BoxConstraints(maxWidth: 220),
                           child: Text(
                             attachment.name,
                             overflow: TextOverflow.ellipsis,
@@ -593,33 +868,40 @@ class _EditorScreenState extends State<EditorScreen> {
                           setState(() {
                             _activeAttachmentId =
                                 selected ? attachment.id : null;
+                            if (selected) {
+                              _hideAttachmentPreview = false;
+                            }
                           });
                         },
                       ),
                     )
                     .toList(),
               ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
     final extension = p.extension(attachment.name).toLowerCase();
+    final mimeType = attachment.mimeType?.toLowerCase();
     if (attachment.path.startsWith('data:')) {
       Uint8List bytes;
+      String? dataMimeType;
       try {
         final separatorIndex = attachment.path.indexOf(',');
         if (separatorIndex <= 0) {
           return _buildAttachmentUnavailable(attachment);
         }
+        dataMimeType = _mimeTypeFromDataUri(attachment.path);
         bytes = base64Decode(attachment.path.substring(separatorIndex + 1));
       } catch (_) {
         return _buildAttachmentUnavailable(attachment);
       }
 
-      if (extension == '.pdf') {
+      if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
         return PdfPreview(
           build: (_) => bytes,
           allowPrinting: true,
@@ -630,20 +912,115 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-          .contains(extension)) {
+      if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
+        return _buildSvgMemoryPreview(attachment, bytes);
+      }
+
+      if (_isRasterImageAttachment(extension, mimeType ?? dataMimeType)) {
         return Container(
           color: Colors.black12,
-          child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+          child: Center(
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _buildAttachmentInfo(attachment),
+            ),
+          ),
         );
       }
 
-      if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
-          .contains(extension)) {
+      if (_isTextAttachment(extension, mimeType ?? dataMimeType)) {
         final text = utf8.decode(bytes, allowMalformed: true);
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+        return _buildTextAttachmentPreview(text);
+      }
+
+      return _buildAttachmentInfo(attachment);
+    }
+
+    if (_isRemoteAttachmentPath(attachment.path)) {
+      if (_isPdfAttachment(extension, mimeType)) {
+        if (kIsWeb) {
+          return RemotePdfEmbed(url: attachment.path);
+        }
+        return FutureBuilder<Uint8List?>(
+          future: _fetchAttachmentBytes(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData) {
+              return _buildAttachmentUnavailable(attachment);
+            }
+            return PdfPreview(
+              build: (_) => snapshot.data!,
+              allowPrinting: true,
+              allowSharing: true,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+            );
+          },
+        );
+      }
+
+      if (_isSvgAttachment(extension, mimeType)) {
+        return FutureBuilder<Uint8List?>(
+          future: _fetchAttachmentBytes(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final bytes = snapshot.data;
+            if (bytes == null) {
+              return _buildAttachmentInfo(attachment);
+            }
+            return _buildSvgMemoryPreview(attachment, bytes);
+          },
+        );
+      }
+
+      if (_isRasterImageAttachment(extension, mimeType)) {
+        return Container(
+          color: Colors.black12,
+          child: Center(
+            child: Image.network(
+              attachment.path,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => FutureBuilder<Uint8List?>(
+                future: _fetchAttachmentBytes(attachment.path),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final bytes = snapshot.data;
+                  if (bytes == null) {
+                    return _buildAttachmentInfo(attachment);
+                  }
+                  return Image.memory(
+                    bytes,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) =>
+                        _buildAttachmentInfo(attachment),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      }
+
+      if (_isTextAttachment(extension, mimeType)) {
+        return FutureBuilder<String?>(
+          future: _fetchAttachmentText(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData) {
+              return _buildAttachmentInfo(attachment);
+            }
+            return _buildTextAttachmentPreview(snapshot.data!);
+          },
         );
       }
 
@@ -661,20 +1038,28 @@ class _EditorScreenState extends State<EditorScreen> {
       return _buildAttachmentUnavailable(attachment);
     }
 
-    if (extension == '.pdf') {
+    if (_isPdfAttachment(extension, mimeType)) {
       return PdfViewerWidget(pdfFile: file);
     }
 
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-        .contains(extension)) {
+    if (_isSvgAttachment(extension, mimeType)) {
+      return _buildSvgFilePreview(attachment, file);
+    }
+
+    if (_isRasterImageAttachment(extension, mimeType)) {
       return Container(
         color: Colors.black12,
-        child: Center(child: Image.file(file, fit: BoxFit.contain)),
+        child: Center(
+          child: Image.file(
+            file,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => _buildAttachmentInfo(attachment),
+          ),
+        ),
       );
     }
 
-    if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
-        .contains(extension)) {
+    if (_isTextAttachment(extension, mimeType)) {
       return FutureBuilder<String>(
         future: file.readAsString(),
         builder: (context, snapshot) {
@@ -682,20 +1067,138 @@ class _EditorScreenState extends State<EditorScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData) {
-            return _buildAttachmentUnavailable(attachment);
+            return _buildAttachmentInfo(attachment);
           }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              snapshot.data!,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          );
+          return _buildTextAttachmentPreview(snapshot.data!);
         },
       );
     }
 
     return _buildAttachmentInfo(attachment);
+  }
+
+  Widget _buildTextAttachmentPreview(String text) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: SelectableText(
+        text,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
+
+  Widget _buildSvgMemoryPreview(NoteAttachment attachment, Uint8List bytes) {
+    return Container(
+      color: Colors.black12,
+      child: Center(
+        child: SvgPicture.memory(
+          bytes,
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) =>
+              const Center(child: CircularProgressIndicator()),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSvgFilePreview(NoteAttachment attachment, File file) {
+    return Container(
+      color: Colors.black12,
+      child: FutureBuilder<Uint8List>(
+        future: file.readAsBytes(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return _buildAttachmentInfo(attachment);
+          }
+
+          return Center(
+            child: SvgPicture.memory(
+              bytes,
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) =>
+                  const Center(child: CircularProgressIndicator()),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  bool _isPdfAttachment(String extension, String? mimeType) {
+    return extension == '.pdf' || mimeType == 'application/pdf';
+  }
+
+  bool _isSvgAttachment(String extension, String? mimeType) {
+    return extension == '.svg' || mimeType == 'image/svg+xml';
+  }
+
+  bool _isRasterImageAttachment(String extension, String? mimeType) {
+    return const {
+          '.jpg',
+          '.jpeg',
+          '.png',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.ico',
+          '.tif',
+          '.tiff',
+          '.avif',
+        }.contains(extension) ||
+        (mimeType?.startsWith('image/') == true && mimeType != 'image/svg+xml');
+  }
+
+  bool _isTextAttachment(String extension, String? mimeType) {
+    return const {
+          '.txt',
+          '.md',
+          '.markdown',
+          '.json',
+          '.yaml',
+          '.yml',
+          '.csv',
+          '.log',
+          '.xml',
+          '.html',
+          '.htm',
+          '.css',
+          '.js',
+          '.ts',
+          '.dart',
+          '.py',
+          '.java',
+          '.c',
+          '.cc',
+          '.cpp',
+          '.h',
+          '.hpp',
+          '.sh',
+          '.sql',
+          '.ini',
+          '.toml',
+          '.env',
+        }.contains(extension) ||
+        mimeType == 'application/json' ||
+        mimeType == 'application/xml' ||
+        mimeType == 'image/svg+xml' ||
+        mimeType?.startsWith('text/') == true;
+  }
+
+  String? _mimeTypeFromDataUri(String path) {
+    if (!path.startsWith('data:')) return null;
+    final separatorIndex = path.indexOf(',');
+    if (separatorIndex <= 5) return null;
+    final metadata = path.substring(5, separatorIndex);
+    final semicolonIndex = metadata.indexOf(';');
+    final mimeType =
+        semicolonIndex >= 0 ? metadata.substring(0, semicolonIndex) : metadata;
+    if (mimeType.isEmpty) return null;
+    return mimeType.toLowerCase();
   }
 
   Widget _buildAttachmentUnavailable(NoteAttachment attachment) {
@@ -762,6 +1265,17 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
+      if (_isRemoteAttachmentPath(attachment.path)) {
+        final uri = Uri.parse(attachment.path);
+        await launchUrl(
+          uri,
+          mode: kIsWeb
+              ? LaunchMode.platformDefault
+              : LaunchMode.externalApplication,
+        );
+        return;
+      }
+
       final file = File(attachment.path);
       if (!await file.exists()) {
         if (mounted) {
@@ -792,6 +1306,30 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
     }
+  }
+
+  bool _isRemoteAttachmentPath(String path) =>
+      path.startsWith('http://') || path.startsWith('https://');
+
+  bool _isLocalAttachmentPath(String path) =>
+      !path.startsWith('data:') && !_isRemoteAttachmentPath(path);
+
+  Future<Uint8List?> _fetchAttachmentBytes(String path) async {
+    try {
+      final response = await http.get(Uri.parse(path));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      return response.bodyBytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _fetchAttachmentText(String path) async {
+    final bytes = await _fetchAttachmentBytes(path);
+    if (bytes == null) return null;
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   void _showConflictDialog() {
@@ -1095,22 +1633,21 @@ class _EditorScreenState extends State<EditorScreen> {
       Uint8List? fileBytes;
 
       if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
-        // Export PDF file
-        if (kIsWeb) {
-          // On Web, we'd typicaly use the URL or bytes.
-          // Assuming pdfPath is a URL or we need to fetch it.
-          // For now, if it's a local path representation, it might not work on Web directly
-          // unless stored in Firebase.
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('PDF export on Web is not yet implemented'),
-            ),
-          );
-          return;
+        if (_isRemoteAttachmentPath(_note!.pdfPath!)) {
+          fileBytes = await _fetchAttachmentBytes(_note!.pdfPath!);
+        } else {
+          final pdfFile = File(_note!.pdfPath!);
+          if (!await pdfFile.exists()) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('PDF file not found')),
+              );
+            }
+            return;
+          }
+          fileBytes = await pdfFile.readAsBytes();
         }
-
-        final pdfFile = File(_note!.pdfPath!);
-        if (!await pdfFile.exists()) {
+        if (fileBytes == null) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('PDF file not found')),
@@ -1118,7 +1655,6 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return;
         }
-        fileBytes = await pdfFile.readAsBytes();
         extension = '.pdf';
       } else {
         if (_note!.type == NoteType.markdown) {
@@ -1268,12 +1804,24 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final ext = p.extension(fileName).toLowerCase();
     final mimeType = _mimeTypeForExtension(ext);
-    String storedPath;
+    final storageService = context.read<StorageService>();
+    String? storedPath;
     int size;
+    final attachmentId = const Uuid().v4();
+    final storagePath = _buildCloudFilePath(
+      noteId: _note!.id,
+      itemId: attachmentId,
+      fileName: fileName,
+      bucket: 'attachments',
+    );
 
     if (bytes != null) {
-      final mime = mimeType ?? 'application/octet-stream';
-      storedPath = 'data:$mime;base64,${base64Encode(bytes)}';
+      storedPath = await storageService.uploadData(
+        userId: userId,
+        data: bytes,
+        destinationPath: storagePath,
+        contentType: mimeType,
+      );
       size = bytes.length;
     } else {
       if (filePath == null || filePath.isEmpty) return;
@@ -1287,30 +1835,32 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
-      await LocalFileService.instance.initialize(userId);
-      final copiedPath = await LocalFileService.instance.copyFileToStorage(
-        filePath,
-        fileName: fileName,
+      storedPath = await storageService.uploadFile(
+        userId: userId,
+        filePath: filePath,
+        destinationPath: storagePath,
+        contentType: mimeType,
       );
-
-      if (copiedPath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to attach $fileName')),
-          );
-        }
-        return;
-      }
-
-      storedPath = copiedPath;
       size = await sourceFile.length();
     }
 
-    final attachment = NoteAttachment.create(
+    if (storedPath == null) {
+      if (mounted) {
+        final errorMessage = storageService.errorMessage;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage ?? 'Failed to attach $fileName')),
+        );
+      }
+      return;
+    }
+
+    final attachment = NoteAttachment(
+      id: attachmentId,
       name: fileName,
       path: storedPath,
       mimeType: mimeType,
       size: size,
+      addedAt: DateTime.now(),
     );
 
     final alreadyExists = _note!.attachments.any(
@@ -1348,6 +1898,114 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Future<void> _ensureCloudBackedFiles() async {
+    if (_note == null || _note!.localOnly) return;
+
+    final authService = context.read<AuthService>();
+    final notesProvider = context.read<NotesProvider>();
+    final storageService = context.read<StorageService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    var note = _note!;
+    var changed = false;
+
+    final migratedAttachments = <NoteAttachment>[];
+    for (final attachment in note.attachments) {
+      if (!_isLocalAttachmentPath(attachment.path)) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      final file = File(attachment.path);
+      if (!await file.exists()) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      final remotePath = await storageService.uploadFile(
+        userId: userId,
+        filePath: attachment.path,
+        destinationPath: _buildCloudFilePath(
+          noteId: note.id,
+          itemId: attachment.id,
+          fileName: attachment.name,
+          bucket: 'attachments',
+        ),
+        contentType: attachment.mimeType,
+      );
+
+      if (remotePath == null) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      migratedAttachments.add(attachment.copyWith(path: remotePath));
+      changed = true;
+    }
+
+    note = note.copyWith(attachments: migratedAttachments);
+
+    if (note.type == NoteType.pdf &&
+        note.pdfPath != null &&
+        _isLocalAttachmentPath(note.pdfPath!)) {
+      final file = File(note.pdfPath!);
+      if (await file.exists()) {
+        final remotePath = await storageService.uploadFile(
+          userId: userId,
+          filePath: note.pdfPath!,
+          destinationPath: _buildCloudFilePath(
+            noteId: note.id,
+            itemId: 'pdf',
+            fileName: '${note.title}.pdf',
+            bucket: 'pdf_notes',
+          ),
+          contentType: 'application/pdf',
+        );
+        if (remotePath != null) {
+          note = note.copyWith(pdfPath: remotePath);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    final success = await notesProvider.updateNote(note);
+    if (!success || !mounted) return;
+
+    setState(() {
+      _note = notesProvider.getNoteById(note.id) ?? note;
+    });
+  }
+
+  String _buildCloudFilePath({
+    required String noteId,
+    required String itemId,
+    required String fileName,
+    required String bucket,
+  }) {
+    final sanitizedName = _sanitizeFileName(fileName);
+    return '$bucket/$noteId/${itemId}_$sanitizedName';
+  }
+
+  String _sanitizeFileName(String value) {
+    final buffer = StringBuffer();
+    for (final codeUnit in value.codeUnits) {
+      final isUpper = codeUnit >= 65 && codeUnit <= 90;
+      final isLower = codeUnit >= 97 && codeUnit <= 122;
+      final isDigit = codeUnit >= 48 && codeUnit <= 57;
+      final isAllowed = isUpper ||
+          isLower ||
+          isDigit ||
+          codeUnit == 46 ||
+          codeUnit == 95 ||
+          codeUnit == 45;
+      buffer.writeCharCode(isAllowed ? codeUnit : 95);
+    }
+    return buffer.toString();
+  }
+
   String? _mimeTypeForExtension(String extension) {
     switch (extension) {
       case '.pdf':
@@ -1361,6 +2019,15 @@ class _EditorScreenState extends State<EditorScreen> {
         return 'image/gif';
       case '.webp':
         return 'image/webp';
+      case '.svg':
+        return 'image/svg+xml';
+      case '.bmp':
+        return 'image/bmp';
+      case '.ico':
+        return 'image/x-icon';
+      case '.tif':
+      case '.tiff':
+        return 'image/tiff';
       case '.txt':
         return 'text/plain';
       case '.md':
@@ -1370,6 +2037,42 @@ class _EditorScreenState extends State<EditorScreen> {
         return 'application/json';
       case '.csv':
         return 'text/csv';
+      case '.yaml':
+      case '.yml':
+        return 'application/yaml';
+      case '.xml':
+        return 'application/xml';
+      case '.html':
+      case '.htm':
+        return 'text/html';
+      case '.css':
+        return 'text/css';
+      case '.js':
+        return 'text/javascript';
+      case '.ts':
+        return 'text/plain';
+      case '.dart':
+        return 'text/x-dart';
+      case '.py':
+        return 'text/x-python';
+      case '.java':
+        return 'text/x-java-source';
+      case '.c':
+      case '.cc':
+      case '.cpp':
+      case '.h':
+      case '.hpp':
+        return 'text/plain';
+      case '.sh':
+        return 'application/x-sh';
+      case '.sql':
+        return 'application/sql';
+      case '.toml':
+        return 'application/toml';
+      case '.ini':
+      case '.log':
+      case '.env':
+        return 'text/plain';
       default:
         return null;
     }

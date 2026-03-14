@@ -7,12 +7,16 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/models/note.dart';
@@ -767,15 +771,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (pickedFile != null) {
         if (kIsWeb) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Importing from browser file bytes is not wired in Home yet. Use the editor attachment flow.',
-                ),
-              ),
-            );
-          }
+          await _importBrowserFile(pickedFile);
           return;
         }
 
@@ -810,6 +806,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _importFile(String filePath, String fileName) async {
     final authService = context.read<AuthService>();
+    final storageService = context.read<StorageService>();
     final userId = authService.userId;
     if (userId == null) return;
 
@@ -826,44 +823,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final fileExtension = fileName.split('.').last.toLowerCase();
       String content = '';
-      String noteType = 'text';
+      NoteType noteType = NoteType.text;
 
       // Read file content based on type
-      if (fileExtension == 'txt' ||
-          fileExtension == 'md' ||
-          fileExtension == 'markdown') {
+      if (_isTextImportExtension(fileExtension)) {
         // Text files - read content
         content = await file.readAsString();
         noteType = fileExtension == 'md' || fileExtension == 'markdown'
-            ? 'markdown'
-            : 'text';
+            ? NoteType.markdown
+            : NoteType.text;
       } else if (fileExtension == 'pdf') {
-        // PDF files - copy to app storage and create PDF note
-        final storedPath = await LocalFileService.instance.copyFileToStorage(
-          filePath,
-          fileName: fileName,
-        );
-
-        if (storedPath != null) {
-          content = ''; // Empty content for PDFs
-          noteType = 'pdf';
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to import PDF: $fileName')),
-            );
-          }
-          return;
-        }
-      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp']
-          .contains(fileExtension)) {
-        // Image files - create note with image reference
-        content = '[Image file: $fileName]';
-        noteType = 'text';
+        content = '';
+        noteType = NoteType.pdf;
       } else {
-        // Other files - create note with file reference
-        content = '[File: $fileName]';
-        noteType = 'text';
+        final note = await _createAttachmentBackedImportedNote(
+          userId: userId,
+          fileName: fileName,
+          filePath: filePath,
+        );
+        if (note != null && mounted) {
+          AppRouter.openEditor(
+            context,
+            noteId: note.id,
+            folderId: _currentFolderId,
+          );
+
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Imported $fileName')));
+        }
+        return;
       }
 
       if (!mounted) return;
@@ -873,20 +862,33 @@ class _HomeScreenState extends State<HomeScreen> {
         folderId: _currentFolderId,
         title: fileName,
         content: content,
-        type: noteType == 'pdf'
-            ? NoteType.pdf
-            : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
+        type: noteType,
       );
 
-      // Store PDF path if it's a PDF (use stored path, not original)
-      if (noteType == 'pdf' && note != null) {
-        final storedPath = await LocalFileService.instance.copyFileToStorage(
-          filePath,
-          fileName: fileName,
+      // Store cloud-backed PDF path so the note is readable on every device.
+      if (noteType == NoteType.pdf && note != null) {
+        final sanitizedName = _sanitizeFileName(fileName);
+        final storedPath = await storageService.uploadFile(
+          userId: userId,
+          filePath: filePath,
+          destinationPath: 'pdf_notes/${note.id}/$sanitizedName',
+          contentType: 'application/pdf',
         );
         if (storedPath != null) {
           final updatedNote = note.copyWith(pdfPath: storedPath);
           await notesProvider.updateNote(updatedNote);
+        } else {
+          await notesProvider.deleteNote(note.id);
+          if (mounted) {
+            final errorMessage = storageService.errorMessage;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content:
+                    Text(errorMessage ?? 'Failed to import PDF: $fileName'),
+              ),
+            );
+          }
+          return;
         }
       }
 
@@ -908,6 +910,272 @@ class _HomeScreenState extends State<HomeScreen> {
           SnackBar(content: Text('Failed to import file: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _importBrowserFile(PlatformFile pickedFile) async {
+    final authService = context.read<AuthService>();
+    final storageService = context.read<StorageService>();
+    final notesProvider = context.read<NotesProvider>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    final bytes = pickedFile.bytes;
+    final fileName = pickedFile.name;
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to read file bytes: $fileName')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final fileExtension = fileName.split('.').last.toLowerCase();
+      String content = '';
+      NoteType noteType = NoteType.text;
+
+      if (_isTextImportExtension(fileExtension)) {
+        content = utf8.decode(bytes, allowMalformed: true);
+        noteType = fileExtension == 'md' || fileExtension == 'markdown'
+            ? NoteType.markdown
+            : NoteType.text;
+      } else if (fileExtension == 'pdf') {
+        content = '';
+        noteType = NoteType.pdf;
+      } else {
+        final note = await _createAttachmentBackedImportedNote(
+          userId: userId,
+          fileName: fileName,
+          bytes: bytes,
+        );
+        if (note != null && mounted) {
+          AppRouter.openEditor(
+            context,
+            noteId: note.id,
+            folderId: _currentFolderId,
+          );
+
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Imported $fileName')));
+        }
+        return;
+      }
+
+      final note = await notesProvider.createNote(
+        userId: userId,
+        folderId: _currentFolderId,
+        title: fileName,
+        content: content,
+        type: noteType,
+      );
+
+      if (noteType == NoteType.pdf && note != null) {
+        final sanitizedName = _sanitizeFileName(fileName);
+        final storedPath = await storageService.uploadData(
+          userId: userId,
+          data: bytes,
+          destinationPath: 'pdf_notes/${note.id}/$sanitizedName',
+          contentType: 'application/pdf',
+        );
+        if (storedPath != null) {
+          final updatedNote = note.copyWith(pdfPath: storedPath);
+          await notesProvider.updateNote(updatedNote);
+        } else {
+          await notesProvider.deleteNote(note.id);
+          if (mounted) {
+            final errorMessage = storageService.errorMessage;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content:
+                    Text(errorMessage ?? 'Failed to import PDF: $fileName'),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      if (note != null && mounted) {
+        AppRouter.openEditor(
+          context,
+          noteId: note.id,
+          folderId: _currentFolderId,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported $fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import file: $e')),
+        );
+      }
+    }
+  }
+
+  Future<Note?> _createAttachmentBackedImportedNote({
+    required String userId,
+    required String fileName,
+    String? filePath,
+    Uint8List? bytes,
+  }) async {
+    final notesProvider = context.read<NotesProvider>();
+    final storageService = context.read<StorageService>();
+
+    final note = await notesProvider.createNote(
+      userId: userId,
+      folderId: _currentFolderId,
+      title: fileName,
+      content: '',
+      type: NoteType.text,
+    );
+    if (note == null) return null;
+
+    final attachmentId = const Uuid().v4();
+    final extension = _fileExtension(fileName);
+    final mimeType = _mimeTypeForExtension(extension);
+    final destinationPath =
+        'attachments/${note.id}/${attachmentId}_${_sanitizeFileName(fileName)}';
+
+    String? storedPath;
+    int size;
+
+    if (bytes != null) {
+      storedPath = await storageService.uploadData(
+        userId: userId,
+        data: bytes,
+        destinationPath: destinationPath,
+        contentType: mimeType,
+      );
+      size = bytes.length;
+    } else {
+      if (filePath == null || filePath.isEmpty) {
+        await notesProvider.deleteNote(note.id);
+        return null;
+      }
+      final file = File(filePath);
+      if (!await file.exists()) {
+        await notesProvider.deleteNote(note.id);
+        return null;
+      }
+      storedPath = await storageService.uploadFile(
+        userId: userId,
+        filePath: filePath,
+        destinationPath: destinationPath,
+        contentType: mimeType,
+      );
+      size = await file.length();
+    }
+
+    if (storedPath == null) {
+      await notesProvider.deleteNote(note.id);
+      if (mounted) {
+        final errorMessage = storageService.errorMessage;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage ?? 'Failed to import attachment'),
+          ),
+        );
+      }
+      return null;
+    }
+
+    final updatedNote = note.copyWith(
+      attachments: [
+        ...note.attachments,
+        NoteAttachment(
+          id: attachmentId,
+          name: fileName,
+          path: storedPath,
+          mimeType: mimeType,
+          size: size,
+          addedAt: DateTime.now(),
+        ),
+      ],
+    );
+
+    final success = await notesProvider.updateNote(updatedNote);
+    if (!success) {
+      await notesProvider.deleteNote(note.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import attachment: $fileName')),
+        );
+      }
+      return null;
+    }
+
+    return updatedNote;
+  }
+
+  bool _isTextImportExtension(String fileExtension) {
+    return fileExtension == 'txt' ||
+        fileExtension == 'md' ||
+        fileExtension == 'markdown';
+  }
+
+  String _fileExtension(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex < 0 || dotIndex == fileName.length - 1) {
+      return '';
+    }
+    return fileName.substring(dotIndex).toLowerCase();
+  }
+
+  String? _mimeTypeForExtension(String extension) {
+    switch (extension) {
+      case '.pdf':
+        return 'application/pdf';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.svg':
+        return 'image/svg+xml';
+      case '.bmp':
+        return 'image/bmp';
+      case '.ico':
+        return 'image/x-icon';
+      case '.tif':
+      case '.tiff':
+        return 'image/tiff';
+      case '.txt':
+        return 'text/plain';
+      case '.md':
+      case '.markdown':
+        return 'text/markdown';
+      case '.json':
+        return 'application/json';
+      case '.csv':
+        return 'text/csv';
+      case '.yaml':
+      case '.yml':
+        return 'application/yaml';
+      case '.xml':
+        return 'application/xml';
+      case '.html':
+      case '.htm':
+        return 'text/html';
+      case '.css':
+        return 'text/css';
+      case '.js':
+        return 'text/javascript';
+      case '.dart':
+        return 'text/x-dart';
+      case '.py':
+        return 'text/x-python';
+      default:
+        return null;
     }
   }
 
@@ -1037,9 +1305,11 @@ class _HomeScreenState extends State<HomeScreen> {
           String content = '';
 
           if (note.type == NoteType.pdf && note.pdfPath != null) {
-            final pdfFile = File(note.pdfPath!);
-            if (await pdfFile.exists()) {
-              await pdfFile.copy('${exportDir.path}/$fileName.pdf');
+            final exported = await _writePdfToDestination(
+              note.pdfPath!,
+              '${exportDir.path}/$fileName.pdf',
+            );
+            if (exported) {
               exportedCount++;
             }
             continue;
@@ -1105,10 +1375,10 @@ class _HomeScreenState extends State<HomeScreen> {
         String content = '';
 
         if (note.type == NoteType.pdf && note.pdfPath != null) {
-          final pdfFile = File(note.pdfPath!);
-          if (await pdfFile.exists()) {
-            await pdfFile.copy('${folderDir.path}/$fileName.pdf');
-          }
+          await _writePdfToDestination(
+            note.pdfPath!,
+            '${folderDir.path}/$fileName.pdf',
+          );
           continue;
         } else if (note.type == NoteType.markdown) {
           extension = '.md';
@@ -1234,17 +1504,6 @@ class _HomeScreenState extends State<HomeScreen> {
       String content = '';
 
       if (note.type == NoteType.pdf && note.pdfPath != null) {
-        // Export PDF file
-        final pdfFile = File(note.pdfPath!);
-        if (!await pdfFile.exists()) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('PDF file not found')),
-            );
-          }
-          return;
-        }
-
         if (!mounted) return;
 
         // Use file picker to choose export location (with Linux fallback)
@@ -1256,10 +1515,15 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (savePath != null) {
-          await pdfFile.copy(savePath);
-          if (mounted) {
+          final exported =
+              await _writePdfToDestination(note.pdfPath!, savePath);
+          if (mounted && exported) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('PDF exported successfully')),
+            );
+          } else if (mounted && !exported) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF file not found')),
             );
           }
         }
@@ -1455,6 +1719,52 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+  }
+
+  bool _isRemoteFilePath(String path) =>
+      path.startsWith('http://') || path.startsWith('https://');
+
+  Future<bool> _writePdfToDestination(
+    String sourcePath,
+    String destinationPath,
+  ) async {
+    try {
+      if (_isRemoteFilePath(sourcePath)) {
+        final response = await http.get(Uri.parse(sourcePath));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          return false;
+        }
+        await File(destinationPath).writeAsBytes(response.bodyBytes);
+        return true;
+      }
+
+      final pdfFile = File(sourcePath);
+      if (!await pdfFile.exists()) {
+        return false;
+      }
+
+      await pdfFile.copy(destinationPath);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _sanitizeFileName(String value) {
+    final buffer = StringBuffer();
+    for (final codeUnit in value.codeUnits) {
+      final isUpper = codeUnit >= 65 && codeUnit <= 90;
+      final isLower = codeUnit >= 97 && codeUnit <= 122;
+      final isDigit = codeUnit >= 48 && codeUnit <= 57;
+      final isAllowed = isUpper ||
+          isLower ||
+          isDigit ||
+          codeUnit == 46 ||
+          codeUnit == 95 ||
+          codeUnit == 45;
+      buffer.writeCharCode(isAllowed ? codeUnit : 95);
+    }
+    return buffer.toString();
   }
 }
 
