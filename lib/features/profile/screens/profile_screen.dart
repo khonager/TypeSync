@@ -4,11 +4,20 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/user.dart';
+import '../../../core/providers/calendar_provider.dart';
+import '../../../core/providers/folders_provider.dart';
+import '../../../core/providers/homework_provider.dart';
+import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/local_file_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/sync_service.dart';
+import '../../../core/services/theme_service.dart';
 import '../../../core/routes/app_router.dart';
 
 /// User profile screen
@@ -19,18 +28,36 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    // Load storage info when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addObserver(this);
+
+    // Load storage info when screen opens and refresh auth state in case the
+    // user just verified their email in the browser.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authService = context.read<AuthService>();
+      await authService.refreshCurrentUser();
       final userId = authService.userId;
-      if (userId != null) {
+      if (userId != null && mounted) {
         context.read<StorageService>().loadStorageInfo(userId);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<AuthService>().refreshCurrentUser();
+    }
   }
 
   @override
@@ -290,8 +317,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _confirmDeleteAccount(BuildContext context) {
-    showDialog(
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
@@ -301,14 +328,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              // TODO: Implement account deletion
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
@@ -317,5 +341,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    await _deleteAccount(context);
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final authService = context.read<AuthService>();
+    final workspaceId = authService.storageUserId;
+
+    final deleted = await authService.deleteAccount();
+
+    if (!deleted) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authService.errorMessage ?? 'Failed to delete account.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    await _detachWorkspaceServices(context);
+    if (workspaceId != null) {
+      await _deleteWorkspaceData(workspaceId);
+    }
+
+    if (!context.mounted) return;
+    AppRouter.navigateAndClearStack(context, AppRouter.login);
+  }
+
+  Future<void> _detachWorkspaceServices(BuildContext context) async {
+    final syncService = context.read<SyncService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
+
+    syncService.stopListening();
+    notesProvider.setSyncService(null);
+    foldersProvider.setSyncService(null);
+    calendarProvider.setSyncService(null);
+    homeworkProvider.setSyncService(null);
+    timetableProvider.setSyncService(null);
+    themeService.setSyncService(null);
+
+    await notesProvider.closeWorkspace();
+    await foldersProvider.closeWorkspace();
+    await calendarProvider.closeWorkspace();
+    await homeworkProvider.closeWorkspace();
+    await timetableProvider.closeWorkspace();
+  }
+
+  Future<void> _deleteWorkspaceData(String workspaceId) async {
+    final boxNames = [
+      'notes_$workspaceId',
+      'folders_$workspaceId',
+      'calendar_events_$workspaceId',
+      'homework_$workspaceId',
+      'timetable_$workspaceId',
+    ];
+
+    for (final boxName in boxNames) {
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box(boxName).close();
+      }
+      await Hive.deleteBoxFromDisk(boxName);
+    }
+
+    await LocalFileService.instance.deleteWorkspaceFiles(workspaceId);
   }
 }

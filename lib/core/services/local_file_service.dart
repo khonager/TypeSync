@@ -22,15 +22,19 @@ class LocalFileService {
   LocalFileService._();
 
   Directory? _appFilesDirectory;
+  String? _activeUserId;
   bool _initialized = false;
 
   /// Initialize the service and create app files directory
   Future<void> initialize(String userId) async {
-    if (_initialized) return;
-
     // Local file storage is not supported on Web in the same way
     if (kIsWeb) {
+      _activeUserId = userId;
       _initialized = true;
+      return;
+    }
+
+    if (_initialized && _activeUserId == userId && _appFilesDirectory != null) {
       return;
     }
 
@@ -38,6 +42,7 @@ class LocalFileService {
       final appDir = await getApplicationDocumentsDirectory();
       _appFilesDirectory =
           Directory(path.join(appDir.path, 'typesync_files', userId));
+      _activeUserId = userId;
 
       if (!await _appFilesDirectory!.exists()) {
         await _appFilesDirectory!.create(recursive: true);
@@ -249,6 +254,33 @@ class LocalFileService {
       return true;
     } catch (e) {
       debugPrint('Failed to clear files: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteWorkspaceFiles(String userId) async {
+    if (kIsWeb) {
+      return true;
+    }
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final workspaceDir =
+          Directory(path.join(appDir.path, 'typesync_files', userId));
+
+      if (await workspaceDir.exists()) {
+        await workspaceDir.delete(recursive: true);
+      }
+
+      if (_activeUserId == userId) {
+        _appFilesDirectory = null;
+        _activeUserId = null;
+        _initialized = false;
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Failed to delete workspace files: $e');
       return false;
     }
   }

@@ -7,6 +7,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firedart/firedart.dart' as fd;
 import 'package:firedart/auth/user_gateway.dart' as fd;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -320,6 +321,7 @@ class AuthService extends ChangeNotifier {
 
       // Load user data from Firestore
       if (credential.user != null) {
+        _isGuestMode = false;
         await _loadUserData(credential.user!.uid);
       }
 
@@ -390,6 +392,7 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        _isGuestMode = false;
         // Update display name if provided
         if (displayName != null && displayName.isNotEmpty) {
           await credential.user!.updateDisplayName(displayName);
@@ -432,12 +435,42 @@ class AuthService extends ChangeNotifier {
 
   /// Sign in as guest (local-only mode)
   Future<void> signInAsGuest() async {
+    await _startGuestSession();
+  }
+
+  /// Continue without sync while keeping the current local workspace.
+  Future<void> continueAsGuest({String? workspaceId}) async {
     _setLoading(true);
     _clearError();
 
     try {
+      if (!_isGuestMode) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+          _firedartAuth.signOut();
+        } else {
+          await _firebaseAuth.signOut();
+        }
+      }
+
+      await _startGuestSession(workspaceId: workspaceId, setLoading: false);
+    } catch (e) {
+      _setError('Failed to continue in guest mode.');
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _startGuestSession({
+    String? workspaceId,
+    bool setLoading = true,
+  }) async {
+    if (setLoading) {
+      _setLoading(true);
+      _clearError();
+    }
+
+    try {
       // Generate a guest user ID
-      final guestId = 'guest_${_uuid.v4()}';
+      final guestId = workspaceId ?? 'guest_${_uuid.v4()}';
 
       // Create a guest user object
       _currentUser = User(
@@ -450,6 +483,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _isGuestMode = true;
+      _isInitialized = true;
       _setLoading(false);
       notifyListeners();
     } catch (e) {
@@ -560,6 +594,102 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Reload the authenticated user so email verification and profile data stay fresh.
+  Future<bool> refreshCurrentUser() async {
+    if (_currentUser == null || _isGuestMode) {
+      return false;
+    }
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final fdUser = await _firedartAuth.getUser();
+        await _onFiredartAuthChanged(fdUser);
+        return true;
+      }
+
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        return false;
+      }
+
+      await firebaseUser.reload();
+      final reloadedUser = _firebaseAuth.currentUser;
+      if (reloadedUser == null) {
+        return false;
+      }
+
+      await _loadUserData(reloadedUser.uid, firebaseUser: reloadedUser);
+      return true;
+    } catch (e) {
+      _setError('Failed to refresh account details.');
+      return false;
+    }
+  }
+
+  /// Delete the authenticated account and its cloud data.
+  Future<bool> deleteAccount() async {
+    if (_currentUser == null || _isGuestMode) {
+      _setError('No signed-in account to delete.');
+      return false;
+    }
+
+    _setLoading(true);
+    _clearError();
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        _setError('Account deletion is not supported on Linux yet.');
+        _setLoading(false);
+        return false;
+      }
+
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        _setError('No signed-in account to delete.');
+        _setLoading(false);
+        return false;
+      }
+
+      final uid = firebaseUser.uid;
+
+      await _deleteUserCollection('notes', uid);
+      await _deleteUserCollection('folders', uid);
+      await _deleteUserCollection('homework', uid);
+      await _deleteUserCollection('calendar_events', uid);
+      await _deleteUserCollection('timetable_entries', uid);
+      await _firebaseFirestore
+          .collection('settings')
+          .doc(uid)
+          .delete()
+          .catchError((_) {});
+      await _firebaseFirestore
+          .collection('users')
+          .doc(uid)
+          .delete()
+          .catchError((_) {});
+      await _deleteUserStorageFolder(uid);
+      await firebaseUser.delete();
+
+      _currentUser = null;
+      _isGuestMode = false;
+      _setLoading(false);
+      notifyListeners();
+      return true;
+    } on firebase.FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        _setError('Please sign in again before deleting your account.');
+      } else {
+        _setError(_mapFirebaseError(e.code));
+      }
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to delete account. Please try again.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
   /// Update user profile
   Future<bool> updateProfile({
     String? displayName,
@@ -636,7 +766,8 @@ class AuthService extends ChangeNotifier {
 
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
-    if (firebaseUser != null && !_isGuestMode) {
+    if (firebaseUser != null) {
+      _isGuestMode = false;
       await _loadUserData(firebaseUser.uid);
       _isInitialized = true;
       notifyListeners();
@@ -654,7 +785,7 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Load user data from Firestore
-  Future<void> _loadUserData(String uid) async {
+  Future<void> _loadUserData(String uid, {firebase.User? firebaseUser}) async {
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = fd.Firestore.instance;
@@ -687,17 +818,33 @@ class AuthService extends ChangeNotifier {
         }
       } else {
         final doc = await _firebaseFirestore.collection('users').doc(uid).get();
+        final activeFirebaseUser = firebaseUser ?? _firebaseAuth.currentUser;
 
         if (doc.exists) {
-          _currentUser = User.fromJson(doc.data()!);
+          final firestoreUser = User.fromJson(doc.data()!);
+          final emailVerified =
+              activeFirebaseUser?.emailVerified ?? firestoreUser.emailVerified;
+
+          _currentUser = firestoreUser.copyWith(
+            email: activeFirebaseUser?.email ?? firestoreUser.email,
+            displayName:
+                activeFirebaseUser?.displayName ?? firestoreUser.displayName,
+            photoUrl: activeFirebaseUser?.photoURL ?? firestoreUser.photoUrl,
+            emailVerified: emailVerified,
+          );
 
           // Update last sign in
           await _firebaseFirestore.collection('users').doc(uid).update({
             'lastSignIn': DateTime.now().toIso8601String(),
+            'emailVerified': emailVerified,
+            'email': activeFirebaseUser?.email ?? firestoreUser.email,
+            'displayName':
+                activeFirebaseUser?.displayName ?? firestoreUser.displayName,
+            'photoUrl': activeFirebaseUser?.photoURL ?? firestoreUser.photoUrl,
           });
         } else {
           // Create user document if it doesn't exist (e.g., after auth migration)
-          final firebaseUser = _firebaseAuth.currentUser!;
+          final firebaseUser = activeFirebaseUser!;
           final user = User(
             id: uid,
             email: firebaseUser.email!,
@@ -760,8 +907,47 @@ class AuthService extends ChangeNotifier {
         return 'Email/password sign in is not enabled.';
       case 'network-request-failed':
         return 'Network error. Check your connection.';
+      case 'requires-recent-login':
+        return 'Please sign in again to continue.';
       default:
         return 'Authentication failed. Please try again.';
+    }
+  }
+
+  Future<void> _deleteUserCollection(String collectionName, String userId) async {
+    while (true) {
+      final snapshot = await _firebaseFirestore
+          .collection(collectionName)
+          .where('userId', isEqualTo: userId)
+          .limit(100)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        break;
+      }
+
+      final batch = _firebaseFirestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _deleteUserStorageFolder(String userId) async {
+    final rootRef = FirebaseStorage.instance.ref().child('users/$userId');
+    await _deleteStorageFolder(rootRef);
+  }
+
+  Future<void> _deleteStorageFolder(Reference ref) async {
+    final result = await ref.listAll();
+
+    for (final item in result.items) {
+      await item.delete();
+    }
+
+    for (final prefix in result.prefixes) {
+      await _deleteStorageFolder(prefix);
     }
   }
 

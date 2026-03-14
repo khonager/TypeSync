@@ -236,13 +236,13 @@ class SettingsScreen extends StatelessWidget {
 
           const Divider(),
 
-          // Sign out
-          _SettingsTile(
-            icon: Icons.logout,
-            title: 'Sign Out',
-            titleColor: Colors.red,
-            onTap: () => _confirmSignOut(context, authService),
-          ),
+          if (authService.isLoggedIn)
+            _SettingsTile(
+              icon: Icons.logout,
+              title: 'Sign Out',
+              titleColor: Colors.red,
+              onTap: () => _confirmSignOut(context, authService),
+            ),
 
           const SizedBox(height: 32),
         ],
@@ -779,32 +779,147 @@ class SettingsScreen extends StatelessWidget {
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
-  void _confirmSignOut(BuildContext context, AuthService authService) {
-    showDialog(
+  Future<void> _confirmSignOut(BuildContext context, AuthService authService) async {
+    final action = await showDialog<_SignOutAction>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
+        content: const Text(
+          'Choose whether to keep your files on this device and continue as a guest, or remove all local files and return to the login screen.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _SignOutAction.continueAsGuest),
+            child: const Text('Keep Files'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              authService.signOut();
-              AppRouter.navigateAndClearStack(context, AppRouter.login);
-            },
+            onPressed: () =>
+                Navigator.pop(context, _SignOutAction.deleteLocalAndSignOut),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
             ),
-            child: const Text('Sign Out'),
+            child: const Text('Delete Files & Sign Out'),
           ),
         ],
       ),
     );
+
+    if (!context.mounted || action == null) {
+      return;
+    }
+
+    switch (action) {
+      case _SignOutAction.continueAsGuest:
+        await _continueAsGuest(context);
+        break;
+      case _SignOutAction.deleteLocalAndSignOut:
+        await _deleteLocalFilesAndSignOut(context);
+        break;
+    }
   }
+
+  Future<void> _continueAsGuest(BuildContext context) async {
+    final authService = context.read<AuthService>();
+    final workspaceId = authService.storageUserId ?? authService.userId;
+    await _detachWorkspaceServices(context);
+    await authService.continueAsGuest(workspaceId: workspaceId);
+
+    if (!authService.isGuestMode) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authService.errorMessage ?? 'Failed to continue as guest.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final guestWorkspaceId = authService.storageUserId;
+    if (guestWorkspaceId != null) {
+      await LocalFileService.instance.initialize(guestWorkspaceId);
+      await context.read<NotesProvider>().initialize(guestWorkspaceId);
+      await context.read<FoldersProvider>().initialize(guestWorkspaceId);
+      await context.read<CalendarProvider>().initialize(guestWorkspaceId);
+      await context.read<HomeworkProvider>().initialize(guestWorkspaceId);
+      await context.read<TimetableProvider>().initialize(guestWorkspaceId);
+    }
+
+    if (!context.mounted) return;
+    AppRouter.navigateAndClearStack(context, AppRouter.home);
+  }
+
+  Future<void> _deleteLocalFilesAndSignOut(BuildContext context) async {
+    final authService = context.read<AuthService>();
+    final workspaceId = authService.storageUserId;
+
+    await _detachWorkspaceServices(context);
+    if (workspaceId != null) {
+      await _deleteWorkspaceData(context, workspaceId);
+    }
+    await authService.signOut();
+
+    if (!context.mounted) return;
+    AppRouter.navigateAndClearStack(context, AppRouter.login);
+  }
+
+  Future<void> _detachWorkspaceServices(BuildContext context) async {
+    final syncService = context.read<SyncService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
+
+    syncService.stopListening();
+    notesProvider.setSyncService(null);
+    foldersProvider.setSyncService(null);
+    calendarProvider.setSyncService(null);
+    homeworkProvider.setSyncService(null);
+    timetableProvider.setSyncService(null);
+    themeService.setSyncService(null);
+
+    await notesProvider.closeWorkspace();
+    await foldersProvider.closeWorkspace();
+    await calendarProvider.closeWorkspace();
+    await homeworkProvider.closeWorkspace();
+    await timetableProvider.closeWorkspace();
+  }
+
+  Future<void> _deleteWorkspaceData(
+    BuildContext context,
+    String workspaceId,
+  ) async {
+    final boxNames = [
+      'notes_$workspaceId',
+      'folders_$workspaceId',
+      'calendar_events_$workspaceId',
+      'homework_$workspaceId',
+      'timetable_$workspaceId',
+    ];
+
+    for (final boxName in boxNames) {
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box(boxName).close();
+      }
+      await Hive.deleteBoxFromDisk(boxName);
+    }
+
+    await LocalFileService.instance.deleteWorkspaceFiles(workspaceId);
+  }
+}
+
+enum _SignOutAction {
+  continueAsGuest,
+  deleteLocalAndSignOut,
 }
 
 class _SectionHeader extends StatelessWidget {

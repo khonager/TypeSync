@@ -36,6 +36,7 @@ class TypeSyncAppContent extends StatelessWidget {
 
         // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
         routes: {
+          AppRouter.login: AppRouter.routes[AppRouter.login]!,
           AppRouter.editor: AppRouter.routes[AppRouter.editor]!,
           AppRouter.register: AppRouter.routes[AppRouter.register]!,
           AppRouter.settings: AppRouter.routes[AppRouter.settings]!,
