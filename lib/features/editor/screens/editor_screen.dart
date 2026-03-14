@@ -95,6 +95,9 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
   bool _hasStartedCloudMigration = false;
+  bool _hideAttachmentPreview = false;
+  double _sideBySideAttachmentFraction = 0.46;
+  double _stackedAttachmentHeight = 320;
 
   @override
   void initState() {
@@ -466,6 +469,8 @@ class _EditorScreenState extends State<EditorScreen> {
         isDesktop && MediaQuery.of(context).size.width >= 1100;
     final showSideBySide =
         canSideBySide && _sideBySideAttachments && activeAttachment != null;
+    final showAttachmentPreview =
+        activeAttachment != null && !_hideAttachmentPreview;
 
     return Container(
       width: double.infinity,
@@ -478,42 +483,164 @@ class _EditorScreenState extends State<EditorScreen> {
             attachments,
             activeAttachment,
             canSideBySide,
+            showAttachmentPreview,
           ),
           const SizedBox(height: 12),
           Expanded(
             child: showSideBySide
-                ? Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: _buildAttachmentPreview(activeAttachment),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 6,
-                        child: _buildEditorSurface(bgColor),
-                      ),
-                    ],
+                ? _buildSideBySideEditorLayout(
+                    activeAttachment,
+                    bgColor,
+                    showAttachmentPreview,
                   )
-                : Column(
-                    children: [
-                      if (activeAttachment != null)
-                        Container(
-                          height: 260,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: Card(
-                            clipBehavior: Clip.antiAlias,
-                            child: _buildAttachmentPreview(activeAttachment),
-                          ),
-                        ),
-                      Expanded(child: _buildEditorSurface(bgColor)),
-                    ],
+                : _buildStackedEditorLayout(
+                    activeAttachment,
+                    bgColor,
+                    showAttachmentPreview,
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSideBySideEditorLayout(
+    NoteAttachment? activeAttachment,
+    Color? bgColor,
+    bool showAttachmentPreview,
+  ) {
+    if (!showAttachmentPreview || activeAttachment == null) {
+      return _buildEditorSurface(bgColor);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const dividerWidth = 18.0;
+        final availableWidth = constraints.maxWidth - dividerWidth;
+        final attachmentWidth =
+            (availableWidth * _sideBySideAttachmentFraction).clamp(
+              280.0,
+              availableWidth - 320.0,
+            );
+        final editorWidth = availableWidth - attachmentWidth;
+
+        return Row(
+          children: [
+            SizedBox(
+              width: attachmentWidth,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: _buildAttachmentPreview(activeAttachment),
+              ),
+            ),
+            _buildHorizontalResizeHandle(availableWidth),
+            SizedBox(
+              width: editorWidth,
+              child: _buildEditorSurface(bgColor),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStackedEditorLayout(
+    NoteAttachment? activeAttachment,
+    Color? bgColor,
+    bool showAttachmentPreview,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!showAttachmentPreview || activeAttachment == null) {
+          return _buildEditorSurface(bgColor);
+        }
+
+        const dividerHeight = 18.0;
+        final availableHeight = constraints.maxHeight - dividerHeight;
+        final attachmentHeight = _stackedAttachmentHeight.clamp(
+          180.0,
+          availableHeight - 180.0,
+        );
+        final editorHeight = availableHeight - attachmentHeight;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: attachmentHeight,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: _buildAttachmentPreview(activeAttachment),
+              ),
+            ),
+            _buildVerticalResizeHandle(availableHeight),
+            SizedBox(
+              height: editorHeight,
+              child: _buildEditorSurface(bgColor),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHorizontalResizeHandle(double availableWidth) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) {
+          setState(() {
+            final nextWidth =
+                availableWidth * _sideBySideAttachmentFraction + details.delta.dx;
+            _sideBySideAttachmentFraction =
+                (nextWidth / availableWidth).clamp(0.25, 0.72);
+          });
+        },
+        child: SizedBox(
+          width: 18,
+          child: Center(
+            child: Container(
+              width: 4,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerticalResizeHandle(double availableHeight) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeRow,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: (details) {
+          setState(() {
+            _stackedAttachmentHeight = (_stackedAttachmentHeight + details.delta.dy)
+                .clamp(180.0, availableHeight - 180.0);
+          });
+        },
+        child: SizedBox(
+          height: 18,
+          child: Center(
+            child: Container(
+              width: 72,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -542,6 +669,7 @@ class _EditorScreenState extends State<EditorScreen> {
     List<NoteAttachment> attachments,
     NoteAttachment? activeAttachment,
     bool canSideBySide,
+    bool showAttachmentPreview,
   ) {
     return Card(
       margin: EdgeInsets.zero,
@@ -575,6 +703,22 @@ class _EditorScreenState extends State<EditorScreen> {
                           : Icons.view_agenda,
                     ),
                   ),
+                if (activeAttachment != null)
+                  IconButton(
+                    tooltip: showAttachmentPreview
+                        ? 'Hide attachment preview'
+                        : 'Show attachment preview',
+                    onPressed: () {
+                      setState(() {
+                        _hideAttachmentPreview = !_hideAttachmentPreview;
+                      });
+                    },
+                    icon: Icon(
+                      showAttachmentPreview
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
                 TextButton.icon(
                   onPressed: _insertPdf,
                   icon: const Icon(Icons.add),
@@ -602,6 +746,9 @@ class _EditorScreenState extends State<EditorScreen> {
                           setState(() {
                             _activeAttachmentId =
                                 selected ? attachment.id : null;
+                            if (selected) {
+                              _hideAttachmentPreview = false;
+                            }
                           });
                         },
                       ),
