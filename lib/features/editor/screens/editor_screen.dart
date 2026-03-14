@@ -98,6 +98,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _hideAttachmentPreview = false;
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
+  bool _attachmentsExpanded = false;
 
   @override
   void initState() {
@@ -479,13 +480,15 @@ class _EditorScreenState extends State<EditorScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          _buildAttachmentsSection(
-            attachments,
-            activeAttachment,
-            canSideBySide,
-            showAttachmentPreview,
-          ),
-          const SizedBox(height: 12),
+          if (attachments.isNotEmpty) ...[
+            _buildAttachmentsSection(
+              attachments,
+              activeAttachment,
+              canSideBySide,
+              showAttachmentPreview,
+            ),
+            const SizedBox(height: 12),
+          ],
           Expanded(
             child: showSideBySide
                 ? _buildSideBySideEditorLayout(
@@ -519,9 +522,9 @@ class _EditorScreenState extends State<EditorScreen> {
         final availableWidth = constraints.maxWidth - dividerWidth;
         final attachmentWidth =
             (availableWidth * _sideBySideAttachmentFraction).clamp(
-              280.0,
-              availableWidth - 320.0,
-            );
+          280.0,
+          availableWidth - 320.0,
+        );
         final editorWidth = availableWidth - attachmentWidth;
 
         return Row(
@@ -590,8 +593,8 @@ class _EditorScreenState extends State<EditorScreen> {
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) {
           setState(() {
-            final nextWidth =
-                availableWidth * _sideBySideAttachmentFraction + details.delta.dx;
+            final nextWidth = availableWidth * _sideBySideAttachmentFraction +
+                details.delta.dx;
             _sideBySideAttachmentFraction =
                 (nextWidth / availableWidth).clamp(0.25, 0.72);
           });
@@ -622,8 +625,9 @@ class _EditorScreenState extends State<EditorScreen> {
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
           setState(() {
-            _stackedAttachmentHeight = (_stackedAttachmentHeight + details.delta.dy)
-                .clamp(180.0, availableHeight - 180.0);
+            _stackedAttachmentHeight =
+                (_stackedAttachmentHeight + details.delta.dy)
+                    .clamp(180.0, availableHeight - 180.0);
           });
         },
         child: SizedBox(
@@ -671,64 +675,181 @@ class _EditorScreenState extends State<EditorScreen> {
     bool canSideBySide,
     bool showAttachmentPreview,
   ) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.attach_file),
-                const SizedBox(width: 8),
-                Text(
-                  'Attachments (${attachments.length})',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const Spacer(),
-                if (canSideBySide)
-                  IconButton(
-                    tooltip: _sideBySideAttachments
-                        ? 'Switch to stacked view'
-                        : 'Switch to side-by-side view',
-                    onPressed: () {
-                      setState(() {
-                        _sideBySideAttachments = !_sideBySideAttachments;
-                      });
-                    },
-                    icon: Icon(
-                      _sideBySideAttachments
-                          ? Icons.splitscreen
-                          : Icons.view_agenda,
-                    ),
-                  ),
-                if (activeAttachment != null)
-                  IconButton(
-                    tooltip: showAttachmentPreview
-                        ? 'Hide attachment preview'
-                        : 'Show attachment preview',
-                    onPressed: () {
-                      setState(() {
-                        _hideAttachmentPreview = !_hideAttachmentPreview;
-                      });
-                    },
-                    icon: Icon(
-                      showAttachmentPreview
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                TextButton.icon(
-                  onPressed: _insertPdf,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Attach'),
-                ),
-              ],
+    if (attachments.length == 1 && activeAttachment != null) {
+      return _buildSingleAttachmentBar(
+        activeAttachment,
+        canSideBySide,
+        showAttachmentPreview,
+      );
+    }
+
+    return _buildMultiAttachmentBar(
+      attachments,
+      activeAttachment,
+      canSideBySide,
+      showAttachmentPreview,
+    );
+  }
+
+  Widget _buildSingleAttachmentBar(
+    NoteAttachment attachment,
+    bool canSideBySide,
+    bool showAttachmentPreview,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.attach_file,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              attachment.name,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (attachments.isNotEmpty) const SizedBox(height: 8),
-            if (attachments.isNotEmpty)
-              Wrap(
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '1 attachment',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(width: 8),
+          if (canSideBySide)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: _sideBySideAttachments
+                  ? 'Switch to stacked view'
+                  : 'Switch to side-by-side view',
+              onPressed: () {
+                setState(() {
+                  _sideBySideAttachments = !_sideBySideAttachments;
+                });
+              },
+              icon: Icon(
+                _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+              ),
+            ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: showAttachmentPreview
+                ? 'Hide attachment preview'
+                : 'Show attachment preview',
+            onPressed: () {
+              setState(() {
+                _hideAttachmentPreview = !_hideAttachmentPreview;
+              });
+            },
+            icon: Icon(
+              showAttachmentPreview
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _insertPdf,
+            icon: const Icon(Icons.add),
+            label: const Text('Attach'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiAttachmentBar(
+    List<NoteAttachment> attachments,
+    NoteAttachment? activeAttachment,
+    bool canSideBySide,
+    bool showAttachmentPreview,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.attach_file,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${attachments.length} attachments'
+                  '${activeAttachment != null ? ' • ${activeAttachment.name}' : ''}',
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _attachmentsExpanded = !_attachmentsExpanded;
+                  });
+                },
+                child: Text(_attachmentsExpanded ? 'Collapse' : 'Expand'),
+              ),
+              if (canSideBySide)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: _sideBySideAttachments
+                      ? 'Switch to stacked view'
+                      : 'Switch to side-by-side view',
+                  onPressed: () {
+                    setState(() {
+                      _sideBySideAttachments = !_sideBySideAttachments;
+                    });
+                  },
+                  icon: Icon(
+                    _sideBySideAttachments
+                        ? Icons.splitscreen
+                        : Icons.view_agenda,
+                  ),
+                ),
+              if (activeAttachment != null)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: showAttachmentPreview
+                      ? 'Hide attachment preview'
+                      : 'Show attachment preview',
+                  onPressed: () {
+                    setState(() {
+                      _hideAttachmentPreview = !_hideAttachmentPreview;
+                    });
+                  },
+                  icon: Icon(
+                    showAttachmentPreview
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
+              TextButton.icon(
+                onPressed: _insertPdf,
+                icon: const Icon(Icons.add),
+                label: const Text('Attach'),
+              ),
+            ],
+          ),
+          if (_attachmentsExpanded) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: attachments
@@ -736,7 +857,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       (attachment) => ChoiceChip(
                         selected: activeAttachment?.id == attachment.id,
                         label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 240),
+                          constraints: const BoxConstraints(maxWidth: 220),
                           child: Text(
                             attachment.name,
                             overflow: TextOverflow.ellipsis,
@@ -755,8 +876,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     )
                     .toList(),
               ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

@@ -975,7 +975,8 @@ class _HomeScreenState extends State<HomeScreen> {
             final errorMessage = storageService.errorMessage;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(errorMessage ?? 'Failed to import PDF: $fileName'),
+                content:
+                    Text(errorMessage ?? 'Failed to import PDF: $fileName'),
               ),
             );
           }

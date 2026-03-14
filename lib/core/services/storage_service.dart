@@ -606,7 +606,8 @@ class StorageService extends ChangeNotifier {
     return DefaultFirebaseOptions.currentPlatform.storageBucket ?? '';
   }
 
-  String _storageObjectPath(String userId, String path) => 'users/$userId/$path';
+  String _storageObjectPath(String userId, String path) =>
+      'users/$userId/$path';
 
   Future<String> _uploadDataLinux({
     required String userId,
