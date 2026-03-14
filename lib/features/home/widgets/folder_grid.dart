@@ -50,7 +50,7 @@ class FolderGrid extends StatelessWidget {
 }
 
 /// Individual folder item in grid
-class FolderGridItem extends StatefulWidget {
+class FolderGridItem extends StatelessWidget {
   final Folder folder;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
@@ -67,23 +67,16 @@ class FolderGridItem extends StatefulWidget {
   });
 
   @override
-  State<FolderGridItem> createState() => _FolderGridItemState();
-}
-
-class _FolderGridItemState extends State<FolderGridItem> {
-  bool _isDragOver = false;
-
-  @override
   Widget build(BuildContext context) {
     // Parse background color if set
-    final bgColor = widget.folder.backgroundColor != null
+    final bgColor = folder.backgroundColor != null
         ? Color(
-            int.parse(widget.folder.backgroundColor!.replaceFirst('#', '0xFF')),
+            int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')),
           )
         : AppTheme.folderDefault;
 
     return Draggable<String>(
-      data: 'folder:${widget.folder.id}',
+      data: 'folder:${folder.id}',
       feedback: Material(
         elevation: 8,
         borderRadius: BorderRadius.circular(12),
@@ -99,50 +92,43 @@ class _FolderGridItemState extends State<FolderGridItem> {
       ),
       childWhenDragging: Opacity(
         opacity: 0.3,
-        child: _buildFolderContent(bgColor),
+        child: _buildFolderContent(context, bgColor),
       ),
       child: DragTarget<String>(
         onWillAcceptWithDetails: (details) =>
-            details.data != 'folder:${widget.folder.id}',
+            details.data != 'folder:${folder.id}',
         onAcceptWithDetails: (details) {
           final data = details.data;
           if (data.startsWith('note:')) {
             final noteId = data.substring(5);
-            widget.onNoteDropped?.call(noteId, widget.folder.id);
+            onNoteDropped?.call(noteId, folder.id);
           } else if (data.startsWith('folder:')) {
             final folderId = data.substring(7);
-            widget.onFolderDropped?.call(folderId, widget.folder.id);
+            onFolderDropped?.call(folderId, folder.id);
           }
-          setState(() {
-            _isDragOver = false;
-          });
-        },
-        onLeave: (data) {
-          setState(() {
-            _isDragOver = false;
-          });
-        },
-        onMove: (details) {
-          setState(() {
-            _isDragOver = true;
-          });
         },
         builder: (context, candidateData, rejectedData) {
+          final isDragOver = candidateData.isNotEmpty;
           return _buildFolderContent(
-            _isDragOver
+            context,
+            isDragOver
                 ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
                 : bgColor,
-            showBorder: _isDragOver,
+            showBorder: isDragOver,
           );
         },
       ),
     );
   }
 
-  Widget _buildFolderContent(Color bgColor, {bool showBorder = false}) {
+  Widget _buildFolderContent(
+    BuildContext context,
+    Color bgColor, {
+    bool showBorder = false,
+  }) {
     return GestureDetector(
-      onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
+      onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -171,21 +157,20 @@ class _FolderGridItemState extends State<FolderGridItem> {
           const SizedBox(height: 8),
           // Folder name
           Text(
-            widget.folder.name,
+            folder.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: widget.folder.backgroundColor != null
+                  color: folder.backgroundColor != null
                       ? AppColorPalette.getContrastingTextColor(bgColor)
                       : null,
                 ),
             textAlign: TextAlign.center,
           ),
           // Subtitle if present
-          if (widget.folder.subtitle != null &&
-              widget.folder.subtitle!.isNotEmpty)
+          if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
             Text(
-              widget.folder.subtitle!,
+              folder.subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(

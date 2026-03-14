@@ -283,6 +283,8 @@ class FoldersProvider extends ChangeNotifier {
 
   /// Handle folders updated from cloud
   void handleCloudUpdate(List<Folder> cloudFolders) {
+    final cloudIds = cloudFolders.map((folder) => folder.id).toSet();
+
     for (final cloudFolder in cloudFolders) {
       final localIndex = _folders.indexWhere((f) => f.id == cloudFolder.id);
 
@@ -297,6 +299,24 @@ class FoldersProvider extends ChangeNotifier {
       } else {
         _folders.add(cloudFolder);
         _foldersBox?.put(cloudFolder.id, cloudFolder);
+      }
+    }
+
+    final staleFolderIds = _folders
+        .where(
+          (folder) =>
+              folder.userId == _activeUserId &&
+              !folder.isDirty &&
+              !folder.isDeleted &&
+              !cloudIds.contains(folder.id),
+        )
+        .map((folder) => folder.id)
+        .toList();
+
+    if (staleFolderIds.isNotEmpty) {
+      _folders.removeWhere((folder) => staleFolderIds.contains(folder.id));
+      for (final folderId in staleFolderIds) {
+        _foldersBox?.delete(folderId);
       }
     }
 
@@ -372,6 +392,15 @@ class FoldersProvider extends ChangeNotifier {
     return copied;
   }
 
+  Future<void> closeWorkspace() async {
+    _folders = [];
+    _activeUserId = null;
+    if (_foldersBox != null && _foldersBox!.isOpen) {
+      await _foldersBox!.close();
+    }
+    _foldersBox = null;
+  }
+
   @override
   void dispose() {
     _syncSubscription?.cancel();
@@ -386,12 +415,18 @@ class FolderAdapter extends TypeAdapter<Folder> {
 
   @override
   Folder read(BinaryReader reader) {
+    final id = reader.readString();
+    final name = reader.readString();
+    final subtitleRaw = reader.readString();
+    final parentIdRaw = reader.readString();
+    final backgroundColorRaw = reader.readString();
+
     return Folder(
-      id: reader.readString(),
-      name: reader.readString(),
-      subtitle: reader.readString(),
-      parentId: reader.readString(),
-      backgroundColor: reader.readString(),
+      id: id,
+      name: name,
+      subtitle: subtitleRaw.isEmpty ? null : subtitleRaw,
+      parentId: parentIdRaw.isEmpty ? null : parentIdRaw,
+      backgroundColor: backgroundColorRaw.isEmpty ? null : backgroundColorRaw,
       icon: reader.readString(),
       createdAt: DateTime.parse(reader.readString()),
       updatedAt: DateTime.parse(reader.readString()),

@@ -364,6 +364,8 @@ class NotesProvider extends ChangeNotifier {
 
   /// Handle notes updated from cloud
   void handleCloudUpdate(List<Note> cloudNotes) {
+    final cloudIds = cloudNotes.map((note) => note.id).toSet();
+
     for (final cloudNote in cloudNotes) {
       final localIndex = _notes.indexWhere((n) => n.id == cloudNote.id);
 
@@ -405,6 +407,25 @@ class NotesProvider extends ChangeNotifier {
         // New note from cloud
         _notes.add(cloudNote);
         _notesBox?.put(cloudNote.id, cloudNote);
+      }
+    }
+
+    final staleNoteIds = _notes
+        .where(
+          (note) =>
+              note.userId == _activeUserId &&
+              !note.localOnly &&
+              !note.isDirty &&
+              !note.isDeleted &&
+              !cloudIds.contains(note.id),
+        )
+        .map((note) => note.id)
+        .toList();
+
+    if (staleNoteIds.isNotEmpty) {
+      _notes.removeWhere((note) => staleNoteIds.contains(note.id));
+      for (final noteId in staleNoteIds) {
+        _notesBox?.delete(noteId);
       }
     }
 
@@ -533,6 +554,15 @@ class NotesProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<void> closeWorkspace() async {
+    _notes = [];
+    _activeUserId = null;
+    if (_notesBox != null && _notesBox!.isOpen) {
+      await _notesBox!.close();
+    }
+    _notesBox = null;
   }
 
   @override

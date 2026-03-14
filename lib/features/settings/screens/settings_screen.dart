@@ -4,6 +4,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/theme_service.dart';
@@ -11,6 +13,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/diagnostics_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/calendar_provider.dart';
@@ -28,6 +31,7 @@ class SettingsScreen extends StatelessWidget {
     final authService = context.watch<AuthService>();
     final syncService = context.watch<SyncService>();
     final localSyncService = context.watch<LocalFolderSyncService>();
+    final diagnosticsService = context.watch<DiagnosticsService>();
 
     return Scaffold(
       appBar: AppBar(
@@ -189,6 +193,24 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _showLocalFolderSync(context),
           ),
 
+          _SettingsTile(
+            icon: Icons.bug_report_outlined,
+            title: 'Diagnostics Log',
+            subtitle: diagnosticsService.hasEntries
+                ? '${diagnosticsService.entries.length} entries available'
+                : 'No warnings or errors recorded',
+            onTap: () => _showDiagnosticsLog(context),
+          ),
+
+          if (authService.isLoggedIn)
+            _SettingsTile(
+              icon: Icons.cleaning_services_outlined,
+              title: 'Reset Local Sync Cache',
+              subtitle: 'Clear only this device workspace cache and redownload',
+              titleColor: Colors.orange,
+              onTap: () => _confirmResetLocalCache(context),
+            ),
+
           const Divider(),
 
           // About Section
@@ -343,6 +365,190 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showDiagnosticsLog(BuildContext context) {
+    final diagnosticsService = context.read<DiagnosticsService>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Diagnostics Log'),
+        content: SizedBox(
+          width: 640,
+          child: Consumer<DiagnosticsService>(
+            builder: (context, diagnostics, _) {
+              if (!diagnostics.hasEntries) {
+                return const Text('No diagnostics have been recorded yet.');
+              }
+
+              final lines = diagnostics.entries.reversed
+                  .map((entry) => entry.toDisplayLine())
+                  .toList();
+
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 420),
+                child: SingleChildScrollView(
+                  child: SelectableText(lines.join('\n\n')),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () {
+              diagnosticsService.clear();
+            },
+            child: const Text('Clear'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await Clipboard.setData(
+                ClipboardData(text: diagnosticsService.exportText()),
+              );
+              if (dialogContext.mounted && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Diagnostics copied')),
+                );
+              }
+            },
+            child: const Text('Copy'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmResetLocalCache(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset local cache?'),
+        content: const Text(
+          'This clears the current workspace cache on this device only and then reloads it from cloud sync. Cloud data will not be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      await _resetLocalCache(context);
+    }
+  }
+
+  Future<void> _resetLocalCache(BuildContext context) async {
+    final authService = context.read<AuthService>();
+    final syncService = context.read<SyncService>();
+    final diagnosticsService = context.read<DiagnosticsService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
+
+    final workspaceId = authService.storageUserId;
+    final cloudUserId = authService.userId;
+    if (workspaceId == null || cloudUserId == null) {
+      diagnosticsService.warning(
+        'LocalCacheReset',
+        'Skipped local cache reset because no logged-in workspace was active',
+      );
+      return;
+    }
+
+    diagnosticsService.info(
+      'LocalCacheReset',
+      'Clearing local cache for workspace $workspaceId',
+    );
+
+    syncService.stopListening();
+    notesProvider.setSyncService(null);
+    foldersProvider.setSyncService(null);
+    calendarProvider.setSyncService(null);
+    homeworkProvider.setSyncService(null);
+    timetableProvider.setSyncService(null);
+    themeService.setSyncService(null);
+
+    await notesProvider.closeWorkspace();
+    await foldersProvider.closeWorkspace();
+    await calendarProvider.closeWorkspace();
+    await homeworkProvider.closeWorkspace();
+    await timetableProvider.closeWorkspace();
+
+    final boxNames = [
+      'notes_$workspaceId',
+      'folders_$workspaceId',
+      'calendar_events_$workspaceId',
+      'homework_$workspaceId',
+      'timetable_$workspaceId',
+    ];
+
+    try {
+      for (final boxName in boxNames) {
+        if (Hive.isBoxOpen(boxName)) {
+          await Hive.box(boxName).close();
+        }
+        await Hive.deleteBoxFromDisk(boxName);
+      }
+
+      await LocalFileService.instance.clearAllFiles();
+
+      await notesProvider.initialize(workspaceId);
+      await foldersProvider.initialize(workspaceId);
+      await calendarProvider.initialize(workspaceId);
+      await homeworkProvider.initialize(workspaceId);
+      await timetableProvider.initialize(workspaceId);
+
+      syncService.setSyncEnabled(authService.effectiveSyncEnabled);
+      if (authService.effectiveSyncEnabled) {
+        syncService.startListening(cloudUserId);
+        notesProvider.setSyncService(syncService);
+        foldersProvider.setSyncService(syncService);
+        calendarProvider.setSyncService(syncService);
+        homeworkProvider.setSyncService(syncService);
+        timetableProvider.setSyncService(syncService);
+        themeService.setSyncService(syncService);
+        syncService.refresh();
+      }
+
+      diagnosticsService.info(
+        'LocalCacheReset',
+        'Local cache reset complete for workspace $workspaceId',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Local cache cleared. Sync is reloading from cloud.'),
+          ),
+        );
+      }
+    } catch (e) {
+      diagnosticsService.error(
+        'LocalCacheReset',
+        'Failed to reset local cache: $e',
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reset local cache: $e')),
+        );
+      }
+    }
   }
 
   void _showLocalFolderSync(BuildContext context) {

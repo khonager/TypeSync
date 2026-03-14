@@ -258,6 +258,14 @@ class HomeworkProvider extends ChangeNotifier {
     await updateHomework(homework.copyWith(isCompleted: !homework.isCompleted));
   }
 
+  Future<void> closeWorkspace() async {
+    _homework = [];
+    if (_homeworkBox != null && _homeworkBox!.isOpen) {
+      await _homeworkBox!.close();
+    }
+    _homeworkBox = null;
+  }
+
   /// Get homework by ID
   Homework? getHomeworkById(String homeworkId) {
     try {

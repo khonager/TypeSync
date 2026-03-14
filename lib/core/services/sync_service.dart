@@ -16,6 +16,7 @@ import '../models/folder.dart';
 import '../models/calendar_event.dart';
 import '../models/homework.dart';
 import '../models/timetable_entry.dart';
+import 'diagnostics_service.dart';
 
 /// Sync status enum
 enum SyncStatus {
@@ -68,6 +69,8 @@ class SyncService extends ChangeNotifier {
   String? _errorMessage;
   DateTime? _lastSyncTime;
   bool _isOnline = true;
+  Timer? _refreshTimeoutTimer;
+  bool _awaitingRefreshResult = false;
 
   // Stream subscriptions for real-time updates (cloud_firestore)
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
@@ -143,6 +146,8 @@ class SyncService extends ChangeNotifier {
     _initSyncDebouncer();
   }
 
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   /// Initialize connectivity listener
   void _initConnectivityListener() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
@@ -181,20 +186,27 @@ class SyncService extends ChangeNotifier {
   void startListening(String userId) {
     stopListening();
     _currentUserId = userId;
+    _diagnostics.info(
+      'SyncService',
+      'Starting sync listeners for user $userId',
+    );
 
     if (!_syncEnabled) {
-      debugPrint('Sync is disabled, not starting listeners');
+      _diagnostics.warning(
+        'SyncService',
+        'Sync is disabled, listeners were not started',
+      );
       return;
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
       _startListeningFiredart(userId);
+      unawaited(_primeLinuxSnapshots(userId));
       return;
     }
 
     final firestore = _firebaseFirestore;
     if (firestore == null) {
-      debugPrint('Cannot start listening: Firebase not available');
       _setError('Sync unavailable: Firebase not initialized');
       return;
     }
@@ -221,6 +233,7 @@ class SyncService extends ChangeNotifier {
           }
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
+          _markRefreshSucceeded('Received notes update');
 
           // If we were syncing/refreshing, transition back to idle/synced
           if (_status == SyncStatus.syncing) {
@@ -248,6 +261,7 @@ class SyncService extends ChangeNotifier {
           final folders =
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
+          _markRefreshSucceeded('Received folders update');
 
           if (_status == SyncStatus.syncing) {
             _setStatus(SyncStatus.synced);
@@ -375,6 +389,7 @@ class SyncService extends ChangeNotifier {
           }
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
+          _markRefreshSucceeded('Received Linux notes update');
 
           if (_status == SyncStatus.syncing) {
             _setStatus(SyncStatus.synced);
@@ -403,6 +418,7 @@ class SyncService extends ChangeNotifier {
             return Folder.fromJson(data);
           }).toList();
           onFoldersUpdated?.call(folders);
+          _markRefreshSucceeded('Received Linux folders update');
 
           if (_status == SyncStatus.syncing) {
             _setStatus(SyncStatus.synced);
@@ -499,13 +515,128 @@ class SyncService extends ChangeNotifier {
         onError: (Object error) => _setError('Failed to sync settings: $error'),
       );
     } catch (e) {
-      debugPrint('Cannot start Firedart listening: $e');
       _setError('Sync unavailable: Firedart error');
+    }
+  }
+
+  Future<void> _primeLinuxSnapshots(String userId) async {
+    final firestore = _firedartFirestore;
+    if (firestore == null) {
+      _setError('Sync unavailable: Firedart Firestore not initialized');
+      return;
+    }
+
+    try {
+      _diagnostics.info(
+        'SyncService',
+        'Fetching initial Linux cloud snapshot for $userId',
+      );
+
+      final notesDocs = await firestore
+          .collection('notes')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final notes = <Note>[];
+      for (final doc in notesDocs) {
+        try {
+          final data = Map<String, dynamic>.from(doc.map);
+          data['id'] = doc.id;
+          notes.add(Note.fromJson(data));
+        } catch (e) {
+          _diagnostics.warning(
+            'SyncService',
+            'Skipped malformed Linux note ${doc.id} during initial fetch: $e',
+          );
+        }
+      }
+      onNotesUpdated?.call(notes);
+
+      final folderDocs = await firestore
+          .collection('folders')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final folders = <Folder>[];
+      for (final doc in folderDocs) {
+        try {
+          final data = Map<String, dynamic>.from(doc.map);
+          data['id'] = doc.id;
+          folders.add(Folder.fromJson(data));
+        } catch (e) {
+          _diagnostics.warning(
+            'SyncService',
+            'Skipped malformed Linux folder ${doc.id} during initial fetch: $e',
+          );
+        }
+      }
+      onFoldersUpdated?.call(folders);
+
+      final eventDocs = await firestore
+          .collection('calendar_events')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final events = eventDocs.map((doc) {
+        final data = Map<String, dynamic>.from(doc.map);
+        data['id'] = doc.id;
+        return CalendarEvent.fromJson(data);
+      }).toList();
+      onCalendarUpdated?.call(events);
+
+      final homeworkDocs = await firestore
+          .collection('homework')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final homework = homeworkDocs.map((doc) {
+        final data = Map<String, dynamic>.from(doc.map);
+        data['id'] = doc.id;
+        return Homework.fromJson(data);
+      }).toList();
+      onHomeworkUpdated?.call(homework);
+
+      final timetableDocs = await firestore
+          .collection('timetable_entries')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final timetable = timetableDocs.map((doc) {
+        final data = Map<String, dynamic>.from(doc.map);
+        data['id'] = doc.id;
+        return TimetableEntry.fromJson(data);
+      }).toList();
+      onTimetableUpdated?.call(timetable);
+
+      try {
+        final settingsDoc = await firestore
+            .collection('users')
+            .document(userId)
+            .collection('settings')
+            .document('app_settings')
+            .get();
+        final settings = Map<String, dynamic>.from(settingsDoc.map);
+        settings['id'] = settingsDoc.id;
+        onSettingsUpdated?.call(settings);
+      } catch (_) {
+        // Settings are optional; ignore if absent.
+      }
+
+      _lastSyncTime = DateTime.now();
+      _markRefreshSucceeded('Initial Linux cloud snapshot loaded');
+      if (_status == SyncStatus.syncing || _status == SyncStatus.idle) {
+        _setStatus(SyncStatus.synced);
+      } else {
+        notifyListeners();
+      }
+    } catch (e) {
+      _setError('Initial Linux sync fetch failed: $e');
     }
   }
 
   /// Stop listening to real-time updates
   void stopListening() {
+    _cancelRefreshTimeout();
     _notesSubscription?.cancel();
     _foldersSubscription?.cancel();
     _calendarSubscription?.cancel();
@@ -1036,6 +1167,12 @@ class SyncService extends ChangeNotifier {
   /// Force a refresh of the sync connection
   void refresh() {
     _setStatus(SyncStatus.syncing);
+    _awaitingRefreshResult = true;
+    _startRefreshTimeout();
+    _diagnostics.info(
+      'SyncService',
+      'Manual sync refresh requested on ${defaultTargetPlatform.name}',
+    );
 
     // Trigger immediate sync attempt
     if (_syncEnabled && _isOnline) {
@@ -1044,11 +1181,15 @@ class SyncService extends ChangeNotifier {
 
       // If we assume the issue might be a broken stream, let's restart listeners if we can
       if (_currentUserId != null) {
-        debugPrint('Restarting sync listeners for user: $_currentUserId');
+        _diagnostics.info(
+          'SyncService',
+          'Restarting sync listeners for user $_currentUserId',
+        );
         startListening(_currentUserId!);
       } else {
-        debugPrint(
-          'Cannot restart listeners: userId unknown. Just triggering push sync.',
+        _diagnostics.warning(
+          'SyncService',
+          'Cannot restart listeners because userId is unknown; triggering local sync only',
         );
         triggerSync();
       }
@@ -1061,6 +1202,7 @@ class SyncService extends ChangeNotifier {
       } else {
         _status = SyncStatus.idle;
       }
+      _cancelRefreshTimeout();
       notifyListeners();
     }
   }
@@ -1070,21 +1212,53 @@ class SyncService extends ChangeNotifier {
     if (newStatus != SyncStatus.error) {
       _errorMessage = null;
     }
+    if (newStatus == SyncStatus.synced || newStatus == SyncStatus.idle) {
+      _cancelRefreshTimeout();
+      _awaitingRefreshResult = false;
+    }
     notifyListeners();
   }
 
   void _setError(String message) {
+    _cancelRefreshTimeout();
+    _awaitingRefreshResult = false;
     _status = SyncStatus.error;
     _errorMessage = message;
+    _diagnostics.error('SyncService', message);
     // Use microtask to avoid setState during build
     Future.microtask(() => notifyListeners());
     // Auto-recovery removed to allow user to see error and retry manually
+  }
+
+  void _startRefreshTimeout() {
+    _refreshTimeoutTimer?.cancel();
+    _refreshTimeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (_awaitingRefreshResult && _status == SyncStatus.syncing) {
+        _setError(
+          'Sync refresh timed out. Open Settings > Diagnostics Log for details.',
+        );
+      }
+    });
+  }
+
+  void _cancelRefreshTimeout() {
+    _refreshTimeoutTimer?.cancel();
+    _refreshTimeoutTimer = null;
+  }
+
+  void _markRefreshSucceeded(String detail) {
+    if (_awaitingRefreshResult) {
+      _diagnostics.info('SyncService', detail);
+      _awaitingRefreshResult = false;
+      _cancelRefreshTimeout();
+    }
   }
 
   @override
   void dispose() {
     stopListening();
     _connectivitySubscription?.cancel();
+    _refreshTimeoutTimer?.cancel();
     _syncSubject.close();
     _syncTriggerController.close();
     super.dispose();

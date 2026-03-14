@@ -86,13 +86,15 @@ class Folder extends Equatable {
     );
   }
 
+  static const Object _noChange = Object();
+
   /// Creates a copy with updated fields
   Folder copyWith({
     String? id,
     String? name,
-    String? subtitle,
-    String? parentId,
-    String? backgroundColor,
+    Object? subtitle = _noChange,
+    Object? parentId = _noChange,
+    Object? backgroundColor = _noChange,
     String? icon,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -105,9 +107,13 @@ class Folder extends Equatable {
     return Folder(
       id: id ?? this.id,
       name: name ?? this.name,
-      subtitle: subtitle ?? this.subtitle,
-      parentId: parentId ?? this.parentId,
-      backgroundColor: backgroundColor ?? this.backgroundColor,
+      subtitle:
+          identical(subtitle, _noChange) ? this.subtitle : subtitle as String?,
+      parentId:
+          identical(parentId, _noChange) ? this.parentId : parentId as String?,
+      backgroundColor: identical(backgroundColor, _noChange)
+          ? this.backgroundColor
+          : backgroundColor as String?,
       icon: icon ?? this.icon,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

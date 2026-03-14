@@ -99,6 +99,8 @@ class NoteAttachment extends Equatable {
 ///
 /// Stores the note content, metadata, and synchronization state.
 class Note extends Equatable {
+  static const Object _noChange = Object();
+
   /// Unique identifier for the note
   final String id;
 
@@ -218,7 +220,7 @@ class Note extends Equatable {
     String? title,
     String? content,
     NoteType? type,
-    String? folderId,
+    Object? folderId = _noChange,
     List<String>? tags,
     String? backgroundColor,
     DateTime? createdAt,
@@ -244,7 +246,8 @@ class Note extends Equatable {
       title: title ?? this.title,
       content: content ?? this.content,
       type: type ?? this.type,
-      folderId: folderId ?? this.folderId,
+      folderId:
+          identical(folderId, _noChange) ? this.folderId : folderId as String?,
       tags: tags ?? this.tags,
       backgroundColor: backgroundColorSet
           ? backgroundColor
