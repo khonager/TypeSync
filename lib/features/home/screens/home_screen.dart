@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:http/http.dart' as http;
 
@@ -768,15 +769,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (pickedFile != null) {
         if (kIsWeb) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Importing from browser file bytes is not wired in Home yet. Use the editor attachment flow.',
-                ),
-              ),
-            );
-          }
+          await _importBrowserFile(pickedFile);
           return;
         }
 
@@ -894,6 +887,103 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (note != null && mounted) {
         // Open the note with the imported content
+        AppRouter.openEditor(
+          context,
+          noteId: note.id,
+          folderId: _currentFolderId,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported $fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import file: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importBrowserFile(PlatformFile pickedFile) async {
+    final authService = context.read<AuthService>();
+    final storageService = context.read<StorageService>();
+    final notesProvider = context.read<NotesProvider>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    final bytes = pickedFile.bytes;
+    final fileName = pickedFile.name;
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to read file bytes: $fileName')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final fileExtension = fileName.split('.').last.toLowerCase();
+      String content = '';
+      String noteType = 'text';
+
+      if (fileExtension == 'txt' ||
+          fileExtension == 'md' ||
+          fileExtension == 'markdown') {
+        content = utf8.decode(bytes, allowMalformed: true);
+        noteType = fileExtension == 'md' || fileExtension == 'markdown'
+            ? 'markdown'
+            : 'text';
+      } else if (fileExtension == 'pdf') {
+        content = '';
+        noteType = 'pdf';
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp']
+          .contains(fileExtension)) {
+        content = '[Image file: $fileName]';
+        noteType = 'text';
+      } else {
+        content = '[File: $fileName]';
+        noteType = 'text';
+      }
+
+      final note = await notesProvider.createNote(
+        userId: userId,
+        folderId: _currentFolderId,
+        title: fileName,
+        content: content,
+        type: noteType == 'pdf'
+            ? NoteType.pdf
+            : (noteType == 'markdown' ? NoteType.markdown : NoteType.text),
+      );
+
+      if (noteType == 'pdf' && note != null) {
+        final sanitizedName = _sanitizeFileName(fileName);
+        final storedPath = await storageService.uploadData(
+          userId: userId,
+          data: bytes,
+          destinationPath: 'pdf_notes/${note.id}/$sanitizedName',
+          contentType: 'application/pdf',
+        );
+        if (storedPath != null) {
+          final updatedNote = note.copyWith(pdfPath: storedPath);
+          await notesProvider.updateNote(updatedNote);
+        } else {
+          await notesProvider.deleteNote(note.id);
+          if (mounted) {
+            final errorMessage = storageService.errorMessage;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage ?? 'Failed to import PDF: $fileName'),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      if (note != null && mounted) {
         AppRouter.openEditor(
           context,
           noteId: note.id,

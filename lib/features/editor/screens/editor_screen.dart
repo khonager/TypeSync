@@ -33,6 +33,8 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
+import '../../../core/widgets/remote_pdf_embed_stub.dart'
+    if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
@@ -659,6 +661,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
     if (_isRemoteAttachmentPath(attachment.path)) {
       if (extension == '.pdf') {
+        if (kIsWeb) {
+          return RemotePdfEmbed(url: attachment.path);
+        }
         return FutureBuilder<Uint8List?>(
           future: _fetchAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
