@@ -1104,13 +1104,27 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildSvgFilePreview(NoteAttachment attachment, File file) {
     return Container(
       color: Colors.black12,
-      child: Center(
-        child: SvgPicture.file(
-          file,
-          fit: BoxFit.contain,
-          placeholderBuilder: (_) =>
-              const Center(child: CircularProgressIndicator()),
-        ),
+      child: FutureBuilder<Uint8List>(
+        future: file.readAsBytes(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return _buildAttachmentInfo(attachment);
+          }
+
+          return Center(
+            child: SvgPicture.memory(
+              bytes,
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) =>
+                  const Center(child: CircularProgressIndicator()),
+            ),
+          );
+        },
       ),
     );
   }
