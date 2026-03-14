@@ -19,6 +19,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:printing/printing.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
     if (dart.library.html) '../../../core/utils/web_download_web.dart'
@@ -27,7 +29,6 @@ import '../../../core/utils/web_download_stub.dart'
 import '../../../core/models/note.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/local_file_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
@@ -91,6 +92,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isUpdatingFromExternal = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
+  bool _hasStartedCloudMigration = false;
 
   @override
   void initState() {
@@ -162,6 +164,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Calculate initial stats
     _updateStats();
+
+    if (_note != null && !_hasStartedCloudMigration) {
+      _hasStartedCloudMigration = true;
+      unawaited(_ensureCloudBackedFiles());
+    }
   }
 
   void _onContentChanged() {
@@ -650,6 +657,69 @@ class _EditorScreenState extends State<EditorScreen> {
       return _buildAttachmentInfo(attachment);
     }
 
+    if (_isRemoteAttachmentPath(attachment.path)) {
+      if (extension == '.pdf') {
+        return FutureBuilder<Uint8List?>(
+          future: _fetchAttachmentBytes(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData) {
+              return _buildAttachmentUnavailable(attachment);
+            }
+            return PdfPreview(
+              build: (_) => snapshot.data!,
+              allowPrinting: true,
+              allowSharing: true,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+            );
+          },
+        );
+      }
+
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+          .contains(extension)) {
+        return Container(
+          color: Colors.black12,
+          child: Center(
+            child: Image.network(
+              attachment.path,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  _buildAttachmentUnavailable(attachment),
+            ),
+          ),
+        );
+      }
+
+      if (['.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.csv', '.log']
+          .contains(extension)) {
+        return FutureBuilder<String?>(
+          future: _fetchAttachmentText(attachment.path),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData) {
+              return _buildAttachmentUnavailable(attachment);
+            }
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                snapshot.data!,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            );
+          },
+        );
+      }
+
+      return _buildAttachmentInfo(attachment);
+    }
+
     if (kIsWeb) {
       // Web cannot access device-local absolute file paths from other platforms.
       return _buildAttachmentUnavailable(attachment);
@@ -762,6 +832,17 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
+      if (_isRemoteAttachmentPath(attachment.path)) {
+        final uri = Uri.parse(attachment.path);
+        await launchUrl(
+          uri,
+          mode: kIsWeb
+              ? LaunchMode.platformDefault
+              : LaunchMode.externalApplication,
+        );
+        return;
+      }
+
       final file = File(attachment.path);
       if (!await file.exists()) {
         if (mounted) {
@@ -792,6 +873,30 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
     }
+  }
+
+  bool _isRemoteAttachmentPath(String path) =>
+      path.startsWith('http://') || path.startsWith('https://');
+
+  bool _isLocalAttachmentPath(String path) =>
+      !path.startsWith('data:') && !_isRemoteAttachmentPath(path);
+
+  Future<Uint8List?> _fetchAttachmentBytes(String path) async {
+    try {
+      final response = await http.get(Uri.parse(path));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      return response.bodyBytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _fetchAttachmentText(String path) async {
+    final bytes = await _fetchAttachmentBytes(path);
+    if (bytes == null) return null;
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   void _showConflictDialog() {
@@ -1095,22 +1200,21 @@ class _EditorScreenState extends State<EditorScreen> {
       Uint8List? fileBytes;
 
       if (_note!.type == NoteType.pdf && _note!.pdfPath != null) {
-        // Export PDF file
-        if (kIsWeb) {
-          // On Web, we'd typicaly use the URL or bytes.
-          // Assuming pdfPath is a URL or we need to fetch it.
-          // For now, if it's a local path representation, it might not work on Web directly
-          // unless stored in Firebase.
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('PDF export on Web is not yet implemented'),
-            ),
-          );
-          return;
+        if (_isRemoteAttachmentPath(_note!.pdfPath!)) {
+          fileBytes = await _fetchAttachmentBytes(_note!.pdfPath!);
+        } else {
+          final pdfFile = File(_note!.pdfPath!);
+          if (!await pdfFile.exists()) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('PDF file not found')),
+              );
+            }
+            return;
+          }
+          fileBytes = await pdfFile.readAsBytes();
         }
-
-        final pdfFile = File(_note!.pdfPath!);
-        if (!await pdfFile.exists()) {
+        if (fileBytes == null) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('PDF file not found')),
@@ -1118,7 +1222,6 @@ class _EditorScreenState extends State<EditorScreen> {
           }
           return;
         }
-        fileBytes = await pdfFile.readAsBytes();
         extension = '.pdf';
       } else {
         if (_note!.type == NoteType.markdown) {
@@ -1268,12 +1371,24 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final ext = p.extension(fileName).toLowerCase();
     final mimeType = _mimeTypeForExtension(ext);
-    String storedPath;
+    final storageService = context.read<StorageService>();
+    String? storedPath;
     int size;
+    final attachmentId = const Uuid().v4();
+    final storagePath = _buildCloudFilePath(
+      noteId: _note!.id,
+      itemId: attachmentId,
+      fileName: fileName,
+      bucket: 'attachments',
+    );
 
     if (bytes != null) {
-      final mime = mimeType ?? 'application/octet-stream';
-      storedPath = 'data:$mime;base64,${base64Encode(bytes)}';
+      storedPath = await storageService.uploadData(
+        userId: userId,
+        data: bytes,
+        destinationPath: storagePath,
+        contentType: mimeType,
+      );
       size = bytes.length;
     } else {
       if (filePath == null || filePath.isEmpty) return;
@@ -1287,30 +1402,32 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
-      await LocalFileService.instance.initialize(userId);
-      final copiedPath = await LocalFileService.instance.copyFileToStorage(
-        filePath,
-        fileName: fileName,
+      storedPath = await storageService.uploadFile(
+        userId: userId,
+        filePath: filePath,
+        destinationPath: storagePath,
+        contentType: mimeType,
       );
-
-      if (copiedPath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to attach $fileName')),
-          );
-        }
-        return;
-      }
-
-      storedPath = copiedPath;
       size = await sourceFile.length();
     }
 
-    final attachment = NoteAttachment.create(
+    if (storedPath == null) {
+      if (mounted) {
+        final errorMessage = storageService.errorMessage;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage ?? 'Failed to attach $fileName')),
+        );
+      }
+      return;
+    }
+
+    final attachment = NoteAttachment(
+      id: attachmentId,
       name: fileName,
       path: storedPath,
       mimeType: mimeType,
       size: size,
+      addedAt: DateTime.now(),
     );
 
     final alreadyExists = _note!.attachments.any(
@@ -1346,6 +1463,114 @@ class _EditorScreenState extends State<EditorScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Attached: $fileName')),
     );
+  }
+
+  Future<void> _ensureCloudBackedFiles() async {
+    if (_note == null || _note!.localOnly) return;
+
+    final authService = context.read<AuthService>();
+    final notesProvider = context.read<NotesProvider>();
+    final storageService = context.read<StorageService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    var note = _note!;
+    var changed = false;
+
+    final migratedAttachments = <NoteAttachment>[];
+    for (final attachment in note.attachments) {
+      if (!_isLocalAttachmentPath(attachment.path)) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      final file = File(attachment.path);
+      if (!await file.exists()) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      final remotePath = await storageService.uploadFile(
+        userId: userId,
+        filePath: attachment.path,
+        destinationPath: _buildCloudFilePath(
+          noteId: note.id,
+          itemId: attachment.id,
+          fileName: attachment.name,
+          bucket: 'attachments',
+        ),
+        contentType: attachment.mimeType,
+      );
+
+      if (remotePath == null) {
+        migratedAttachments.add(attachment);
+        continue;
+      }
+
+      migratedAttachments.add(attachment.copyWith(path: remotePath));
+      changed = true;
+    }
+
+    note = note.copyWith(attachments: migratedAttachments);
+
+    if (note.type == NoteType.pdf &&
+        note.pdfPath != null &&
+        _isLocalAttachmentPath(note.pdfPath!)) {
+      final file = File(note.pdfPath!);
+      if (await file.exists()) {
+        final remotePath = await storageService.uploadFile(
+          userId: userId,
+          filePath: note.pdfPath!,
+          destinationPath: _buildCloudFilePath(
+            noteId: note.id,
+            itemId: 'pdf',
+            fileName: '${note.title}.pdf',
+            bucket: 'pdf_notes',
+          ),
+          contentType: 'application/pdf',
+        );
+        if (remotePath != null) {
+          note = note.copyWith(pdfPath: remotePath);
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return;
+
+    final success = await notesProvider.updateNote(note);
+    if (!success || !mounted) return;
+
+    setState(() {
+      _note = notesProvider.getNoteById(note.id) ?? note;
+    });
+  }
+
+  String _buildCloudFilePath({
+    required String noteId,
+    required String itemId,
+    required String fileName,
+    required String bucket,
+  }) {
+    final sanitizedName = _sanitizeFileName(fileName);
+    return '$bucket/$noteId/${itemId}_$sanitizedName';
+  }
+
+  String _sanitizeFileName(String value) {
+    final buffer = StringBuffer();
+    for (final codeUnit in value.codeUnits) {
+      final isUpper = codeUnit >= 65 && codeUnit <= 90;
+      final isLower = codeUnit >= 97 && codeUnit <= 122;
+      final isDigit = codeUnit >= 48 && codeUnit <= 57;
+      final isAllowed = isUpper ||
+          isLower ||
+          isDigit ||
+          codeUnit == 46 ||
+          codeUnit == 95 ||
+          codeUnit == 45;
+      buffer.writeCharCode(isAllowed ? codeUnit : 95);
+    }
+    return buffer.toString();
   }
 
   String? _mimeTypeForExtension(String extension) {

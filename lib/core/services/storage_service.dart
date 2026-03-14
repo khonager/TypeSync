@@ -12,6 +12,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firedart/firedart.dart' as fd;
 
 import '../models/user.dart';
+import 'diagnostics_service.dart';
 
 /// Service for managing cloud storage and subscriptions
 ///
@@ -21,6 +22,7 @@ class StorageService extends ChangeNotifier {
   // Lazy Firebase instances
   FirebaseStorage? _storage;
   FirebaseFirestore? _firestore;
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
 
   FirebaseStorage get _firebaseStorage {
     try {
@@ -151,6 +153,7 @@ class StorageService extends ChangeNotifier {
               final explicitSize = doc.map['size'] as int?;
               final content = doc.map['content'] as String? ?? '';
               totalBytes += explicitSize ?? content.length;
+              totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
             }
           }
         }
@@ -175,6 +178,7 @@ class StorageService extends ChangeNotifier {
           final explicitSize = data['size'] as int?;
           final content = data['content'] as String? ?? '';
           totalBytes += explicitSize ?? content.length;
+          totalBytes += _attachmentBytesFromDynamic(data['attachments']);
         }
       }
 
@@ -196,6 +200,7 @@ class StorageService extends ChangeNotifier {
     required String userId,
     required String filePath,
     required String destinationPath,
+    String? contentType,
   }) async {
     final file = File(filePath);
     final fileSize = await file.length();
@@ -204,6 +209,11 @@ class StorageService extends ChangeNotifier {
     if (_storageUsedBytes + fileSize > storageLimitBytes) {
       _errorMessage =
           'Storage quota exceeded. Upgrade your plan for more space.';
+      _diagnostics.warning(
+        'StorageService',
+        'Upload blocked by quota for users/$userId/$destinationPath '
+            '(${_formatBytes(fileSize)} requested, $usageFormatted used)',
+      );
       notifyListeners();
       return null;
     }
@@ -215,7 +225,10 @@ class StorageService extends ChangeNotifier {
       // Upload to Firebase Storage
       final ref =
           _firebaseStorage.ref().child('users/$userId/$destinationPath');
-      final uploadTask = ref.putFile(file);
+      final metadata = contentType == null
+          ? null
+          : SettableMetadata(contentType: contentType);
+      final uploadTask = ref.putFile(file, metadata);
 
       // Wait for upload to complete
       final snapshot = await uploadTask;
@@ -238,11 +251,99 @@ class StorageService extends ChangeNotifier {
 
       _errorMessage = null;
       _isLoading = false;
+      _diagnostics.info(
+        'StorageService',
+        'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
+      );
       notifyListeners();
 
       return downloadUrl;
-    } catch (e) {
-      _errorMessage = 'Failed to upload file';
+    } catch (e, stackTrace) {
+      final detail = _describeStorageError(e);
+      _errorMessage = 'Failed to upload file: $detail';
+      _diagnostics.error(
+        'StorageService',
+        'Upload failed for users/$userId/$destinationPath: $detail',
+      );
+      debugPrintStack(
+        label: 'StorageService.uploadFile failed',
+        stackTrace: stackTrace,
+      );
+      _isLoading = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Upload in-memory bytes to Firebase Storage.
+  ///
+  /// Returns the download URL if successful, null if failed or over quota.
+  Future<String?> uploadData({
+    required String userId,
+    required Uint8List data,
+    required String destinationPath,
+    String? contentType,
+  }) async {
+    final fileSize = data.length;
+
+    if (_storageUsedBytes + fileSize > storageLimitBytes) {
+      _errorMessage =
+          'Storage quota exceeded. Upgrade your plan for more space.';
+      _diagnostics.warning(
+        'StorageService',
+        'Byte upload blocked by quota for users/$userId/$destinationPath '
+            '(${_formatBytes(fileSize)} requested, $usageFormatted used)',
+      );
+      notifyListeners();
+      return null;
+    }
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final ref =
+          _firebaseStorage.ref().child('users/$userId/$destinationPath');
+      final metadata = contentType == null
+          ? null
+          : SettableMetadata(contentType: contentType);
+      final snapshot = await ref.putData(data, metadata);
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      _storageUsedBytes += fileSize;
+      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore != null) {
+          await fdFirestore.collection('users').document(userId).update({
+            'storageUsedBytes': _storageUsedBytes,
+          });
+        }
+      } else {
+        await _firebaseFirestore.collection('users').doc(userId).update({
+          'storageUsedBytes': _storageUsedBytes,
+        });
+      }
+
+      _errorMessage = null;
+      _isLoading = false;
+      _diagnostics.info(
+        'StorageService',
+        'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
+      );
+      notifyListeners();
+
+      return downloadUrl;
+    } catch (e, stackTrace) {
+      final detail = _describeStorageError(e);
+      _errorMessage = 'Failed to upload file: $detail';
+      _diagnostics.error(
+        'StorageService',
+        'Upload failed for users/$userId/$destinationPath: $detail',
+      );
+      debugPrintStack(
+        label: 'StorageService.uploadData failed',
+        stackTrace: stackTrace,
+      );
       _isLoading = false;
       notifyListeners();
       return null;
@@ -370,6 +471,7 @@ class StorageService extends ChangeNotifier {
               final explicitSize = doc.map['size'] as int?;
               final content = doc.map['content'] as String? ?? '';
               totalBytes += explicitSize ?? content.length;
+              totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
             }
           }
 
@@ -388,6 +490,7 @@ class StorageService extends ChangeNotifier {
           final explicitSize = data['size'] as int?;
           final content = data['content'] as String? ?? '';
           totalBytes += explicitSize ?? content.length;
+          totalBytes += _attachmentBytesFromDynamic(data['attachments']);
         }
 
         await _firebaseFirestore.collection('users').doc(userId).update({
@@ -408,6 +511,34 @@ class StorageService extends ChangeNotifier {
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
+
+  int _attachmentBytesFromDynamic(dynamic attachments) {
+    if (attachments is! List) return 0;
+
+    var total = 0;
+    for (final attachment in attachments) {
+      if (attachment is Map<String, dynamic>) {
+        total += attachment['size'] as int? ?? 0;
+      } else if (attachment is Map) {
+        final size = attachment['size'];
+        if (size is int) {
+          total += size;
+        }
+      }
+    }
+    return total;
+  }
+
+  String _describeStorageError(Object error) {
+    if (error is FirebaseException) {
+      final code = error.code.isEmpty ? 'unknown' : error.code;
+      final message = error.message;
+      return message == null || message.isEmpty
+          ? 'Firebase error ($code)'
+          : 'Firebase error ($code): $message';
+    }
+    return error.toString();
+  }
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
