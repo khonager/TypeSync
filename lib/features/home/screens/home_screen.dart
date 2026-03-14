@@ -9,7 +9,8 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -61,6 +62,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Drag and drop state
   bool _isDragging = false;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _scrollViewKey = GlobalKey();
+  Timer? _autoScrollTimer;
+  double _autoScrollDelta = 0;
 
   Timer? _repairAuditTimer;
   String? _lastRepairPromptSignature;
@@ -400,7 +405,84 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _repairAuditTimer?.cancel();
+    _autoScrollTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  bool get _useLongPressGridDrag {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  void _handleGridDragStarted() {
+    _updateAutoScroll(0);
+  }
+
+  void _handleGridDragPositionChanged(Offset globalPosition) {
+    final scrollContext = _scrollViewKey.currentContext;
+    if (scrollContext == null || !_scrollController.hasClients) {
+      return;
+    }
+
+    final renderBox = scrollContext.findRenderObject();
+    if (renderBox is! RenderBox || !renderBox.hasSize) {
+      return;
+    }
+
+    final localPosition = renderBox.globalToLocal(globalPosition);
+    const edgeZone = 96.0;
+    const maxDelta = 22.0;
+    final height = renderBox.size.height;
+
+    double nextDelta = 0;
+    if (localPosition.dy < edgeZone) {
+      final intensity =
+          ((edgeZone - localPosition.dy) / edgeZone).clamp(0.0, 1.0);
+      nextDelta = -maxDelta * intensity;
+    } else if (localPosition.dy > height - edgeZone) {
+      final intensity =
+          ((localPosition.dy - (height - edgeZone)) / edgeZone).clamp(0.0, 1.0);
+      nextDelta = maxDelta * intensity;
+    }
+
+    _updateAutoScroll(nextDelta);
+  }
+
+  void _handleGridDragEnded() {
+    _updateAutoScroll(0);
+  }
+
+  void _updateAutoScroll(double delta) {
+    _autoScrollDelta = delta;
+    if (delta == 0) {
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+      return;
+    }
+
+    _autoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_scrollController.hasClients) {
+        return;
+      }
+
+      final position = _scrollController.position;
+      final nextOffset = (_scrollController.offset + _autoScrollDelta).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+
+      if (nextOffset == _scrollController.offset) {
+        _updateAutoScroll(0);
+        return;
+      }
+
+      _scrollController.jumpTo(nextOffset);
+    });
   }
 
   Widget _buildBody(
@@ -441,6 +523,8 @@ class _HomeScreenState extends State<HomeScreen> {
           RefreshIndicator(
             onRefresh: _initializeData,
             child: CustomScrollView(
+              key: _scrollViewKey,
+              controller: _scrollController,
               slivers: [
                 // Breadcrumb navigation
                 if (_currentFolderId != null)
@@ -472,6 +556,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             onFolderLongPress: _showFolderOptions,
                             onNoteDropped: _handleNoteDroppedOnFolder,
                             onFolderDropped: _handleFolderDroppedOnFolder,
+                            useLongPressDrag: _useLongPressGridDrag,
+                            onDragStarted: _handleGridDragStarted,
+                            onDragPositionChanged:
+                                _handleGridDragPositionChanged,
+                            onDragEnded: _handleGridDragEnded,
                           )
                         : FolderList(
                             folders: folders,
@@ -503,6 +592,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             notes: notes,
                             onNoteTap: _openNote,
                             onNoteLongPress: _showNoteOptions,
+                            useLongPressDrag: _useLongPressGridDrag,
+                            onDragStarted: _handleGridDragStarted,
+                            onDragPositionChanged:
+                                _handleGridDragPositionChanged,
+                            onDragEnded: _handleGridDragEnded,
                           )
                         : FileList(
                             notes: notes,

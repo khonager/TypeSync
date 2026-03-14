@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/models/note.dart';
@@ -15,11 +16,19 @@ class FileGrid extends StatelessWidget {
   final List<Note> notes;
   final void Function(String) onNoteTap;
   final void Function(String) onNoteLongPress;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FileGrid({
     required this.notes,
     required this.onNoteTap,
     required this.onNoteLongPress,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -38,6 +47,10 @@ class FileGrid extends StatelessWidget {
           note: notes[index],
           onTap: () => onNoteTap(notes[index].id),
           onLongPress: () => onNoteLongPress(notes[index].id),
+          useLongPressDrag: useLongPressDrag,
+          onDragStarted: onDragStarted,
+          onDragPositionChanged: onDragPositionChanged,
+          onDragEnded: onDragEnded,
         ),
         childCount: notes.length,
       ),
@@ -50,11 +63,19 @@ class FileGridItem extends StatelessWidget {
   final Note note;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FileGridItem({
     required this.note,
     required this.onTap,
     required this.onLongPress,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -80,163 +101,140 @@ class FileGridItem extends StatelessWidget {
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
 
-    return Draggable<String>(
-      data: 'note:${note.id}',
-      feedback: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 48, color: iconColor),
-        ),
-      ),
-      childWhenDragging: Opacity(
-        opacity: 0.3,
-        child: GestureDetector(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          onSecondaryTap: onLongPress,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // File icon container
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: note.backgroundColor != null
-                        ? Color(
-                            int.parse(
-                              note.backgroundColor!.replaceFirst('#', '0xFF'),
-                            ),
-                          )
-                        : AppTheme.darkSurface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Stack(
-                    children: [
-                      // File icon
-                      Center(
-                        child: Icon(
-                          icon,
-                          size: 48,
-                          color: iconColor,
-                        ),
-                      ),
-                      // Favorite indicator
-                      if (note.isFavorite)
-                        const Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Icon(
-                            Icons.star,
-                            size: 16,
-                            color: Colors.amber,
-                          ),
-                        ),
-                      if (note.localOnly)
-                        const Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Icon(
-                            Icons.cloud_off_outlined,
-                            size: 14,
-                            color: Colors.orangeAccent,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // File name
-              Text(
-                note.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: textColor,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-      child: GestureDetector(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        onSecondaryTap: onLongPress,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // File icon container
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: note.backgroundColor != null
-                      ? Color(
-                          int.parse(
-                            note.backgroundColor!.replaceFirst('#', '0xFF'),
-                          ),
-                        )
-                      : AppTheme.darkSurface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Stack(
-                  children: [
-                    // File icon
-                    Center(
-                      child: Icon(
-                        icon,
-                        size: 48,
-                        color: Colors.white54,
-                      ),
-                    ),
-                    // Favorite indicator
-                    if (note.isFavorite)
-                      const Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Icon(
-                          Icons.star,
-                          size: 16,
-                          color: Colors.amber,
-                        ),
-                      ),
-                    if (note.localOnly)
-                      const Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Icon(
-                          Icons.cloud_off_outlined,
-                          size: 14,
-                          color: Colors.orangeAccent,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // File name
-            Text(
-              note.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: textColor,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+    final child = _buildFileContent(
+      context,
+      icon: icon,
+      textColor: textColor,
+      iconColor: Colors.white54,
+    );
+    final childWhenDragging = Opacity(
+      opacity: 0.3,
+      child: _buildFileContent(
+        context,
+        icon: icon,
+        textColor: textColor,
+        iconColor: iconColor,
       ),
     );
+    final feedback = Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 100,
+        height: 100,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, size: 48, color: iconColor),
+      ),
+    );
+
+    if (useLongPressDrag) {
+      return LongPressDraggable<String>(
+        data: 'note:${note.id}',
+        feedback: feedback,
+        childWhenDragging: childWhenDragging,
+        onDragStarted: onDragStarted,
+        onDragUpdate: (details) =>
+            onDragPositionChanged?.call(details.globalPosition),
+        onDragEnd: (_) => onDragEnded?.call(),
+        child: child,
+      );
+    }
+
+    return Draggable<String>(
+      data: 'note:${note.id}',
+      feedback: feedback,
+      childWhenDragging: childWhenDragging,
+      onDragStarted: onDragStarted,
+      onDragUpdate: (details) =>
+          onDragPositionChanged?.call(details.globalPosition),
+      onDragEnd: (_) => onDragEnded?.call(),
+      child: child,
+    );
+  }
+
+  Widget _buildFileContent(
+    BuildContext context, {
+    required IconData icon,
+    required Color textColor,
+    required Color iconColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
+      onSecondaryTap: onLongPress,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: note.backgroundColor != null
+                    ? Color(
+                        int.parse(
+                          note.backgroundColor!.replaceFirst('#', '0xFF'),
+                        ),
+                      )
+                    : AppTheme.darkSurface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      icon,
+                      size: 48,
+                      color: iconColor,
+                    ),
+                  ),
+                  if (note.isFavorite)
+                    const Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Icon(
+                        Icons.star,
+                        size: 16,
+                        color: Colors.amber,
+                      ),
+                    ),
+                  if (note.localOnly)
+                    const Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Icon(
+                        Icons.cloud_off_outlined,
+                        size: 14,
+                        color: Colors.orangeAccent,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            note.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: textColor,
+                ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isMobilePlatform() {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 

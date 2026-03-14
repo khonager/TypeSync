@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/theme/app_theme.dart';
@@ -16,6 +17,10 @@ class FolderGrid extends StatelessWidget {
   final void Function(String) onFolderLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
   final void Function(String folderId, String? newParentId)? onFolderDropped;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FolderGrid({
     required this.folders,
@@ -24,6 +29,10 @@ class FolderGrid extends StatelessWidget {
     super.key,
     this.onNoteDropped,
     this.onFolderDropped,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
   });
 
   @override
@@ -42,6 +51,10 @@ class FolderGrid extends StatelessWidget {
           onLongPress: () => onFolderLongPress(folders[index].id),
           onNoteDropped: onNoteDropped,
           onFolderDropped: onFolderDropped,
+          useLongPressDrag: useLongPressDrag,
+          onDragStarted: onDragStarted,
+          onDragPositionChanged: onDragPositionChanged,
+          onDragEnded: onDragEnded,
         ),
         childCount: folders.length,
       ),
@@ -56,6 +69,10 @@ class FolderGridItem extends StatelessWidget {
   final VoidCallback onLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
   final void Function(String folderId, String? newParentId)? onFolderDropped;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FolderGridItem({
     required this.folder,
@@ -64,6 +81,10 @@ class FolderGridItem extends StatelessWidget {
     super.key,
     this.onNoteDropped,
     this.onFolderDropped,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
   });
 
   @override
@@ -75,49 +96,70 @@ class FolderGridItem extends StatelessWidget {
           )
         : AppTheme.folderDefault;
 
+    final child = DragTarget<String>(
+      onWillAcceptWithDetails: (details) =>
+          details.data != 'folder:${folder.id}',
+      onAcceptWithDetails: (details) {
+        final data = details.data;
+        if (data.startsWith('note:')) {
+          final noteId = data.substring(5);
+          onNoteDropped?.call(noteId, folder.id);
+        } else if (data.startsWith('folder:')) {
+          final folderId = data.substring(7);
+          onFolderDropped?.call(folderId, folder.id);
+        }
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isDragOver = candidateData.isNotEmpty;
+        return _buildFolderContent(
+          context,
+          isDragOver
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
+              : bgColor,
+          showBorder: isDragOver,
+        );
+      },
+    );
+    final feedback = Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 100,
+        height: 100,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.folder, size: 48, color: Colors.white54),
+      ),
+    );
+    final childWhenDragging = Opacity(
+      opacity: 0.3,
+      child: _buildFolderContent(context, bgColor),
+    );
+
+    if (useLongPressDrag) {
+      return LongPressDraggable<String>(
+        data: 'folder:${folder.id}',
+        feedback: feedback,
+        childWhenDragging: childWhenDragging,
+        onDragStarted: onDragStarted,
+        onDragUpdate: (details) =>
+            onDragPositionChanged?.call(details.globalPosition),
+        onDragEnd: (_) => onDragEnded?.call(),
+        child: child,
+      );
+    }
+
     return Draggable<String>(
       data: 'folder:${folder.id}',
-      feedback: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.folder, size: 48, color: Colors.white54),
-        ),
-      ),
-      childWhenDragging: Opacity(
-        opacity: 0.3,
-        child: _buildFolderContent(context, bgColor),
-      ),
-      child: DragTarget<String>(
-        onWillAcceptWithDetails: (details) =>
-            details.data != 'folder:${folder.id}',
-        onAcceptWithDetails: (details) {
-          final data = details.data;
-          if (data.startsWith('note:')) {
-            final noteId = data.substring(5);
-            onNoteDropped?.call(noteId, folder.id);
-          } else if (data.startsWith('folder:')) {
-            final folderId = data.substring(7);
-            onFolderDropped?.call(folderId, folder.id);
-          }
-        },
-        builder: (context, candidateData, rejectedData) {
-          final isDragOver = candidateData.isNotEmpty;
-          return _buildFolderContent(
-            context,
-            isDragOver
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
-                : bgColor,
-            showBorder: isDragOver,
-          );
-        },
-      ),
+      feedback: feedback,
+      childWhenDragging: childWhenDragging,
+      onDragStarted: onDragStarted,
+      onDragUpdate: (details) =>
+          onDragPositionChanged?.call(details.globalPosition),
+      onDragEnd: (_) => onDragEnded?.call(),
+      child: child,
     );
   }
 
@@ -128,7 +170,7 @@ class FolderGridItem extends StatelessWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onLongPress,
+      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
       onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -183,6 +225,15 @@ class FolderGridItem extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _isMobilePlatform() {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 
