@@ -780,7 +780,9 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _confirmSignOut(
-      BuildContext context, AuthService authService) async {
+    BuildContext context,
+    AuthService authService,
+  ) async {
     final action = await showDialog<_SignOutAction>(
       context: context,
       builder: (context) => AlertDialog(
@@ -826,6 +828,11 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _continueAsGuest(BuildContext context) async {
     final authService = context.read<AuthService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
     final workspaceId = authService.storageUserId ?? authService.userId;
     await _detachWorkspaceServices(context);
     await authService.continueAsGuest(workspaceId: workspaceId);
@@ -846,11 +853,11 @@ class SettingsScreen extends StatelessWidget {
     final guestWorkspaceId = authService.storageUserId;
     if (guestWorkspaceId != null) {
       await LocalFileService.instance.initialize(guestWorkspaceId);
-      await context.read<NotesProvider>().initialize(guestWorkspaceId);
-      await context.read<FoldersProvider>().initialize(guestWorkspaceId);
-      await context.read<CalendarProvider>().initialize(guestWorkspaceId);
-      await context.read<HomeworkProvider>().initialize(guestWorkspaceId);
-      await context.read<TimetableProvider>().initialize(guestWorkspaceId);
+      await notesProvider.initialize(guestWorkspaceId);
+      await foldersProvider.initialize(guestWorkspaceId);
+      await calendarProvider.initialize(guestWorkspaceId);
+      await homeworkProvider.initialize(guestWorkspaceId);
+      await timetableProvider.initialize(guestWorkspaceId);
     }
 
     if (!context.mounted) return;
@@ -863,7 +870,7 @@ class SettingsScreen extends StatelessWidget {
 
     await _detachWorkspaceServices(context);
     if (workspaceId != null) {
-      await _deleteWorkspaceData(context, workspaceId);
+      await _deleteWorkspaceData(workspaceId);
     }
     await authService.signOut();
 
@@ -895,10 +902,7 @@ class SettingsScreen extends StatelessWidget {
     await timetableProvider.closeWorkspace();
   }
 
-  Future<void> _deleteWorkspaceData(
-    BuildContext context,
-    String workspaceId,
-  ) async {
+  Future<void> _deleteWorkspaceData(String workspaceId) async {
     final boxNames = [
       'notes_$workspaceId',
       'folders_$workspaceId',

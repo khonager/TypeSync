@@ -390,6 +390,13 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _deleteAccount(BuildContext context) async {
     final authService = context.read<AuthService>();
+    final syncService = context.read<SyncService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
     final workspaceId = authService.storageUserId;
 
     final deleted = await authService.deleteAccount();
@@ -407,7 +414,15 @@ class _ProfileScreenState extends State<ProfileScreen>
       return;
     }
 
-    await _detachWorkspaceServices(context);
+    await _detachWorkspaceServices(
+      syncService: syncService,
+      notesProvider: notesProvider,
+      foldersProvider: foldersProvider,
+      calendarProvider: calendarProvider,
+      homeworkProvider: homeworkProvider,
+      timetableProvider: timetableProvider,
+      themeService: themeService,
+    );
     if (workspaceId != null) {
       await _deleteWorkspaceData(workspaceId);
     }
@@ -416,15 +431,15 @@ class _ProfileScreenState extends State<ProfileScreen>
     AppRouter.navigateAndClearStack(context, AppRouter.login);
   }
 
-  Future<void> _detachWorkspaceServices(BuildContext context) async {
-    final syncService = context.read<SyncService>();
-    final notesProvider = context.read<NotesProvider>();
-    final foldersProvider = context.read<FoldersProvider>();
-    final calendarProvider = context.read<CalendarProvider>();
-    final homeworkProvider = context.read<HomeworkProvider>();
-    final timetableProvider = context.read<TimetableProvider>();
-    final themeService = context.read<ThemeService>();
-
+  Future<void> _detachWorkspaceServices({
+    required SyncService syncService,
+    required NotesProvider notesProvider,
+    required FoldersProvider foldersProvider,
+    required CalendarProvider calendarProvider,
+    required HomeworkProvider homeworkProvider,
+    required TimetableProvider timetableProvider,
+    required ThemeService themeService,
+  }) async {
     syncService.stopListening();
     notesProvider.setSyncService(null);
     foldersProvider.setSyncService(null);
