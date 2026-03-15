@@ -1829,8 +1829,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final mimeType = _mimeTypeForExtension(ext);
     final storageService = context.read<StorageService>();
     final localFileService = LocalFileService.instance;
-    final shouldUseLocalStorage =
-        authService.isGuestMode || _note!.localOnly;
+    final shouldUseLocalStorage = authService.isGuestMode || _note!.localOnly;
     String? storedPath;
     int size;
     final attachmentId = const Uuid().v4();

@@ -30,9 +30,9 @@ class SyncStatusIndicator extends StatelessWidget {
 
     switch (syncService.status) {
       case SyncStatus.idle:
-        icon = Icons.cloud_done_outlined;
-        color = Colors.green;
-        tooltip = 'Synced';
+        icon = Icons.cloud_queue_outlined;
+        color = Theme.of(context).colorScheme.outline;
+        tooltip = 'Waiting for sync';
         break;
       case SyncStatus.syncing:
         icon = Icons.sync;

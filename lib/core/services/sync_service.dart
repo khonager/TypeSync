@@ -187,10 +187,15 @@ class SyncService extends ChangeNotifier {
   String? _currentUserId;
   bool _listenersActive = false;
   int _listenerGeneration = 0;
+  bool _notesSnapshotReady = false;
+  bool _foldersSnapshotReady = false;
+  bool _initialWorkspaceSnapshotReady = false;
 
   /// Start listening to real-time updates for a user
   void startListening(String userId) {
-    if (_currentUserId == userId && _listenersActive) {
+    if (_currentUserId == userId &&
+        _listenersActive &&
+        _initialWorkspaceSnapshotReady) {
       _diagnostics.info(
         'SyncService',
         'SYNC_LIFECYCLE reused active listeners for user=$userId generation=$_listenerGeneration',
@@ -202,6 +207,8 @@ class SyncService extends ChangeNotifier {
     _currentUserId = userId;
     final generation = ++_listenerGeneration;
     _listenersActive = true;
+    _resetInitialWorkspaceSnapshotState();
+    _setStatus(SyncStatus.syncing);
     _diagnostics.info(
       'SyncService',
       'SYNC_LIFECYCLE starting listeners user=$userId generation=$generation platform=${defaultTargetPlatform.name}',
@@ -254,13 +261,7 @@ class SyncService extends ChangeNotifier {
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
           _markRefreshSucceeded('Received notes update');
-
-          // If we were syncing/refreshing, transition back to idle/synced
-          if (_status == SyncStatus.syncing) {
-            _setStatus(SyncStatus.synced);
-          } else if (_status != SyncStatus.error) {
-            notifyListeners();
-          }
+          _markWorkspaceCollectionReady('notes');
         },
         onError: (Object error) {
           _setError('Failed to sync notes: $error');
@@ -285,12 +286,7 @@ class SyncService extends ChangeNotifier {
               snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
           onFoldersUpdated?.call(folders);
           _markRefreshSucceeded('Received folders update');
-
-          if (_status == SyncStatus.syncing) {
-            _setStatus(SyncStatus.synced);
-          } else if (_status != SyncStatus.error) {
-            notifyListeners();
-          }
+          _markWorkspaceCollectionReady('folders');
         },
         onError: (Object error) {
           _setError('Failed to sync folders: $error');
@@ -430,12 +426,7 @@ class SyncService extends ChangeNotifier {
           onNotesUpdated?.call(notes);
           _lastSyncTime = DateTime.now();
           _markRefreshSucceeded('Received Linux notes update');
-
-          if (_status == SyncStatus.syncing) {
-            _setStatus(SyncStatus.synced);
-          } else if (_status != SyncStatus.error) {
-            notifyListeners();
-          }
+          _markWorkspaceCollectionReady('notes');
         },
         onError: (Object error) {
           _setError('Failed to sync notes: $error');
@@ -462,12 +453,7 @@ class SyncService extends ChangeNotifier {
           }).toList();
           onFoldersUpdated?.call(folders);
           _markRefreshSucceeded('Received Linux folders update');
-
-          if (_status == SyncStatus.syncing) {
-            _setStatus(SyncStatus.synced);
-          } else if (_status != SyncStatus.error) {
-            notifyListeners();
-          }
+          _markWorkspaceCollectionReady('folders');
         },
         onError: (Object error) {
           _setError('Failed to sync folders: $error');
@@ -709,13 +695,12 @@ class SyncService extends ChangeNotifier {
         'SyncService',
         'SYNC_LIFECYCLE initial Linux snapshot loaded user=$userId generation=$generation notes=${notes.length} folders=${folders.length} events=${events.length} homework=${homework.length} timetable=${timetable.length}',
       );
+      _notesSnapshotReady = true;
+      _foldersSnapshotReady = true;
+      _initialWorkspaceSnapshotReady = true;
       _lastSyncTime = DateTime.now();
       _markRefreshSucceeded('Initial Linux cloud snapshot loaded');
-      if (_status == SyncStatus.syncing || _status == SyncStatus.idle) {
-        _setStatus(SyncStatus.synced);
-      } else {
-        notifyListeners();
-      }
+      _setStatus(SyncStatus.synced);
     } catch (e) {
       _setError('Initial Linux sync fetch failed: $e');
     }
@@ -768,6 +753,7 @@ class SyncService extends ChangeNotifier {
     _fdTimetableSubscription = null;
     _fdSettingsSubscription = null;
     _listenersActive = false;
+    _resetInitialWorkspaceSnapshotState();
   }
 
   /// Trigger a sync operation (debounced)
@@ -1335,6 +1321,36 @@ class SyncService extends ChangeNotifier {
       _awaitingRefreshResult = false;
     }
     notifyListeners();
+  }
+
+  void _resetInitialWorkspaceSnapshotState() {
+    _notesSnapshotReady = false;
+    _foldersSnapshotReady = false;
+    _initialWorkspaceSnapshotReady = false;
+  }
+
+  void _markWorkspaceCollectionReady(String collection) {
+    if (collection == 'notes') {
+      _notesSnapshotReady = true;
+    } else if (collection == 'folders') {
+      _foldersSnapshotReady = true;
+    }
+
+    if (!_initialWorkspaceSnapshotReady &&
+        _notesSnapshotReady &&
+        _foldersSnapshotReady) {
+      _initialWorkspaceSnapshotReady = true;
+      _diagnostics.info(
+        'SyncService',
+        'SYNC_LIFECYCLE initial workspace snapshot is ready user=$_currentUserId generation=$_listenerGeneration',
+      );
+      _setStatus(SyncStatus.synced);
+      return;
+    }
+
+    if (_status != SyncStatus.error) {
+      notifyListeners();
+    }
   }
 
   void _setError(String message) {

@@ -779,7 +779,8 @@ class SettingsScreen extends StatelessWidget {
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _confirmSignOut(BuildContext context, AuthService authService) async {
+  Future<void> _confirmSignOut(
+      BuildContext context, AuthService authService) async {
     final action = await showDialog<_SignOutAction>(
       context: context,
       builder: (context) => AlertDialog(
