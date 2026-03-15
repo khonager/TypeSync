@@ -10,10 +10,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/folder.dart';
+import '../services/diagnostics_service.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing folder state
 class FoldersProvider extends ChangeNotifier {
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   // Local storage box
   Box<Folder>? _foldersBox;
   String? _activeUserId;
@@ -98,6 +101,7 @@ class FoldersProvider extends ChangeNotifier {
     Future.microtask(() => notifyListeners());
 
     try {
+      final boxName = 'folders_$userId';
       if (!Hive.isAdapterRegistered(2)) {
         Hive.registerAdapter(FolderAdapter());
       }
@@ -106,17 +110,33 @@ class FoldersProvider extends ChangeNotifier {
           _activeUserId != userId &&
           _foldersBox != null &&
           _foldersBox!.isOpen) {
+        _diagnostics.info(
+          'FoldersProvider',
+          'HIVE_BOX closing folders box for previous workspace=$_activeUserId',
+        );
         await _foldersBox!.close();
       }
 
-      _foldersBox = await Hive.openBox<Folder>('folders_$userId');
+      _diagnostics.info(
+        'FoldersProvider',
+        'HIVE_BOX opening folders box name=$boxName requestedType=Folder alreadyOpen=${Hive.isBoxOpen(boxName)}',
+      );
+      _foldersBox = await Hive.openBox<Folder>(boxName);
       _activeUserId = userId;
       _folders = _foldersBox!.values.toList();
+      _diagnostics.info(
+        'FoldersProvider',
+        'WORKSPACE_FLOW folders initialized workspace=$userId boxType=${_foldersBox.runtimeType} folderCount=${_folders.length}',
+      );
 
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load folders';
       debugPrint('Folders initialization error: $e');
+      _diagnostics.error(
+        'FoldersProvider',
+        'HIVE_BOX failed to initialize folders workspace=$userId error=$e',
+      );
     }
 
     _isLoading = false;
@@ -284,6 +304,14 @@ class FoldersProvider extends ChangeNotifier {
   /// Handle folders updated from cloud
   void handleCloudUpdate(List<Folder> cloudFolders) {
     final cloudIds = cloudFolders.map((folder) => folder.id).toSet();
+    final localVisibleCount = _folders
+        .where((folder) => !folder.isDeleted && folder.userId == _activeUserId)
+        .length;
+
+    _diagnostics.info(
+      'FoldersProvider',
+      'SYNC_LIFECYCLE applying cloud folders workspace=$_activeUserId cloudCount=${cloudFolders.length} localVisibleBefore=$localVisibleCount',
+    );
 
     for (final cloudFolder in cloudFolders) {
       final localIndex = _folders.indexWhere((f) => f.id == cloudFolder.id);
@@ -302,6 +330,15 @@ class FoldersProvider extends ChangeNotifier {
       }
     }
 
+    if (cloudFolders.isEmpty && localVisibleCount > 0) {
+      _diagnostics.warning(
+        'FoldersProvider',
+        'SYNC_LIFECYCLE skipping empty cloud prune workspace=$_activeUserId localVisibleBefore=$localVisibleCount',
+      );
+      notifyListeners();
+      return;
+    }
+
     final staleFolderIds = _folders
         .where(
           (folder) =>
@@ -318,8 +355,16 @@ class FoldersProvider extends ChangeNotifier {
       for (final folderId in staleFolderIds) {
         _foldersBox?.delete(folderId);
       }
+      _diagnostics.warning(
+        'FoldersProvider',
+        'SYNC_LIFECYCLE pruned stale folders workspace=$_activeUserId prunedCount=${staleFolderIds.length}',
+      );
     }
 
+    _diagnostics.info(
+      'FoldersProvider',
+      'SYNC_LIFECYCLE cloud folders applied workspace=$_activeUserId visibleAfter=${folders.length}',
+    );
     notifyListeners();
   }
 
@@ -369,27 +414,54 @@ class FoldersProvider extends ChangeNotifier {
   }) async {
     if (sourceUserId == targetUserId) return 0;
 
-    final sourceBox = await Hive.openBox<Folder>('folders_$sourceUserId');
-    final targetBox = await Hive.openBox<Folder>('folders_$targetUserId');
+    final sourceBoxName = 'folders_$sourceUserId';
+    final targetBoxName = 'folders_$targetUserId';
+    final sourceBoxResult = await _openCloneBox(sourceBoxName, sourceUserId);
+    final targetBoxResult = await _openCloneBox(targetBoxName, targetUserId);
+    final sourceBox = sourceBoxResult.box;
+    final targetBox = targetBoxResult.box;
 
-    if (!overwriteTarget && targetBox.isNotEmpty) {
-      return 0;
-    }
-    if (overwriteTarget) {
-      await targetBox.clear();
-    }
+    try {
+      if (overwriteTarget) {
+        await targetBox.clear();
+      }
 
-    int copied = 0;
-    for (final folder in sourceBox.values) {
-      final cloned = folder.copyWith(
-        userId: targetUserId,
-        isDirty: true,
-        syncedAt: null,
+      var copied = 0;
+      var skipped = 0;
+      final sourceValues =
+          List<Folder>.from((sourceBox.values as Iterable).whereType<Folder>());
+      final targetCountBefore =
+          (targetBox.values as Iterable).whereType<Folder>().length;
+
+      for (final folder in sourceValues) {
+        if (!overwriteTarget && targetBox.containsKey(folder.id) == true) {
+          skipped++;
+          continue;
+        }
+
+        final cloned = folder.copyWith(
+          userId: targetUserId,
+          isDirty: true,
+          syncedAt: null,
+        );
+        await targetBox.put(cloned.id, cloned);
+        copied++;
+      }
+
+      _diagnostics.info(
+        'FoldersProvider',
+        'GUEST_IMPORT cloned folders source=$sourceUserId target=$targetUserId sourceCount=${sourceValues.length} targetCountBefore=$targetCountBefore copied=$copied skipped=$skipped targetCountAfter=${(targetBox.values as Iterable).whereType<Folder>().length}',
       );
-      await targetBox.put(cloned.id, cloned);
-      copied++;
+
+      return copied;
+    } finally {
+      if (!sourceBoxResult.wasOpen) {
+        await sourceBox.close();
+      }
+      if (!targetBoxResult.wasOpen) {
+        await targetBox.close();
+      }
     }
-    return copied;
   }
 
   Future<void> closeWorkspace() async {
@@ -406,6 +478,38 @@ class FoldersProvider extends ChangeNotifier {
     _syncSubscription?.cancel();
     super.dispose();
   }
+
+  Future<_OpenedCloneBox> _openCloneBox(
+    String boxName,
+    String workspaceId,
+  ) async {
+    final wasOpen = Hive.isBoxOpen(boxName);
+    if (wasOpen) {
+      final box = Hive.box(boxName);
+      _diagnostics.info(
+        'FoldersProvider',
+        'HIVE_BOX reusing open folders box name=$boxName workspace=$workspaceId runtimeType=${box.runtimeType}',
+      );
+      return _OpenedCloneBox(box: box, wasOpen: true);
+    }
+
+    _diagnostics.info(
+      'FoldersProvider',
+      'HIVE_BOX opening clone folders box name=$boxName workspace=$workspaceId requestedType=Folder',
+    );
+    final box = await Hive.openBox<Folder>(boxName);
+    return _OpenedCloneBox(box: box, wasOpen: false);
+  }
+}
+
+class _OpenedCloneBox {
+  const _OpenedCloneBox({
+    required this.box,
+    required this.wasOpen,
+  });
+
+  final dynamic box;
+  final bool wasOpen;
 }
 
 // Hive type adapter for Folder

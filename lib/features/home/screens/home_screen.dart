@@ -70,94 +70,187 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _repairAuditTimer;
   String? _lastRepairPromptSignature;
   bool _isRepairDialogOpen = false;
+  bool _isHandlingGuestImport = false;
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+  String? _activeWorkspaceId;
+  String? _activeCloudUserId;
+  bool? _activeSyncEnabled;
+  AuthService? _authService;
+  String? _initializingWorkspaceId;
 
   @override
   void initState() {
     super.initState();
     // Defer initialization until after the first frame to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _attachAuthListener();
       _initializeData();
     });
   }
 
-  Future<void> _initializeData() async {
-    debugPrint('HomeScreen: _initializeData IS CALLED!');
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _attachAuthListener();
+  }
+
+  Future<void> _initializeData({bool force = false}) async {
     final authService = context.read<AuthService>();
     final cloudUserId = authService.userId;
+    final effectiveUserId = authService.storageUserId;
 
-    // Use 'guest' ID if not logged in (Guest Mode)
-    final effectiveUserId = authService.storageUserId ?? 'guest';
+    _diagnostics.info(
+      'HomeScreen',
+      'WORKSPACE_FLOW initialize requested force=$force routeCurrent=${ModalRoute.of(context)?.isCurrent} cloudUser=$cloudUserId workspace=$effectiveUserId guestMode=${authService.isGuestMode} pendingGuestImport=${authService.pendingGuestImportWorkspaceId}',
+    );
 
-    // Initialize local file service
-    await LocalFileService.instance.initialize(effectiveUserId);
+    if (effectiveUserId == null) {
+      _diagnostics.warning(
+        'HomeScreen',
+        'WORKSPACE_FLOW skipped initialize because there is no active workspace',
+      );
+      return;
+    }
 
-    if (!mounted) return;
+    if (_initializingWorkspaceId == effectiveUserId) {
+      _diagnostics.info(
+        'HomeScreen',
+        'WORKSPACE_FLOW skipped initialize because workspace=$effectiveUserId is already initializing',
+      );
+      return;
+    }
 
-    // Initialize providers with user ID
-    // Note: Guests use 'guest' as ID, so their data is stored in 'notes_guest' box
-    await context.read<NotesProvider>().initialize(effectiveUserId);
-    if (!mounted) return;
-    await context.read<FoldersProvider>().initialize(effectiveUserId);
-    if (!mounted) return;
+    final syncEnabled =
+        authService.isLoggedIn && authService.effectiveSyncEnabled;
+    if (!force &&
+        _activeWorkspaceId == effectiveUserId &&
+        _activeCloudUserId == cloudUserId &&
+        _activeSyncEnabled == syncEnabled) {
+      _diagnostics.info(
+        'HomeScreen',
+        'WORKSPACE_FLOW skipped initialize because workspace=$effectiveUserId syncEnabled=$syncEnabled is unchanged',
+      );
+      return;
+    }
 
-    _scheduleRepairAudit();
+    final workspaceChanged = _activeWorkspaceId != effectiveUserId;
+    final previousWorkspaceId = _activeWorkspaceId;
+    _activeWorkspaceId = effectiveUserId;
+    _activeCloudUserId = cloudUserId;
+    _activeSyncEnabled = syncEnabled;
+    _initializingWorkspaceId = effectiveUserId;
 
-    // Sync the sync service with auth preferences
+    _diagnostics.info(
+      'HomeScreen',
+      'WORKSPACE_FLOW active workspace changed previous=$previousWorkspaceId next=$effectiveUserId cloudUser=$cloudUserId syncEnabled=$syncEnabled',
+    );
+
+    if (workspaceChanged && mounted) {
+      setState(() {
+        _currentFolderId = null;
+      });
+    }
+
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final calendarProvider = context.read<CalendarProvider>();
+    final homeworkProvider = context.read<HomeworkProvider>();
+    final timetableProvider = context.read<TimetableProvider>();
+    final themeService = context.read<ThemeService>();
     final syncService = context.read<SyncService>();
-    syncService.setSyncEnabled(authService.effectiveSyncEnabled);
 
-    // Only start sync if user is logged in (not guest) and sync is enabled
-    // We check actual userId (not effective) to determine if we can sync
-    if (cloudUserId != null &&
-        authService.isLoggedIn &&
-        authService.effectiveSyncEnabled) {
-      syncService.startListening(cloudUserId);
+    try {
+      // Initialize local file service
+      await LocalFileService.instance.initialize(effectiveUserId);
 
-      // Connect providers to sync service
-      context.read<NotesProvider>().setSyncService(syncService);
-      context.read<FoldersProvider>().setSyncService(syncService);
-      context.read<CalendarProvider>().setSyncService(syncService);
-      context.read<HomeworkProvider>().setSyncService(syncService);
-      context.read<TimetableProvider>().setSyncService(syncService);
-      context.read<ThemeService>().setSyncService(syncService);
+      if (!mounted) return;
 
-      // Set up sync callbacks
-      syncService.onNotesUpdated = (notes) {
-        context.read<NotesProvider>().handleCloudUpdate(notes);
-        _scheduleRepairAudit();
-      };
-      syncService.onFoldersUpdated = (folders) {
-        context.read<FoldersProvider>().handleCloudUpdate(folders);
-        _scheduleRepairAudit();
-      };
-      syncService.onCalendarUpdated = (events) {
-        context.read<CalendarProvider>().handleCloudUpdate(events);
-      };
-      syncService.onHomeworkUpdated = (tasks) {
-        context.read<HomeworkProvider>().handleCloudUpdate(tasks);
-      };
-      syncService.onTimetableUpdated = (entries) {
-        context.read<TimetableProvider>().handleCloudUpdate(entries);
-      };
-      syncService.onSettingsUpdated = (settings) {
-        context.read<ThemeService>().handleCloudSettings(settings);
-      };
+      // Initialize providers with the active workspace ID.
+      await notesProvider.initialize(effectiveUserId);
+      if (!mounted) return;
+      await foldersProvider.initialize(effectiveUserId);
+      if (!mounted) return;
 
-      // Check for data migration (Guest/Local -> User)
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _checkDataMigration(cloudUserId);
-        });
+      _diagnostics.info(
+        'HomeScreen',
+        'WORKSPACE_FLOW workspace initialized workspace=$effectiveUserId notes=${notesProvider.notes.length} folders=${foldersProvider.folders.length}',
+      );
+
+      _scheduleRepairAudit();
+
+      // Sync the sync service with auth preferences
+      syncService.setSyncEnabled(authService.effectiveSyncEnabled);
+
+      // Only start sync if user is logged in (not guest) and sync is enabled
+      // We check actual userId (not effective) to determine if we can sync
+      if (cloudUserId != null && syncEnabled) {
+        // Connect providers to sync service
+        notesProvider.setSyncService(syncService);
+        foldersProvider.setSyncService(syncService);
+        calendarProvider.setSyncService(syncService);
+        homeworkProvider.setSyncService(syncService);
+        timetableProvider.setSyncService(syncService);
+        themeService.setSyncService(syncService);
+
+        // Set up sync callbacks without touching BuildContext after init.
+        syncService.onNotesUpdated = (notes) {
+          notesProvider.handleCloudUpdate(notes);
+          if (mounted) {
+            _scheduleRepairAudit();
+          }
+        };
+        syncService.onFoldersUpdated = (folders) {
+          foldersProvider.handleCloudUpdate(folders);
+          if (mounted) {
+            _scheduleRepairAudit();
+          }
+        };
+        syncService.onCalendarUpdated = calendarProvider.handleCloudUpdate;
+        syncService.onHomeworkUpdated = homeworkProvider.handleCloudUpdate;
+        syncService.onTimetableUpdated = timetableProvider.handleCloudUpdate;
+        syncService.onSettingsUpdated = themeService.handleCloudSettings;
+
+        _diagnostics.info(
+          'HomeScreen',
+          'SYNC_LIFECYCLE callbacks attached workspace=$effectiveUserId cloudUser=$cloudUserId',
+        );
+
+        syncService.startListening(cloudUserId);
+
+        // Check for guest workspace import after sign-in
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            _checkGuestWorkspaceImport(cloudUserId);
+          });
+        }
+      } else {
+        // For guests or when sync is disabled, don't set up sync service
+        syncService.stopListening(
+          reason: 'workspace unavailable or sync disabled',
+        );
+        notesProvider.setSyncService(null);
+        foldersProvider.setSyncService(null);
+        calendarProvider.setSyncService(null);
+        homeworkProvider.setSyncService(null);
+        timetableProvider.setSyncService(null);
+        themeService.setSyncService(null);
+        _diagnostics.info(
+          'HomeScreen',
+          'SYNC_LIFECYCLE sync detached workspace=$effectiveUserId cloudUser=$cloudUserId syncEnabled=$syncEnabled guestMode=${authService.isGuestMode}',
+        );
       }
-    } else {
-      // For guests or when sync is disabled, don't set up sync service
-      context.read<NotesProvider>().setSyncService(null);
-      context.read<FoldersProvider>().setSyncService(null);
-      context.read<CalendarProvider>().setSyncService(null);
-      context.read<HomeworkProvider>().setSyncService(null);
-      context.read<TimetableProvider>().setSyncService(null);
-      context.read<ThemeService>().setSyncService(null);
+    } finally {
+      if (_initializingWorkspaceId == effectiveUserId) {
+        _initializingWorkspaceId = null;
+      }
+      _diagnostics.info(
+        'HomeScreen',
+        'WORKSPACE_FLOW initialize finished workspace=$effectiveUserId activeFolder=$_currentFolderId',
+      );
     }
   }
 
@@ -287,54 +380,134 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _checkDataMigration(String userId) async {
+  Future<void> _checkGuestWorkspaceImport(String userId) async {
+    if (!mounted) {
+      return;
+    }
+
+    if (_isHandlingGuestImport) {
+      _diagnostics.info(
+        'HomeScreen',
+        'GUEST_IMPORT skipped because an import flow is already running',
+      );
+      return;
+    }
+
+    _isHandlingGuestImport = true;
+    final authService = context.read<AuthService>();
     final notesProvider = context.read<NotesProvider>();
     final foldersProvider = context.read<FoldersProvider>();
     final migrationService = MigrationService();
+    final guestWorkspaceId = authService.pendingGuestImportWorkspaceId;
 
-    if (migrationService.needsMigration(
-      currentUserId: userId,
-      notesProvider: notesProvider,
-    )) {
-      // Ask user to migrate
-      final shouldMigrate = await showDialog<bool>(
+    try {
+      _diagnostics.info(
+        'HomeScreen',
+        'GUEST_IMPORT pending workspace=$guestWorkspaceId targetUser=$userId activeWorkspace=${authService.storageUserId}',
+      );
+
+      if (guestWorkspaceId == null || guestWorkspaceId == userId) {
+        _diagnostics.info(
+          'HomeScreen',
+          'GUEST_IMPORT skipped because there is no distinct guest workspace to import',
+        );
+        return;
+      }
+
+      final hasGuestData = await migrationService.workspaceHasData(
+        guestWorkspaceId,
+      );
+      _diagnostics.info(
+        'HomeScreen',
+        'GUEST_IMPORT source workspace=$guestWorkspaceId hasData=$hasGuestData',
+      );
+      if (!hasGuestData || !mounted) {
+        await authService.clearPendingGuestImportWorkspace();
+        return;
+      }
+
+      final action = await showDialog<_GuestImportAction>(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          title: const Text('Sync Local Notes?'),
+          title: const Text('Import Guest Files?'),
           content: const Text(
-            'We found notes created locally. Do you want to add them to your account account?',
+            'We found files from your guest workspace. Do you want to add them to this signed-in account?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('No'),
+              onPressed: () => Navigator.pop(context, _GuestImportAction.keep),
+              child: const Text('Keep Guest Files'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, _GuestImportAction.deleteGuestFiles),
+              child: const Text('Delete Guest Files'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, true), // Yes, migrate
-              child: const Text('Merge'),
+              onPressed: () =>
+                  Navigator.pop(context, _GuestImportAction.import),
+              child: const Text('Import'),
             ),
           ],
         ),
       );
 
-      if (shouldMigrate == true && mounted) {
-        final count = await migrationService.migrateData(
-          newUserId: userId,
-          notesProvider: notesProvider,
-          foldersProvider: foldersProvider,
-          keepLocal: false,
+      if (!mounted || action == null) {
+        _diagnostics.info(
+          'HomeScreen',
+          'GUEST_IMPORT prompt dismissed without action',
         );
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Migrated $count items to your account')),
-        );
-
-        // Trigger sync immediately
-        context.read<SyncService>().triggerSync();
+        return;
       }
+
+      _diagnostics.info(
+        'HomeScreen',
+        'GUEST_IMPORT prompt action=${action.name} sourceWorkspace=$guestWorkspaceId targetUser=$userId',
+      );
+
+      switch (action) {
+        case _GuestImportAction.import:
+          final count = await migrationService.importWorkspace(
+            sourceWorkspaceId: guestWorkspaceId,
+            targetUserId: userId,
+            notesProvider: notesProvider,
+            foldersProvider: foldersProvider,
+          );
+          await notesProvider.initialize(userId);
+          await foldersProvider.initialize(userId);
+          _diagnostics.info(
+            'HomeScreen',
+            'GUEST_IMPORT import finished targetUser=$userId importedItems=$count notes=${notesProvider.notes.length} folders=${foldersProvider.folders.length}',
+          );
+          await authService.clearPendingGuestImportWorkspace();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                count > 0
+                    ? 'Imported $count guest items to your account. Guest files were kept locally as a backup.'
+                    : 'No new guest items were imported',
+              ),
+            ),
+          );
+          context.read<SyncService>().triggerSync();
+          break;
+        case _GuestImportAction.deleteGuestFiles:
+          await migrationService.deleteWorkspace(guestWorkspaceId);
+          await authService.clearPendingGuestImportWorkspace();
+          await authService.clearGuestWorkspaceId();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Deleted guest files')),
+          );
+          break;
+        case _GuestImportAction.keep:
+          await authService.clearPendingGuestImportWorkspace();
+          break;
+      }
+    } finally {
+      _isHandlingGuestImport = false;
     }
   }
 
@@ -404,10 +577,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _authService?.removeListener(_handleAuthStateChanged);
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _attachAuthListener() {
+    final authService = context.read<AuthService>();
+    if (identical(_authService, authService)) {
+      return;
+    }
+
+    _authService?.removeListener(_handleAuthStateChanged);
+    _authService = authService;
+    _authService?.addListener(_handleAuthStateChanged);
+    _diagnostics.info(
+      'HomeScreen',
+      'AUTH_FLOW attached auth listener workspace=${authService.storageUserId} cloudUser=${authService.userId}',
+    );
+  }
+
+  void _handleAuthStateChanged() {
+    if (!mounted) return;
+    final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? true;
+    _diagnostics.info(
+      'HomeScreen',
+      'AUTH_FLOW home observed auth change routeCurrent=$isCurrentRoute workspace=${context.read<AuthService>().storageUserId} cloudUser=${context.read<AuthService>().userId}',
+    );
+    if (!isCurrentRoute) {
+      _diagnostics.info(
+        'HomeScreen',
+        'AUTH_FLOW skipped hidden HomeScreen auth reaction',
+      );
+      return;
+    }
+    _initializeData();
   }
 
   bool get _useLongPressGridDrag {
@@ -1860,6 +2066,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return buffer.toString();
   }
+}
+
+enum _GuestImportAction {
+  import,
+  keep,
+  deleteGuestFiles,
 }
 
 /// Color option widget for note background color picker

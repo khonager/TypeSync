@@ -7,6 +7,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firedart/firedart.dart' as fd;
 import 'package:firedart/auth/user_gateway.dart' as fd;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,12 +15,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/user.dart';
+import 'diagnostics_service.dart';
 
 /// Service for managing user authentication
 ///
 /// Provides methods for sign in, sign up, sign out, and
 /// password recovery. Maintains current user state.
 class AuthService extends ChangeNotifier {
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   // Firebase Auth instance (lazy initialization)
   firebase.FirebaseAuth? _auth;
   FirebaseFirestore? _firestore;
@@ -80,6 +84,8 @@ class AuthService extends ChangeNotifier {
   // Error state
   String? _errorMessage;
   bool _hasError = false;
+  String? _guestWorkspaceId;
+  String? _pendingGuestImportWorkspaceId;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -117,6 +123,8 @@ class AuthService extends ChangeNotifier {
 
   /// Whether there's an active error
   bool get hasError => _hasError;
+  String? get guestWorkspaceId => _guestWorkspaceId;
+  String? get pendingGuestImportWorkspaceId => _pendingGuestImportWorkspaceId;
 
   /// User ID for local storage (Firebase UID for logged-in users, guest ID for guests)
   String? get userId {
@@ -253,6 +261,29 @@ class AuthService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _syncEnabled = prefs.getBool('sync_enabled') ?? true;
       _localOnlyMode = prefs.getBool('local_only_mode') ?? false;
+      _guestWorkspaceId = prefs.getString('guest_workspace_id');
+      _pendingGuestImportWorkspaceId =
+          prefs.getString('pending_guest_import_workspace_id');
+
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId isAuthenticated=$isAuthenticated',
+      );
+
+      if (!isAuthenticated &&
+          _guestWorkspaceId != null &&
+          _guestWorkspaceId!.isNotEmpty) {
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW restoring guest workspace=$_guestWorkspaceId from preferences',
+        );
+        await _startGuestSession(
+          workspaceId: _guestWorkspaceId,
+          persistWorkspace: false,
+        );
+        return;
+      }
+
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading preferences: $e');
@@ -296,6 +327,11 @@ class AuthService extends ChangeNotifier {
   }) async {
     _setLoading(true);
     _clearError();
+    final previousGuestWorkspaceId = _guestWorkspaceId;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW signIn requested email=${email.trim()} guestMode=$_isGuestMode previousGuestWorkspace=$previousGuestWorkspaceId',
+    );
 
     try {
       // Handle Linux fallback
@@ -304,9 +340,18 @@ class AuthService extends ChangeNotifier {
         final fdUser = await _firedartAuth.getUser();
 
         // Load full user data from Firestore using Firedart
+        _isGuestMode = false;
+        await _setPendingGuestImportWorkspace(
+          previousGuestWorkspaceId,
+          fdUser.id,
+        );
         await _loadUserData(fdUser.id);
 
-        _isGuestMode = false;
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW Linux signIn completed user=${fdUser.id} storageUserId=$storageUserId pendingGuestImport=$_pendingGuestImportWorkspaceId',
+        );
+
         _setLoading(false);
         notifyListeners();
         return true;
@@ -320,7 +365,16 @@ class AuthService extends ChangeNotifier {
 
       // Load user data from Firestore
       if (credential.user != null) {
+        _isGuestMode = false;
+        await _setPendingGuestImportWorkspace(
+          previousGuestWorkspaceId,
+          credential.user!.uid,
+        );
         await _loadUserData(credential.user!.uid);
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW signIn completed user=${credential.user!.uid} storageUserId=$storageUserId pendingGuestImport=$_pendingGuestImportWorkspaceId',
+        );
       }
 
       _setLoading(false);
@@ -352,12 +406,22 @@ class AuthService extends ChangeNotifier {
   }) async {
     _setLoading(true);
     _clearError();
+    final previousGuestWorkspaceId = _guestWorkspaceId;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW register requested email=${email.trim()} guestMode=$_isGuestMode previousGuestWorkspace=$previousGuestWorkspaceId',
+    );
 
     try {
       // Handle Linux fallback
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         await _firedartAuth.signUp(email.trim(), password);
         final fdUser = await _firedartAuth.getUser();
+        _isGuestMode = false;
+        await _setPendingGuestImportWorkspace(
+          previousGuestWorkspaceId,
+          fdUser.id,
+        );
 
         // Create user object for Firestore
         final user = User(
@@ -379,6 +443,11 @@ class AuthService extends ChangeNotifier {
         _currentUser = user;
         notifyListeners();
 
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW Linux register completed user=${fdUser.id} storageUserId=$storageUserId pendingGuestImport=$_pendingGuestImportWorkspaceId',
+        );
+
         _setLoading(false);
         return true;
       }
@@ -390,6 +459,11 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        _isGuestMode = false;
+        await _setPendingGuestImportWorkspace(
+          previousGuestWorkspaceId,
+          credential.user!.uid,
+        );
         // Update display name if provided
         if (displayName != null && displayName.isNotEmpty) {
           await credential.user!.updateDisplayName(displayName);
@@ -413,6 +487,11 @@ class AuthService extends ChangeNotifier {
         _currentUser = user;
         notifyListeners();
 
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW register completed user=${credential.user!.uid} storageUserId=$storageUserId pendingGuestImport=$_pendingGuestImportWorkspaceId',
+        );
+
         // Send email verification
         await credential.user!.sendEmailVerification();
       }
@@ -432,12 +511,51 @@ class AuthService extends ChangeNotifier {
 
   /// Sign in as guest (local-only mode)
   Future<void> signInAsGuest() async {
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW signInAsGuest requested previousGuestWorkspace=$_guestWorkspaceId',
+    );
+    await _startGuestSession();
+  }
+
+  /// Continue without sync while keeping the current local workspace.
+  Future<void> continueAsGuest({String? workspaceId}) async {
     _setLoading(true);
     _clearError();
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW continueAsGuest requested workspaceOverride=$workspaceId currentUserId=$userId storageUserId=$storageUserId guestMode=$_isGuestMode',
+    );
+
+    try {
+      if (!_isGuestMode) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+          _firedartAuth.signOut();
+        } else {
+          await _firebaseAuth.signOut();
+        }
+      }
+
+      await _startGuestSession(workspaceId: workspaceId, setLoading: false);
+    } catch (e) {
+      _setError('Failed to continue in guest mode.');
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _startGuestSession({
+    String? workspaceId,
+    bool setLoading = true,
+    bool persistWorkspace = true,
+  }) async {
+    if (setLoading) {
+      _setLoading(true);
+      _clearError();
+    }
 
     try {
       // Generate a guest user ID
-      final guestId = 'guest_${_uuid.v4()}';
+      final guestId = workspaceId ?? 'guest_${_uuid.v4()}';
 
       // Create a guest user object
       _currentUser = User(
@@ -450,6 +568,14 @@ class AuthService extends ChangeNotifier {
       );
 
       _isGuestMode = true;
+      _isInitialized = true;
+      if (persistWorkspace) {
+        await _saveGuestWorkspaceId(guestId);
+      }
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW guest session started workspace=$guestId persistWorkspace=$persistWorkspace pendingGuestImport=$_pendingGuestImportWorkspaceId',
+      );
       _setLoading(false);
       notifyListeners();
     } catch (e) {
@@ -560,6 +686,102 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Reload the authenticated user so email verification and profile data stay fresh.
+  Future<bool> refreshCurrentUser() async {
+    if (_currentUser == null || _isGuestMode) {
+      return false;
+    }
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final fdUser = await _firedartAuth.getUser();
+        await _onFiredartAuthChanged(fdUser);
+        return true;
+      }
+
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        return false;
+      }
+
+      await firebaseUser.reload();
+      final reloadedUser = _firebaseAuth.currentUser;
+      if (reloadedUser == null) {
+        return false;
+      }
+
+      await _loadUserData(reloadedUser.uid, firebaseUser: reloadedUser);
+      return true;
+    } catch (e) {
+      _setError('Failed to refresh account details.');
+      return false;
+    }
+  }
+
+  /// Delete the authenticated account and its cloud data.
+  Future<bool> deleteAccount() async {
+    if (_currentUser == null || _isGuestMode) {
+      _setError('No signed-in account to delete.');
+      return false;
+    }
+
+    _setLoading(true);
+    _clearError();
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        _setError('Account deletion is not supported on Linux yet.');
+        _setLoading(false);
+        return false;
+      }
+
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        _setError('No signed-in account to delete.');
+        _setLoading(false);
+        return false;
+      }
+
+      final uid = firebaseUser.uid;
+
+      await _deleteUserCollection('notes', uid);
+      await _deleteUserCollection('folders', uid);
+      await _deleteUserCollection('homework', uid);
+      await _deleteUserCollection('calendar_events', uid);
+      await _deleteUserCollection('timetable_entries', uid);
+      await _firebaseFirestore
+          .collection('settings')
+          .doc(uid)
+          .delete()
+          .catchError((_) {});
+      await _firebaseFirestore
+          .collection('users')
+          .doc(uid)
+          .delete()
+          .catchError((_) {});
+      await _deleteUserStorageFolder(uid);
+      await firebaseUser.delete();
+
+      _currentUser = null;
+      _isGuestMode = false;
+      _setLoading(false);
+      notifyListeners();
+      return true;
+    } on firebase.FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        _setError('Please sign in again before deleting your account.');
+      } else {
+        _setError(_mapFirebaseError(e.code));
+      }
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to delete account. Please try again.');
+      _setLoading(false);
+      return false;
+    }
+  }
+
   /// Update user profile
   Future<bool> updateProfile({
     String? displayName,
@@ -636,7 +858,12 @@ class AuthService extends ChangeNotifier {
 
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
-    if (firebaseUser != null && !_isGuestMode) {
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW firebase auth state changed user=${firebaseUser?.uid} guestMode=$_isGuestMode initialized=$_isInitialized',
+    );
+    if (firebaseUser != null) {
+      _isGuestMode = false;
       await _loadUserData(firebaseUser.uid);
       _isInitialized = true;
       notifyListeners();
@@ -654,8 +881,12 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Load user data from Firestore
-  Future<void> _loadUserData(String uid) async {
+  Future<void> _loadUserData(String uid, {firebase.User? firebaseUser}) async {
     try {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW loading user data uid=$uid platform=${defaultTargetPlatform.name}',
+      );
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = fd.Firestore.instance;
         final doc = await fdFirestore.collection('users').document(uid).get();
@@ -687,17 +918,33 @@ class AuthService extends ChangeNotifier {
         }
       } else {
         final doc = await _firebaseFirestore.collection('users').doc(uid).get();
+        final activeFirebaseUser = firebaseUser ?? _firebaseAuth.currentUser;
 
         if (doc.exists) {
-          _currentUser = User.fromJson(doc.data()!);
+          final firestoreUser = User.fromJson(doc.data()!);
+          final emailVerified =
+              activeFirebaseUser?.emailVerified ?? firestoreUser.emailVerified;
+
+          _currentUser = firestoreUser.copyWith(
+            email: activeFirebaseUser?.email ?? firestoreUser.email,
+            displayName:
+                activeFirebaseUser?.displayName ?? firestoreUser.displayName,
+            photoUrl: activeFirebaseUser?.photoURL ?? firestoreUser.photoUrl,
+            emailVerified: emailVerified,
+          );
 
           // Update last sign in
           await _firebaseFirestore.collection('users').doc(uid).update({
             'lastSignIn': DateTime.now().toIso8601String(),
+            'emailVerified': emailVerified,
+            'email': activeFirebaseUser?.email ?? firestoreUser.email,
+            'displayName':
+                activeFirebaseUser?.displayName ?? firestoreUser.displayName,
+            'photoUrl': activeFirebaseUser?.photoURL ?? firestoreUser.photoUrl,
           });
         } else {
           // Create user document if it doesn't exist (e.g., after auth migration)
-          final firebaseUser = _firebaseAuth.currentUser!;
+          final firebaseUser = activeFirebaseUser!;
           final user = User(
             id: uid,
             email: firebaseUser.email!,
@@ -717,12 +964,20 @@ class AuthService extends ChangeNotifier {
       }
 
       notifyListeners();
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW user data loaded uid=$uid currentUser=${_currentUser?.id} storageUserId=$storageUserId guestMode=$_isGuestMode',
+      );
     } catch (e) {
       debugPrint('Error loading user data: $e');
     }
   }
 
   Future<void> _onFiredartAuthChanged(fd.User? fdUser) async {
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW firedart auth state changed user=${fdUser?.id} guestMode=$_isGuestMode initialized=$_isInitialized',
+    );
     if (fdUser != null && !_isGuestMode) {
       _currentUser = User(
         id: fdUser.id,
@@ -760,8 +1015,50 @@ class AuthService extends ChangeNotifier {
         return 'Email/password sign in is not enabled.';
       case 'network-request-failed':
         return 'Network error. Check your connection.';
+      case 'requires-recent-login':
+        return 'Please sign in again to continue.';
       default:
         return 'Authentication failed. Please try again.';
+    }
+  }
+
+  Future<void> _deleteUserCollection(
+    String collectionName,
+    String userId,
+  ) async {
+    while (true) {
+      final snapshot = await _firebaseFirestore
+          .collection(collectionName)
+          .where('userId', isEqualTo: userId)
+          .limit(100)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        break;
+      }
+
+      final batch = _firebaseFirestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _deleteUserStorageFolder(String userId) async {
+    final rootRef = FirebaseStorage.instance.ref().child('users/$userId');
+    await _deleteStorageFolder(rootRef);
+  }
+
+  Future<void> _deleteStorageFolder(Reference ref) async {
+    final result = await ref.listAll();
+
+    for (final item in result.items) {
+      await item.delete();
+    }
+
+    for (final prefix in result.prefixes) {
+      await _deleteStorageFolder(prefix);
     }
   }
 
@@ -785,5 +1082,60 @@ class AuthService extends ChangeNotifier {
   void clearError() {
     _clearError();
     notifyListeners();
+  }
+
+  Future<void> clearPendingGuestImportWorkspace() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pending_guest_import_workspace_id');
+    _pendingGuestImportWorkspaceId = null;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW cleared pending guest import workspace',
+    );
+    notifyListeners();
+  }
+
+  Future<void> clearGuestWorkspaceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('guest_workspace_id');
+    _guestWorkspaceId = null;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW cleared guest workspace preference',
+    );
+    notifyListeners();
+  }
+
+  Future<void> _saveGuestWorkspaceId(String workspaceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('guest_workspace_id', workspaceId);
+    _guestWorkspaceId = workspaceId;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW saved guest workspace workspace=$workspaceId',
+    );
+  }
+
+  Future<void> _setPendingGuestImportWorkspace(
+    String? workspaceId,
+    String targetUserId,
+  ) async {
+    if (workspaceId == null ||
+        workspaceId.isEmpty ||
+        workspaceId == targetUserId) {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW skipped pending guest import workspace=$workspaceId targetUser=$targetUserId',
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pending_guest_import_workspace_id', workspaceId);
+    _pendingGuestImportWorkspaceId = workspaceId;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW set pending guest import workspace=$workspaceId targetUser=$targetUserId',
+    );
   }
 }
