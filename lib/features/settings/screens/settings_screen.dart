@@ -3,6 +3,9 @@
 /// App settings including theme, sync, and account options.
 library;
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -11,15 +14,18 @@ import 'package:provider/provider.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/diagnostics_service.dart';
+import '../../../core/services/anytype_import_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/utils/file_picker_helper.dart';
 
 /// Settings screen with app preferences
 class SettingsScreen extends StatelessWidget {
@@ -213,6 +219,17 @@ class SettingsScreen extends StatelessWidget {
 
           const Divider(),
 
+          const _SectionHeader(title: 'Import'),
+
+          _SettingsTile(
+            icon: Icons.download_for_offline_outlined,
+            title: 'Import from Anytype',
+            subtitle: 'Choose a Markdown export folder',
+            onTap: () => _importFromAnytype(context),
+          ),
+
+          const Divider(),
+
           // About Section
           const _SectionHeader(title: 'About'),
 
@@ -363,6 +380,175 @@ class SettingsScreen extends StatelessWidget {
             );
           }).toList(),
         ),
+      ),
+    );
+  }
+
+  Future<void> _importFromAnytype(BuildContext context) async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Anytype import currently needs a local export folder, so web is not supported yet.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Import from Anytype'),
+        content: const Text(
+          'Export from Anytype as Markdown, not any-block. TypeSync will import the folder structure, Markdown notes, and linked local files it can find in that export.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Choose Folder'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldContinue != true || !context.mounted) {
+      return;
+    }
+
+    final folderPath = await FilePickerHelper.pickDirectory(
+      context: context,
+      dialogTitle: 'Choose Anytype Markdown export folder',
+    );
+
+    if (folderPath == null || !context.mounted) {
+      return;
+    }
+
+    final authService = context.read<AuthService>();
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final storageService = context.read<StorageService>();
+    final workspaceId = authService.storageUserId;
+    final noteUserId = authService.userId ?? workspaceId;
+
+    if (workspaceId == null || noteUserId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active workspace is available')),
+      );
+      return;
+    }
+
+    await LocalFileService.instance.initialize(workspaceId);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: 16),
+            Expanded(child: Text('Importing Anytype Markdown export...')),
+          ],
+        ),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    AnytypeImportResult? result;
+    try {
+      result = await AnytypeImportService.instance.importMarkdownExport(
+        exportDirectory: Directory(folderPath),
+        noteUserId: noteUserId,
+        notesProvider: notesProvider,
+        foldersProvider: foldersProvider,
+        useCloudStorage:
+            authService.isLoggedIn && authService.effectiveSyncEnabled,
+        cloudUserId: authService.userId,
+        storageService: storageService,
+      );
+    } finally {
+      if (context.mounted) {
+        final navigator = Navigator.of(context, rootNavigator: true);
+        if (navigator.canPop()) {
+          navigator.pop();
+        }
+      }
+    }
+
+    if (!context.mounted || result == null) {
+      return;
+    }
+
+    final summary = StringBuffer(
+      'Imported ${result.importedNotes} notes',
+    );
+    if (result.importedFolders > 0) {
+      summary.write(' across ${result.importedFolders} folders');
+    }
+    if (result.importedAttachments > 0) {
+      summary.write(' with ${result.importedAttachments} attachments');
+    }
+    if (result.failedEntries.isNotEmpty) {
+      summary.write('. ${result.failedEntries.length} items failed');
+    } else if (result.skippedEntries.isNotEmpty) {
+      summary.write('. ${result.skippedEntries.length} items were skipped');
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(summary.toString())),
+    );
+
+    if (result.hasWarnings) {
+      _showImportWarnings(context, result);
+    }
+  }
+
+  void _showImportWarnings(
+    BuildContext context,
+    AnytypeImportResult result,
+  ) {
+    final lines = <String>[
+      if (result.failedEntries.isNotEmpty) 'Failed:',
+      ...result.failedEntries,
+      if (result.failedEntries.isNotEmpty && result.skippedEntries.isNotEmpty)
+        '',
+      if (result.skippedEntries.isNotEmpty) 'Skipped:',
+      ...result.skippedEntries,
+    ];
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Anytype Import Notes'),
+        content: SizedBox(
+          width: 640,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: SingleChildScrollView(
+              child: SelectableText(lines.join('\n')),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
