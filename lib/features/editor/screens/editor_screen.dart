@@ -39,9 +39,11 @@ import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
+import '../../../core/models/typesync_table_embed.dart';
 import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
+import '../widgets/typesync_table_embed_builder.dart';
 
 /// Note editor with markdown-like rich text editing
 ///
@@ -352,6 +354,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   EditorToolbar(
                     controller: _quillController,
                     onInsertPdf: _insertPdf,
+                    onInsertTable: _insertTable,
                   ),
                   if (_isDragging)
                     Container(
@@ -670,7 +673,10 @@ class _EditorScreenState extends State<EditorScreen> {
         focusNode: _focusNode,
         scrollController: _scrollController,
         configurations: const QuillEditorConfigurations(
-          embedBuilders: [MarkdownTableEmbedBuilder()],
+          embedBuilders: [
+            TypeSyncTableEmbedBuilder(),
+            MarkdownTableEmbedBuilder(),
+          ],
         ),
       ),
     );
@@ -1528,6 +1534,25 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
     }
+  }
+
+  void _insertTable() {
+    final selection = _quillController.selection;
+    final baseOffset = selection.baseOffset < 0 ? 0 : selection.baseOffset;
+    final extentOffset =
+        selection.extentOffset < 0 ? baseOffset : selection.extentOffset;
+    final insertOffset = baseOffset <= extentOffset ? baseOffset : extentOffset;
+    final replaceLength = (baseOffset - extentOffset).abs();
+    final table = TypeSyncTableData.empty();
+
+    _quillController.replaceText(
+      insertOffset,
+      selection.isValid ? replaceLength : 0,
+      TypeSyncTableEmbed.toBlockEmbed(table),
+      TextSelection.collapsed(offset: insertOffset + 1),
+    );
+
+    _focusNode.requestFocus();
   }
 
   void _showTagDialog() {

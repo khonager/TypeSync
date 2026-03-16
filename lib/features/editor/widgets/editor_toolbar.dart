@@ -19,10 +19,12 @@ import '../../../core/utils/color_utils.dart';
 class EditorToolbar extends StatefulWidget {
   final QuillController controller;
   final VoidCallback onInsertPdf;
+  final VoidCallback onInsertTable;
 
   const EditorToolbar({
     required this.controller,
     required this.onInsertPdf,
+    required this.onInsertTable,
     super.key,
   });
 
@@ -262,6 +264,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
               _ToolbarButton(
                 icon: Icons.border_color,
                 onTap: () => _showMarkerColorPicker(),
+              ),
+              _ToolbarButton(
+                icon: Icons.table_chart_outlined,
+                onTap: widget.onInsertTable,
               ),
               _ToolbarButton(
                 icon: Icons.format_align_left,

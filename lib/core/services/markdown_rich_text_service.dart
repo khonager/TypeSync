@@ -9,14 +9,14 @@ import 'package:flutter_quill/markdown_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../models/typesync_table_embed.dart';
+
 class ConvertedMarkdownNote {
   final String title;
-  final String markdownBody;
   final String quillContentJson;
 
   const ConvertedMarkdownNote({
     required this.title,
-    required this.markdownBody,
     required this.quillContentJson,
   });
 }
@@ -39,11 +39,11 @@ class MarkdownRichTextService {
       extracted.body,
       pathReplacements,
     );
-    final delta = _markdownToDelta(rewrittenMarkdown);
+    final inferredMarkdown = _inferUnderlinedLabels(rewrittenMarkdown);
+    final delta = _convertMarkdownDocument(inferredMarkdown);
 
     return ConvertedMarkdownNote(
       title: extracted.title,
-      markdownBody: rewrittenMarkdown,
       quillContentJson: jsonEncode(delta.toJson()),
     );
   }
@@ -82,17 +82,47 @@ class MarkdownRichTextService {
     );
   }
 
+  Delta _convertMarkdownDocument(String markdown) {
+    final blocks = _splitIntoBlocks(markdown);
+    var delta = Delta();
+
+    for (final block in blocks) {
+      switch (block) {
+        case _MarkdownTextBlock():
+          if (block.markdown.trim().isEmpty) {
+            continue;
+          }
+          delta = delta.concat(_markdownToDelta(block.markdown));
+        case _MarkdownTableBlock():
+          final table = TypeSyncTableData.fromMarkdownTable(block.markdown);
+          delta.insert(TypeSyncTableEmbed.toBlockEmbed(table).toJson());
+          delta.insert('\n');
+      }
+    }
+
+    if (delta.isEmpty) {
+      delta.insert('\n');
+    } else {
+      final last = delta.last.value;
+      if (last is! String || !last.endsWith('\n')) {
+        delta.insert('\n');
+      }
+    }
+
+    return delta;
+  }
+
   Delta _markdownToDelta(String markdown) {
     final document = md.Document(
       encodeHtml: false,
       extensionSet: md.ExtensionSet.gitHubFlavored,
-      blockSyntaxes: const [EmbeddableTableSyntax()],
     );
 
     final converter = MarkdownToDelta(
       markdownDocument: document,
       customElementToInlineAttribute: {
         'mark': (_) => const [BackgroundAttribute('FFFFFF00')],
+        'u': (_) => const [Attribute.underline],
         'span': _attributesForStyledSpan,
         'font': _attributesForStyledSpan,
       },
@@ -117,6 +147,12 @@ class MarkdownRichTextService {
     final quillBackground = _quillColorFromCss(backgroundValue);
     if (quillBackground != null) {
       attributes.add(BackgroundAttribute(quillBackground));
+    }
+
+    final textDecoration = _cssDeclaration(style, 'text-decoration');
+    if (textDecoration != null &&
+        textDecoration.toLowerCase().contains('underline')) {
+      attributes.add(Attribute.underline);
     }
 
     return attributes;
@@ -231,6 +267,124 @@ class MarkdownRichTextService {
     return _normalizeMarkdownTarget(rawTarget);
   }
 
+  static String _inferUnderlinedLabels(String markdown) {
+    final lines = markdown.split('\n');
+    final output = <String>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = _trimLooseIndent(line);
+      if (_shouldUnderlineLabel(lines, i, trimmed)) {
+        final leading = line.substring(0, line.length - line.trimLeft().length);
+        output.add('$leading<u>$trimmed</u>');
+      } else {
+        output.add(line);
+      }
+    }
+
+    return output.join('\n');
+  }
+
+  static bool _shouldUnderlineLabel(
+    List<String> lines,
+    int index,
+    String trimmed,
+  ) {
+    if (trimmed.isEmpty ||
+        !trimmed.endsWith(':') ||
+        trimmed.startsWith('#') ||
+        trimmed.startsWith('- ') ||
+        trimmed.startsWith('* ') ||
+        trimmed.startsWith('|') ||
+        trimmed.startsWith('<u>')) {
+      return false;
+    }
+
+    for (int i = index + 1; i < lines.length; i++) {
+      final next = lines[i];
+      final nextTrimmed = _trimLooseIndent(next);
+      if (nextTrimmed.isEmpty) {
+        continue;
+      }
+      return next != nextTrimmed ||
+          nextTrimmed.startsWith('|') ||
+          nextTrimmed.startsWith('- ') ||
+          RegExp(r'^\d+\.\s').hasMatch(nextTrimmed);
+    }
+
+    return false;
+  }
+
+  static List<_MarkdownBlock> _splitIntoBlocks(String markdown) {
+    final lines = markdown.split('\n');
+    final blocks = <_MarkdownBlock>[];
+    final buffer = <String>[];
+
+    int index = 0;
+    while (index < lines.length) {
+      if (_isMarkdownTableStart(lines, index)) {
+        if (buffer.isNotEmpty) {
+          blocks.add(_MarkdownTextBlock(buffer.join('\n')));
+          buffer.clear();
+        }
+
+        final tableLines = <String>[];
+        tableLines.add(_trimLooseIndent(lines[index]));
+        tableLines.add(_trimLooseIndent(lines[index + 1]));
+        index += 2;
+
+        while (index < lines.length) {
+          final trimmed = _trimLooseIndent(lines[index]);
+          if (trimmed.isEmpty || !_looksLikeTableRow(trimmed)) {
+            break;
+          }
+          tableLines.add(trimmed);
+          index++;
+        }
+
+        blocks.add(_MarkdownTableBlock(tableLines.join('\n')));
+        continue;
+      }
+
+      buffer.add(lines[index]);
+      index++;
+    }
+
+    if (buffer.isNotEmpty) {
+      blocks.add(_MarkdownTextBlock(buffer.join('\n')));
+    }
+
+    return blocks;
+  }
+
+  static bool _isMarkdownTableStart(List<String> lines, int index) {
+    if (index + 1 >= lines.length) {
+      return false;
+    }
+    final header = _trimLooseIndent(lines[index]);
+    final divider = _trimLooseIndent(lines[index + 1]);
+    return _looksLikeTableRow(header) && _looksLikeTableDivider(divider);
+  }
+
+  static bool _looksLikeTableRow(String line) {
+    return line.contains('|') && line.replaceAll('|', '').trim().isNotEmpty;
+  }
+
+  static bool _looksLikeTableDivider(String line) {
+    return RegExp(
+      r'^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$',
+    ).hasMatch(line);
+  }
+
+  static String _trimLooseIndent(String value) {
+    return value.replaceAll(
+      RegExp(
+        r'^[\s\u2000-\u200A\u202F\u205F\u3000]+|[\s\u2000-\u200A\u202F\u205F\u3000]+$',
+      ),
+      '',
+    );
+  }
+
   static String? _normalizeMarkdownTarget(String? rawTarget) {
     if (rawTarget == null) {
       return null;
@@ -258,4 +412,20 @@ class MarkdownRichTextService {
 
     return Uri.decodeFull(target);
   }
+}
+
+sealed class _MarkdownBlock {
+  const _MarkdownBlock();
+}
+
+class _MarkdownTextBlock extends _MarkdownBlock {
+  final String markdown;
+
+  const _MarkdownTextBlock(this.markdown);
+}
+
+class _MarkdownTableBlock extends _MarkdownBlock {
+  final String markdown;
+
+  const _MarkdownTableBlock(this.markdown);
 }
