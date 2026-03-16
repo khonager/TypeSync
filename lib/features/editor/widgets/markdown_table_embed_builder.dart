@@ -47,7 +47,6 @@ class MarkdownTableEmbedBuilder extends EmbedBuilder {
           ),
           child: MarkdownBody(
             data: markdownTable,
-            selectable: true,
             extensionSet: md.ExtensionSet.gitHubFlavored,
             styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)),
           ),
