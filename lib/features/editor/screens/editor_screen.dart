@@ -39,6 +39,7 @@ import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
+import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 
@@ -668,6 +669,9 @@ class _EditorScreenState extends State<EditorScreen> {
         controller: _quillController,
         focusNode: _focusNode,
         scrollController: _scrollController,
+        configurations: const QuillEditorConfigurations(
+          embedBuilders: [MarkdownTableEmbedBuilder()],
+        ),
       ),
     );
   }

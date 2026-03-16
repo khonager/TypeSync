@@ -13,6 +13,7 @@ import '../providers/folders_provider.dart';
 import '../providers/notes_provider.dart';
 import 'diagnostics_service.dart';
 import 'local_file_service.dart';
+import 'markdown_rich_text_service.dart';
 import 'storage_service.dart';
 
 class AnytypeImportResult {
@@ -37,11 +38,13 @@ class _ImportedAttachmentBatch {
   final List<NoteAttachment> attachments;
   final int totalSize;
   final List<String> skippedEntries;
+  final Map<String, String> importedPathsByRelativeTarget;
 
   const _ImportedAttachmentBatch({
     required this.attachments,
     required this.totalSize,
     this.skippedEntries = const [],
+    this.importedPathsByRelativeTarget = const {},
   });
 }
 
@@ -106,15 +109,19 @@ class AnytypeImportService {
         );
         importedFolders += folderResult.createdFolders;
 
-        final content = await markdownFile.readAsString();
-        final title = _titleForMarkdownFile(markdownFile);
+        final rawMarkdown = await markdownFile.readAsString();
+        final initialConversion =
+            MarkdownRichTextService.instance.convertAnytypeMarkdown(
+          rawMarkdown: rawMarkdown,
+          fallbackTitle: _titleForMarkdownFile(markdownFile),
+        );
         final note = await notesProvider.createNote(
           userId: noteUserId,
           folderId: folderResult.folderId,
-          title: title,
-          content: content,
-          type: NoteType.markdown,
-          size: content.length,
+          title: initialConversion.title,
+          content: initialConversion.quillContentJson,
+          type: NoteType.text,
+          size: initialConversion.quillContentJson.length,
         );
 
         if (note == null) {
@@ -135,11 +142,24 @@ class AnytypeImportService {
           storageService: storageService,
         );
 
-        if (attachments.attachments.isNotEmpty) {
+        final finalConversion =
+            MarkdownRichTextService.instance.convertAnytypeMarkdown(
+          rawMarkdown: rawMarkdown,
+          fallbackTitle: _titleForMarkdownFile(markdownFile),
+          pathReplacements: attachments.importedPathsByRelativeTarget,
+        );
+
+        if (attachments.attachments.isNotEmpty ||
+            finalConversion.quillContentJson !=
+                initialConversion.quillContentJson ||
+            finalConversion.title != initialConversion.title) {
           await notesProvider.updateNote(
             note.copyWith(
+              title: finalConversion.title,
+              content: finalConversion.quillContentJson,
               attachments: attachments.attachments,
-              size: content.length + attachments.totalSize,
+              size: finalConversion.quillContentJson.length +
+                  attachments.totalSize,
             ),
           );
         }
@@ -283,14 +303,17 @@ class AnytypeImportService {
       return const _ImportedAttachmentBatch(
         attachments: [],
         totalSize: 0,
+        importedPathsByRelativeTarget: {},
       );
     }
 
     final attachments = <NoteAttachment>[];
     final skippedEntries = <String>[];
+    final importedPathsByRelativeTarget = <String, String>{};
     var totalSize = 0;
 
-    for (final file in referencedFiles) {
+    for (final referencedFile in referencedFiles) {
+      final file = referencedFile.file;
       final fileName = path.basename(file.path);
       final fileSize = await file.length();
       final destinationName = '${note.id}_${_sanitizeFileName(fileName)}';
@@ -319,6 +342,12 @@ class AnytypeImportService {
         continue;
       }
 
+      final markdownTarget = referencedFile.isImage
+          ? storedPath
+          : _markdownTargetForStoredPath(storedPath);
+      importedPathsByRelativeTarget[referencedFile.relativeMarkdownTarget] =
+          markdownTarget;
+
       attachments.add(
         NoteAttachment.create(
           name: fileName,
@@ -334,16 +363,17 @@ class AnytypeImportService {
       attachments: attachments,
       totalSize: totalSize,
       skippedEntries: skippedEntries,
+      importedPathsByRelativeTarget: importedPathsByRelativeTarget,
     );
   }
 
-  Future<List<File>> _resolveLinkedFiles(
+  Future<List<_ReferencedMarkdownFile>> _resolveLinkedFiles(
     File markdownFile,
     Directory exportDirectory,
   ) async {
     final content = await markdownFile.readAsString();
     final referencedPaths = extractReferencedLocalPaths(content);
-    final resolvedFiles = <File>[];
+    final resolvedFiles = <_ReferencedMarkdownFile>[];
     final seenPaths = <String>{};
 
     for (final referencedPath in referencedPaths) {
@@ -361,7 +391,13 @@ class AnytypeImportService {
       }
 
       if (seenPaths.add(resolvedPath)) {
-        resolvedFiles.add(file);
+        resolvedFiles.add(
+          _ReferencedMarkdownFile(
+            file: file,
+            relativeMarkdownTarget: referencedPath,
+            isImage: _isLikelyImageFile(file.path),
+          ),
+        );
       }
     }
 
@@ -445,6 +481,29 @@ class AnytypeImportService {
     return fileName.replaceAll(RegExp(r'[^\w.\- ]'), '_');
   }
 
+  static bool _isLikelyImageFile(String filePath) {
+    return const {
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.bmp',
+      '.svg',
+      '.tif',
+      '.tiff',
+      '.ico',
+      '.avif',
+    }.contains(path.extension(filePath).toLowerCase());
+  }
+
+  static String _markdownTargetForStoredPath(String storedPath) {
+    if (storedPath.startsWith('http://') || storedPath.startsWith('https://')) {
+      return storedPath;
+    }
+    return Uri.file(storedPath).toString();
+  }
+
   static String? _mimeTypeForPath(String filePath) {
     switch (path.extension(filePath).toLowerCase()) {
       case '.pdf':
@@ -478,4 +537,16 @@ class AnytypeImportService {
         return null;
     }
   }
+}
+
+class _ReferencedMarkdownFile {
+  final File file;
+  final String relativeMarkdownTarget;
+  final bool isImage;
+
+  const _ReferencedMarkdownFile({
+    required this.file,
+    required this.relativeMarkdownTarget,
+    required this.isImage,
+  });
 }
