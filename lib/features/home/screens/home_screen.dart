@@ -37,6 +37,7 @@ import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/search_query.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -517,7 +518,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
-    final isSearchActive = _searchQuery.trim().isNotEmpty;
+    final parsedSearchQuery = SearchQuery.parse(_searchQuery);
+    final isSearchActive = parsedSearchQuery.isActive;
 
     // Get current folder for title
     final currentFolder = _currentFolderId != null
@@ -525,14 +527,28 @@ class _HomeScreenState extends State<HomeScreen> {
         : null;
 
     // Get folders and notes for current view / global search mode.
-    final folders = isSearchActive
-        ? foldersProvider.searchFolders(_searchQuery)
-        : (_currentFolderId == null
-            ? foldersProvider.rootFolders
-            : foldersProvider.getSubfolders(_currentFolderId!));
-    final notes = isSearchActive
-        ? notesProvider.searchNotes(_searchQuery)
-        : notesProvider.getNotesInFolder(_currentFolderId);
+    late final List<Folder> folders;
+    late final List<Note> notes;
+    late final bool showFolderResults;
+    late final bool showFileResults;
+
+    if (isSearchActive) {
+      showFolderResults = parsedSearchQuery.includeFolders;
+      showFileResults = parsedSearchQuery.includeFiles;
+      folders = showFolderResults
+          ? foldersProvider.searchFolders(parsedSearchQuery.plainTextQuery)
+          : <Folder>[];
+      notes = showFileResults
+          ? notesProvider.searchNotesWithQuery(parsedSearchQuery)
+          : <Note>[];
+    } else {
+      showFolderResults = true;
+      showFileResults = true;
+      folders = _currentFolderId == null
+          ? foldersProvider.rootFolders
+          : foldersProvider.getSubfolders(_currentFolderId!);
+      notes = notesProvider.getNotesInFolder(_currentFolderId);
+    }
 
     return Scaffold(
       // Custom app bar matching the design
@@ -560,6 +576,12 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: _isGridView ? 'List view' : 'Grid view',
           ),
 
+          IconButton(
+            icon: const Icon(Icons.manage_search_outlined),
+            tooltip: 'Search syntax',
+            onPressed: _showSearchSyntaxHelp,
+          ),
+
           // Settings
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -574,6 +596,8 @@ class _HomeScreenState extends State<HomeScreen> {
         foldersProvider,
         notesProvider,
         isSearchActive: isSearchActive,
+        showFolderResults: showFolderResults,
+        showFileResults: showFileResults,
       ),
 
       // Bottom navigation bar matching the design
@@ -714,6 +738,8 @@ class _HomeScreenState extends State<HomeScreen> {
     FoldersProvider foldersProvider,
     NotesProvider notesProvider, {
     required bool isSearchActive,
+    required bool showFolderResults,
+    required bool showFileResults,
   }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
@@ -759,7 +785,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
 
                 // Folders section
-                if (folders.isNotEmpty) ...[
+                if (showFolderResults && folders.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -805,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
 
                 // Files section
-                if (notes.isNotEmpty) ...[
+                if (showFileResults && notes.isNotEmpty) ...[
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -899,7 +925,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 'No results found'
         : (_currentFolderId == null ? 'No notes yet' : 'This folder is empty');
     final subtitle = isSearchActive
-        ? 'Try a different keyword'
+        ? 'Try another keyword or filter like is:file / in:text'
         : 'Tap + to create a new note';
 
     return Center(
@@ -935,7 +961,8 @@ class _HomeScreenState extends State<HomeScreen> {
         controller: _searchController,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: 'Search files, folders, attachments, and text',
+          hintText:
+              'Search... (try is:file, is:folder, in:text, in:pdf, has:image)',
           prefixIcon: const Icon(Icons.search),
           suffixIcon: _searchQuery.isEmpty
               ? null
@@ -963,6 +990,55 @@ class _HomeScreenState extends State<HomeScreen> {
             _searchQuery = value;
           });
         },
+      ),
+    );
+  }
+
+  void _showSearchSyntaxHelp() {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: const [
+            ListTile(
+              title: Text(
+                'Search syntax',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text('Combine plain text with filters'),
+            ),
+            Divider(height: 1),
+            ListTile(
+              title: Text('is:folder math'),
+              subtitle: Text('Only folders matching "math"'),
+            ),
+            ListTile(
+              title: Text('is:file exam'),
+              subtitle: Text('Only files/notes matching "exam"'),
+            ),
+            ListTile(
+              title: Text('in:text derivative'),
+              subtitle: Text('Match inside note text content'),
+            ),
+            ListTile(
+              title: Text('in:pdf transcript'),
+              subtitle: Text('Match PDF notes/attachments'),
+            ),
+            ListTile(
+              title: Text('in:txt draft'),
+              subtitle: Text('Match TXT notes/attachments'),
+            ),
+            ListTile(
+              title: Text('has:image'),
+              subtitle: Text('Only notes with image attachments'),
+            ),
+            ListTile(
+              title: Text('has:attachment'),
+              subtitle: Text('Only notes with attachments'),
+            ),
+          ],
+        ),
       ),
     );
   }
