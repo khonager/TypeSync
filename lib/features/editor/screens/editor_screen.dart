@@ -55,18 +55,21 @@ import '../widgets/typesync_table_embed_builder.dart';
 class EditorScreen extends StatefulWidget {
   final String? noteId;
   final String? folderId;
+  final String? searchQuery;
 
   const EditorScreen({
     super.key,
     this.noteId,
     this.folderId,
+    this.searchQuery,
   });
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen> {
+class _EditorScreenState extends State<EditorScreen>
+    with SingleTickerProviderStateMixin {
   // Quill editor controller
   late QuillController _quillController;
 
@@ -75,6 +78,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
 
   // Title controller
   final TextEditingController _titleController = TextEditingController();
@@ -105,10 +109,19 @@ class _EditorScreenState extends State<EditorScreen> {
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
   bool _attachmentsExpanded = false;
+  late final AnimationController _matchGlowController;
+  Timer? _matchGlowStopTimer;
+  Rect? _matchGlowRect;
+  bool _showMatchGlow = false;
+  bool _didAttemptInitialSearchJump = false;
 
   @override
   void initState() {
     super.initState();
+    _matchGlowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
     _initializeEditor();
   }
 
@@ -176,6 +189,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Calculate initial stats
     _updateStats();
+    _maybeNavigateToInitialSearchMatch();
 
     if (_note != null && !_hasStartedCloudMigration) {
       _hasStartedCloudMigration = true;
@@ -230,6 +244,8 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _matchGlowStopTimer?.cancel();
+    _matchGlowController.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
     _focusNode.dispose();
@@ -668,18 +684,189 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       ),
       padding: const EdgeInsets.all(12),
-      child: QuillEditor(
-        controller: _quillController,
-        focusNode: _focusNode,
-        scrollController: _scrollController,
-        configurations: const QuillEditorConfigurations(
-          embedBuilders: [
-            TypeSyncTableEmbedBuilder(),
-            MarkdownTableEmbedBuilder(),
-          ],
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: QuillEditor(
+              controller: _quillController,
+              focusNode: _focusNode,
+              scrollController: _scrollController,
+              configurations: QuillEditorConfigurations(
+                editorKey: _editorKey,
+                embedBuilders: const [
+                  TypeSyncTableEmbedBuilder(),
+                  MarkdownTableEmbedBuilder(),
+                ],
+              ),
+            ),
+          ),
+          if (_showMatchGlow && _matchGlowRect != null)
+            _buildMatchGlowOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMatchGlowOverlay() {
+    final rect = _matchGlowRect!;
+    final width = (rect.width + 44).clamp(86.0, double.infinity);
+    final height = (rect.height + 26).clamp(36.0, double.infinity);
+    final left = (rect.left - 22).clamp(0.0, double.infinity);
+    final top = (rect.top - 12).clamp(0.0, double.infinity);
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      height: height,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _matchGlowController,
+          builder: (context, child) {
+            final pulse = _matchGlowController.value;
+            final spread = 6 + (pulse * 8);
+            final opacity = 0.3 + ((1 - pulse) * 0.45);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: opacity),
+                    blurRadius: 16 + spread,
+                    spreadRadius: spread,
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
+  }
+
+  void _maybeNavigateToInitialSearchMatch() {
+    if (_didAttemptInitialSearchJump) return;
+    _didAttemptInitialSearchJump = true;
+
+    final query = widget.searchQuery?.trim();
+    if (query == null || query.isEmpty) return;
+
+    final matchOffset = _findBestSearchMatchOffset(query);
+    if (matchOffset == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_focusAndPulseSearchMatch(matchOffset));
+    });
+  }
+
+  int? _findBestSearchMatchOffset(String query) {
+    final plainText = _quillController.document.toPlainText().toLowerCase();
+    if (plainText.isEmpty) return null;
+
+    final normalizedQuery = query.toLowerCase().trim();
+    if (normalizedQuery.isNotEmpty) {
+      final phraseOffset = plainText.indexOf(normalizedQuery);
+      if (phraseOffset >= 0) {
+        return phraseOffset;
+      }
+    }
+
+    final queryTokens = normalizedQuery
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final token in queryTokens) {
+      final tokenOffset = plainText.indexOf(token);
+      if (tokenOffset >= 0) {
+        return tokenOffset;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _focusAndPulseSearchMatch(int matchOffset) async {
+    if (!mounted) return;
+
+    final documentLength = _quillController.document.length;
+    if (documentLength <= 0) return;
+
+    final safeOffset = matchOffset.clamp(0, documentLength - 1);
+    _quillController.updateSelection(
+      TextSelection.collapsed(offset: safeOffset),
+      ChangeSource.local,
+    );
+    _focusNode.requestFocus();
+
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (!mounted) return;
+      final editorState = _editorKey.currentState;
+      if (editorState != null && _scrollController.hasClients) {
+        await _scrollToMatchAndPulse(editorState, safeOffset);
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 60));
+    }
+  }
+
+  Future<void> _scrollToMatchAndPulse(
+    EditorState editorState,
+    int safeOffset,
+  ) async {
+    Rect caretRect;
+    try {
+      caretRect = editorState.renderEditor.getLocalRectForCaret(
+        TextPosition(offset: safeOffset),
+      );
+    } catch (_) {
+      return;
+    }
+
+    final scrollPosition = _scrollController.position;
+    final targetOffset = (_scrollController.offset +
+            caretRect.top -
+            (scrollPosition.viewportDimension * 0.35))
+        .clamp(scrollPosition.minScrollExtent, scrollPosition.maxScrollExtent);
+
+    if ((targetOffset - _scrollController.offset).abs() > 4) {
+      await _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    if (!mounted) return;
+
+    final refreshedState = _editorKey.currentState;
+    if (refreshedState == null) return;
+    try {
+      caretRect = refreshedState.renderEditor.getLocalRectForCaret(
+        TextPosition(offset: safeOffset),
+      );
+    } catch (_) {
+      return;
+    }
+
+    setState(() {
+      _matchGlowRect = caretRect;
+      _showMatchGlow = true;
+    });
+
+    _matchGlowStopTimer?.cancel();
+    _matchGlowController.repeat(reverse: true);
+    _matchGlowStopTimer = Timer(const Duration(milliseconds: 1650), () {
+      if (!mounted) return;
+      _matchGlowController.stop();
+      setState(() {
+        _showMatchGlow = false;
+      });
+    });
   }
 
   Widget _buildAttachmentsSection(

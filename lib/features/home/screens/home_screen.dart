@@ -7,10 +7,10 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -55,10 +55,31 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const List<String> _inSearchSuggestions = [
+    'in:text',
+    'in:title',
+    'in:attachment',
+    'in:pdf',
+    'in:txt',
+    'in:markdown',
+  ];
+  static const List<String> _hasSearchSuggestions = [
+    'has:attachment',
+    'has:image',
+    'has:pdf',
+  ];
+  static const List<String> _isSearchSuggestions = [
+    'is:file',
+    'is:folder',
+  ];
+
   // Current folder being viewed (null = root)
   String? _currentFolderId;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+  List<String> _searchSuggestions = const <String>[];
+  int _selectedSearchSuggestionIndex = 0;
 
   // View mode (grid or list)
   bool _isGridView = true;
@@ -520,6 +541,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final notesProvider = context.watch<NotesProvider>();
     final parsedSearchQuery = SearchQuery.parse(_searchQuery);
     final isSearchActive = parsedSearchQuery.isActive;
+    final noteOpenSearchQuery = parsedSearchQuery.textTokens.isNotEmpty
+        ? parsedSearchQuery.plainTextQuery
+        : null;
 
     // Get current folder for title
     final currentFolder = _currentFolderId != null
@@ -576,12 +600,6 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: _isGridView ? 'List view' : 'Grid view',
           ),
 
-          IconButton(
-            icon: const Icon(Icons.manage_search_outlined),
-            tooltip: 'Search syntax',
-            onPressed: _showSearchSyntaxHelp,
-          ),
-
           // Settings
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -598,6 +616,7 @@ class _HomeScreenState extends State<HomeScreen> {
         isSearchActive: isSearchActive,
         showFolderResults: showFolderResults,
         showFileResults: showFileResults,
+        noteOpenSearchQuery: noteOpenSearchQuery,
       ),
 
       // Bottom navigation bar matching the design
@@ -621,6 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -740,6 +760,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required bool isSearchActive,
     required bool showFolderResults,
     required bool showFileResults,
+    required String? noteOpenSearchQuery,
   }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
@@ -850,7 +871,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FileGrid(
                             notes: notes,
-                            onNoteTap: _openNote,
+                            onNoteTap: (noteId) => _openNote(
+                              noteId,
+                              searchQuery: noteOpenSearchQuery,
+                            ),
                             onNoteLongPress: _showNoteOptions,
                             useLongPressDrag: _useLongPressGridDrag,
                             onDragStarted: _handleGridDragStarted,
@@ -860,7 +884,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FileList(
                             notes: notes,
-                            onNoteTap: _openNote,
+                            onNoteTap: (noteId) => _openNote(
+                              noteId,
+                              searchQuery: noteOpenSearchQuery,
+                            ),
                             onNoteLongPress: _showNoteOptions,
                           ),
                   ),
@@ -955,92 +982,200 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchBar() {
+    final activeSuggestion = _activeSearchSuggestion();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: TextField(
-        controller: _searchController,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText:
-              'Search... (try is:file, is:folder, in:text, in:pdf, has:image)',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _searchQuery.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Clear search',
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _searchQuery = '';
-                    });
-                  },
+      child: Column(
+        children: [
+          Focus(
+            onKeyEvent: (_, event) => _handleSearchKeyEvent(event),
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText:
+                    'Search... (type in: / has: / is:, press Tab to accept)',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Clear search',
+                        onPressed: _clearSearchQuery,
+                      ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surface.withValues(
+                      alpha: 0.9,
+                    ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
                 ),
-          filled: true,
-          fillColor: Theme.of(context).colorScheme.surface.withValues(
-                alpha: 0.9,
               ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+              onChanged: _handleSearchChanged,
+            ),
           ),
-        ),
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
+          if (_searchSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _searchSuggestions.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(_searchSuggestions[i]),
+                        selected: i == _selectedSearchSuggestionIndex,
+                        onSelected: (_) => _applySearchSuggestion(
+                          _searchSuggestions[i],
+                        ),
+                      ),
+                    ),
+                  if (activeSuggestion != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        'Tab',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  void _showSearchSyntaxHelp() {
-    showModalBottomSheet(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: const [
-            ListTile(
-              title: Text(
-                'Search syntax',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text('Combine plain text with filters'),
-            ),
-            Divider(height: 1),
-            ListTile(
-              title: Text('is:folder math'),
-              subtitle: Text('Only folders matching "math"'),
-            ),
-            ListTile(
-              title: Text('is:file exam'),
-              subtitle: Text('Only files/notes matching "exam"'),
-            ),
-            ListTile(
-              title: Text('in:text derivative'),
-              subtitle: Text('Match inside note text content'),
-            ),
-            ListTile(
-              title: Text('in:pdf transcript'),
-              subtitle: Text('Match PDF notes/attachments'),
-            ),
-            ListTile(
-              title: Text('in:txt draft'),
-              subtitle: Text('Match TXT notes/attachments'),
-            ),
-            ListTile(
-              title: Text('has:image'),
-              subtitle: Text('Only notes with image attachments'),
-            ),
-            ListTile(
-              title: Text('has:attachment'),
-              subtitle: Text('Only notes with attachments'),
-            ),
-          ],
-        ),
-      ),
+  KeyEventResult _handleSearchKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent || _searchSuggestions.isEmpty) {
+      return KeyEventResult.ignored;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      final suggestion = _activeSearchSuggestion();
+      if (suggestion == null) return KeyEventResult.ignored;
+      _applySearchSuggestion(suggestion);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _selectedSearchSuggestionIndex =
+            (_selectedSearchSuggestionIndex + 1) % _searchSuggestions.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _selectedSearchSuggestionIndex =
+            (_selectedSearchSuggestionIndex - 1 + _searchSuggestions.length) %
+                _searchSuggestions.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  void _clearSearchQuery() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _searchSuggestions = const <String>[];
+      _selectedSearchSuggestionIndex = 0;
+    });
+  }
+
+  void _handleSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value;
+      _searchSuggestions = _buildSearchSuggestions(value);
+      _selectedSearchSuggestionIndex = 0;
+    });
+  }
+
+  String? _activeSearchSuggestion() {
+    if (_searchSuggestions.isEmpty) return null;
+    final index = _selectedSearchSuggestionIndex.clamp(
+      0,
+      _searchSuggestions.length - 1,
     );
+    return _searchSuggestions[index];
+  }
+
+  List<String> _buildSearchSuggestions(String query) {
+    final token = _activeSearchToken(query);
+    if (token == null || token.isEmpty) return const <String>[];
+
+    final lowerToken = token.toLowerCase();
+
+    if (lowerToken == 'in' || lowerToken == 'in:') {
+      return _inSearchSuggestions;
+    }
+    if (lowerToken == 'has' || lowerToken == 'has:') {
+      return _hasSearchSuggestions;
+    }
+    if (lowerToken == 'is' || lowerToken == 'is:') {
+      return _isSearchSuggestions;
+    }
+    if (lowerToken.startsWith('in:')) {
+      return _inSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+    if (lowerToken.startsWith('has:')) {
+      return _hasSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+    if (lowerToken.startsWith('is:')) {
+      return _isSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+
+    return const <String>[];
+  }
+
+  String? _activeSearchToken(String query) {
+    if (query.isEmpty || query.endsWith(' ')) {
+      return null;
+    }
+
+    final parts = query.split(RegExp(r'\s+'));
+    if (parts.isEmpty) return null;
+    return parts.last;
+  }
+
+  void _applySearchSuggestion(String suggestion) {
+    final currentText = _searchController.text;
+    final lastWhitespace = currentText.lastIndexOf(RegExp(r'\s'));
+    final tokenStart = lastWhitespace >= 0 ? lastWhitespace + 1 : 0;
+    final prefix = currentText.substring(0, tokenStart);
+    final updatedText = '$prefix$suggestion ';
+
+    _searchController.value = TextEditingValue(
+      text: updatedText,
+      selection: TextSelection.collapsed(offset: updatedText.length),
+    );
+
+    setState(() {
+      _searchQuery = updatedText;
+      _searchSuggestions = const <String>[];
+      _selectedSearchSuggestionIndex = 0;
+    });
+
+    _searchFocusNode.requestFocus();
   }
 
   Widget _buildBreadcrumb(FoldersProvider foldersProvider) {
@@ -1093,9 +1228,8 @@ class _HomeScreenState extends State<HomeScreen> {
     required bool isSearchActive,
   }) {
     if (isSearchActive) {
-      _searchController.clear();
+      _clearSearchQuery();
       setState(() {
-        _searchQuery = '';
         _currentFolderId = folderId;
       });
       return;
@@ -1114,12 +1248,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openNote(String noteId) {
+  void _openNote(
+    String noteId, {
+    String? searchQuery,
+  }) {
     final note = context.read<NotesProvider>().getNoteById(noteId);
     AppRouter.openEditor(
       context,
       noteId: noteId,
       folderId: note?.folderId ?? _currentFolderId,
+      searchQuery: searchQuery,
     );
   }
 
