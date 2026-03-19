@@ -468,7 +468,7 @@ class SettingsScreen extends StatelessWidget {
     );
     await Future<void>.delayed(Duration.zero);
 
-    AnytypeImportResult? result;
+    late final AnytypeImportResult result;
     try {
       result = await AnytypeImportService.instance.importMarkdownExport(
         exportDirectory: Directory(folderPath),
@@ -489,7 +489,7 @@ class SettingsScreen extends StatelessWidget {
       }
     }
 
-    if (!context.mounted || result == null) {
+    if (!context.mounted) {
       return;
     }
 
