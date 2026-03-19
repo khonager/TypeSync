@@ -56,6 +56,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // Current folder being viewed (null = root)
   String? _currentFolderId;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   // View mode (grid or list)
   bool _isGridView = true;
@@ -515,18 +517,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
+    final isSearchActive = _searchQuery.trim().isNotEmpty;
 
     // Get current folder for title
     final currentFolder = _currentFolderId != null
         ? foldersProvider.getFolderById(_currentFolderId!)
         : null;
 
-    // Get folders and notes for current view
-    final folders = (_currentFolderId == null
+    // Get folders and notes for current view / global search mode.
+    final folders = isSearchActive
+        ? foldersProvider.searchFolders(_searchQuery)
+        : (_currentFolderId == null
             ? foldersProvider.rootFolders
-            : foldersProvider.getSubfolders(_currentFolderId!))
-        .cast<Folder>();
-    final notes = notesProvider.getNotesInFolder(_currentFolderId).cast<Note>();
+            : foldersProvider.getSubfolders(_currentFolderId!));
+    final notes = isSearchActive
+        ? notesProvider.searchNotes(_searchQuery)
+        : notesProvider.getNotesInFolder(_currentFolderId);
 
     return Scaffold(
       // Custom app bar matching the design
@@ -538,7 +544,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: _navigateBack,
               )
             : null,
-        title: Text(currentFolder?.name ?? 'TypeSync'),
+        title: Text(
+          isSearchActive
+              ? 'Search results'
+              : (currentFolder?.name ?? 'TypeSync'),
+        ),
         actions: [
           // Sync status indicator
           const SyncStatusIndicator(),
@@ -558,7 +568,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
 
-      body: _buildBody(folders, notes, foldersProvider, notesProvider),
+      body: _buildBody(
+        folders,
+        notes,
+        foldersProvider,
+        notesProvider,
+        isSearchActive: isSearchActive,
+      ),
 
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
@@ -580,6 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _authService?.removeListener(_handleAuthStateChanged);
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -695,17 +712,16 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Folder> folders,
     List<Note> notes,
     FoldersProvider foldersProvider,
-    NotesProvider notesProvider,
-  ) {
+    NotesProvider notesProvider, {
+    required bool isSearchActive,
+  }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
-    if (folders.isEmpty && notes.isEmpty) {
-      return _buildEmptyState();
-    }
+    final hasVisibleItems = folders.isNotEmpty || notes.isNotEmpty;
 
     return DropTarget(
       onDragEntered: (details) {
@@ -732,20 +748,26 @@ class _HomeScreenState extends State<HomeScreen> {
               key: _scrollViewKey,
               controller: _scrollController,
               slivers: [
+                SliverToBoxAdapter(
+                  child: _buildSearchBar(),
+                ),
+
                 // Breadcrumb navigation
-                if (_currentFolderId != null)
+                if (_currentFolderId != null && !isSearchActive)
                   SliverToBoxAdapter(
                     child: _buildBreadcrumb(foldersProvider),
                   ),
 
                 // Folders section
                 if (folders.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'Folders',
-                        style: TextStyle(
+                        isSearchActive
+                            ? 'Folders (${folders.length})'
+                            : 'Folders',
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey,
@@ -758,7 +780,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FolderGrid(
                             folders: folders,
-                            onFolderTap: _navigateToFolder,
+                            onFolderTap: (folderId) => _handleFolderTap(
+                              folderId,
+                              isSearchActive: isSearchActive,
+                            ),
                             onFolderLongPress: _showFolderOptions,
                             onNoteDropped: _handleNoteDroppedOnFolder,
                             onFolderDropped: _handleFolderDroppedOnFolder,
@@ -770,7 +795,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FolderList(
                             folders: folders,
-                            onFolderTap: _navigateToFolder,
+                            onFolderTap: (folderId) => _handleFolderTap(
+                              folderId,
+                              isSearchActive: isSearchActive,
+                            ),
                             onFolderLongPress: _showFolderOptions,
                           ),
                   ),
@@ -778,12 +806,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // Files section
                 if (notes.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'Files',
-                        style: TextStyle(
+                        isSearchActive ? 'Files (${notes.length})' : 'Files',
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey,
@@ -812,10 +840,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
 
-                // Bottom padding
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 100),
-                ),
+                if (!hasVisibleItems)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildEmptyState(isSearchActive: isSearchActive),
+                  ),
+
+                if (hasVisibleItems)
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: 100),
+                  ),
               ],
             ),
           ),
@@ -858,29 +892,77 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({required bool isSearchActive}) {
+    final icon =
+        isSearchActive ? Icons.search_off_outlined : Icons.folder_open_outlined;
+    final title = isSearchActive
+        ? 'No results found'
+        : (_currentFolderId == null ? 'No notes yet' : 'This folder is empty');
+    final subtitle = isSearchActive
+        ? 'Try a different keyword'
+        : 'Tap + to create a new note';
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.folder_open_outlined,
+            icon,
             size: 64,
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
-            _currentFolderId == null ? 'No notes yet' : 'This folder is empty',
+            title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: Colors.grey,
                 ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Tap + to create a new note',
+            subtitle,
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: TextField(
+        controller: _searchController,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search files, folders, attachments, and text',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                ),
+          filled: true,
+          fillColor: Theme.of(context).colorScheme.surface.withValues(
+                alpha: 0.9,
+              ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
       ),
     );
   }
@@ -930,6 +1012,22 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _handleFolderTap(
+    String folderId, {
+    required bool isSearchActive,
+  }) {
+    if (isSearchActive) {
+      _searchController.clear();
+      setState(() {
+        _searchQuery = '';
+        _currentFolderId = folderId;
+      });
+      return;
+    }
+
+    _navigateToFolder(folderId);
+  }
+
   void _navigateBack() {
     if (_currentFolderId != null) {
       final foldersProvider = context.read<FoldersProvider>();
@@ -941,7 +1039,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openNote(String noteId) {
-    AppRouter.openEditor(context, noteId: noteId, folderId: _currentFolderId);
+    final note = context.read<NotesProvider>().getNoteById(noteId);
+    AppRouter.openEditor(
+      context,
+      noteId: noteId,
+      folderId: note?.folderId ?? _currentFolderId,
+    );
   }
 
   void _showCreateOptions() {

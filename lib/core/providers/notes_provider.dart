@@ -73,17 +73,114 @@ class NotesProvider extends ChangeNotifier {
   List<Note> get dirtyNotes =>
       _notes.where((n) => n.isDirty && !n.localOnly).toList();
 
-  /// Search notes by title and content
-  List<Note> searchNotes(String query) {
-    final lowerQuery = query.toLowerCase();
-    return _notes
-        .where(
-          (n) =>
-              !n.isDeleted &&
-              (n.title.toLowerCase().contains(lowerQuery) ||
-                  n.content.toLowerCase().contains(lowerQuery)),
-        )
+  /// Search notes by title, note content, attachment metadata, and file paths.
+  ///
+  /// This is intentionally OCR-free for now; image/PDF OCR can be layered on
+  /// later by appending extracted text to the searchable buffer.
+  List<Note> searchNotes(
+    String query, {
+    String? folderId,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final queryTokens = normalizedQuery
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
         .toList();
+
+    final matchingNotes = _notes.where((note) {
+      if (note.isDeleted) return false;
+      if (folderId != null && note.folderId != folderId) return false;
+      if (queryTokens.isEmpty) return true;
+
+      final searchableText = _buildSearchableNoteText(note);
+      return queryTokens.every(searchableText.contains);
+    }).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    return matchingNotes;
+  }
+
+  String _buildSearchableNoteText(Note note) {
+    final buffer = StringBuffer()
+      ..write(note.title)
+      ..write(' ')
+      ..write(_extractSearchableTextFromContent(note.content))
+      ..write(' ')
+      ..write(note.pdfPath ?? '');
+
+    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) {
+      buffer
+        ..write(' ')
+        ..write(p.basename(note.pdfPath!));
+    }
+
+    for (final attachment in note.attachments) {
+      buffer
+        ..write(' ')
+        ..write(attachment.name)
+        ..write(' ')
+        ..write(attachment.path)
+        ..write(' ')
+        ..write(attachment.mimeType ?? '');
+
+      if (attachment.path.isNotEmpty) {
+        buffer
+          ..write(' ')
+          ..write(p.basename(attachment.path));
+      }
+    }
+
+    return buffer.toString().toLowerCase();
+  }
+
+  String _extractSearchableTextFromContent(String content) {
+    if (content.isEmpty) {
+      return '';
+    }
+
+    final trimmed = content.trimLeft();
+    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+      return content;
+    }
+
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is List<dynamic>) {
+        return _extractInsertText(decoded);
+      }
+      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
+        return _extractInsertText(decoded['ops'] as List<dynamic>);
+      }
+    } catch (_) {
+      // Fall back to raw content if this is not valid JSON/quill-delta.
+    }
+
+    return content;
+  }
+
+  String _extractInsertText(List<dynamic> operations) {
+    final buffer = StringBuffer();
+
+    for (final op in operations) {
+      if (op is! Map) continue;
+      final insertValue = op['insert'];
+      if (insertValue is String) {
+        buffer.write(insertValue);
+        continue;
+      }
+
+      if (insertValue is Map) {
+        for (final value in insertValue.values) {
+          if (value is String) {
+            buffer
+              ..write(' ')
+              ..write(value);
+          }
+        }
+      }
+    }
+
+    return buffer.toString();
   }
 
   /// Get notes by tag
