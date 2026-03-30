@@ -1252,6 +1252,9 @@ class _HomeScreenState extends State<HomeScreen> {
     String noteId, {
     String? searchQuery,
   }) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _searchFocusNode.unfocus();
+
     final note = context.read<NotesProvider>().getNoteById(noteId);
     AppRouter.openEditor(
       context,
