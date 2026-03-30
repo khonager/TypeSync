@@ -30,6 +30,9 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  int _localStorageBytes = 0;
+  bool _isLoadingLocalStorage = false;
+
   Future<void> _refreshStorageInfo() async {
     final authService = context.read<AuthService>();
     if (authService.isGuestMode) {
@@ -37,10 +40,46 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     await authService.refreshCurrentUser();
+    if (!mounted) return;
+
     final workspaceId = authService.storageUserId;
-    if (workspaceId != null && mounted) {
-      await context.read<StorageService>().loadStorageInfo(workspaceId);
+    if (workspaceId == null) return;
+
+    final storageService = context.read<StorageService>();
+    final localFileService = LocalFileService.instance;
+
+    setState(() {
+      _isLoadingLocalStorage = true;
+    });
+
+    try {
+      await Future.wait([
+        storageService.loadStorageInfo(workspaceId),
+        () async {
+          await localFileService.initialize(workspaceId);
+          final localStorageBytes = await localFileService.getTotalStorageBytes();
+          if (!mounted) return;
+          setState(() {
+            _localStorageBytes = localStorageBytes;
+          });
+        }(),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocalStorage = false;
+        });
+      }
     }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   @override
@@ -190,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Storage',
+                        'Cloud Storage',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
@@ -225,6 +264,31 @@ class _ProfileScreenState extends State<ProfileScreen>
                         child: const Text('Upgrade'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Local Files',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        _isLoadingLocalStorage
+                            ? 'Calculating...'
+                            : _formatBytes(_localStorageBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Stored on this device only. Local and cloud files are tracked independently, so files can exist in either place or both.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                   ),
 
                   // 95% capacity warning

@@ -278,6 +278,31 @@ class LocalFileService {
     }
   }
 
+  /// Get the total size of all files currently stored in app storage.
+  Future<int> getTotalStorageBytes() async {
+    if (kIsWeb || !_initialized || _appFilesDirectory == null) {
+      return 0;
+    }
+
+    try {
+      var total = 0;
+      final dir = _appFilesDirectory!;
+
+      if (await dir.exists()) {
+        await for (final entity in dir.list(recursive: true)) {
+          if (entity is File) {
+            total += await entity.length();
+          }
+        }
+      }
+
+      return total;
+    } catch (e) {
+      debugPrint('Failed to calculate local storage usage: $e');
+      return 0;
+    }
+  }
+
   /// Clear all files from app storage (use with caution)
   Future<bool> clearAllFiles() async {
     if (!_initialized || _appFilesDirectory == null) {
