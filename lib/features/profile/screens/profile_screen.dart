@@ -30,6 +30,19 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  Future<void> _refreshStorageInfo() async {
+    final authService = context.read<AuthService>();
+    if (authService.isGuestMode) {
+      return;
+    }
+
+    await authService.refreshCurrentUser();
+    final workspaceId = authService.storageUserId;
+    if (workspaceId != null && mounted) {
+      await context.read<StorageService>().loadStorageInfo(workspaceId);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -38,15 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     // Load storage info when screen opens and refresh auth state in case the
     // user just verified their email in the browser.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final authService = context.read<AuthService>();
-      if (authService.isGuestMode) {
-        return;
-      }
-      await authService.refreshCurrentUser();
-      final userId = authService.userId;
-      if (userId != null && mounted) {
-        context.read<StorageService>().loadStorageInfo(userId);
-      }
+      await _refreshStorageInfo();
     });
   }
 
@@ -60,7 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !context.read<AuthService>().isGuestMode) {
-      context.read<AuthService>().refreshCurrentUser();
+      _refreshStorageInfo();
     }
   }
 

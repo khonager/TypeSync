@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import '../models/note.dart';
 import '../services/diagnostics_service.dart';
 import '../services/sync_service.dart';
+import '../utils/search_query.dart';
 
 /// Provider for managing note state
 ///
@@ -73,17 +74,327 @@ class NotesProvider extends ChangeNotifier {
   List<Note> get dirtyNotes =>
       _notes.where((n) => n.isDirty && !n.localOnly).toList();
 
-  /// Search notes by title and content
-  List<Note> searchNotes(String query) {
-    final lowerQuery = query.toLowerCase();
-    return _notes
-        .where(
-          (n) =>
-              !n.isDeleted &&
-              (n.title.toLowerCase().contains(lowerQuery) ||
-                  n.content.toLowerCase().contains(lowerQuery)),
-        )
-        .toList();
+  /// Search notes by title, note content, attachment metadata, and file paths.
+  ///
+  /// This is intentionally OCR-free for now; image/PDF OCR can be layered on
+  /// later by appending extracted text to the searchable buffer.
+  List<Note> searchNotes(
+    String query, {
+    String? folderId,
+  }) {
+    return searchNotesWithQuery(
+      SearchQuery.parse(query),
+      folderId: folderId,
+    );
+  }
+
+  /// Search notes with structured filters (`in:*`, `has:*`, etc).
+  List<Note> searchNotesWithQuery(
+    SearchQuery query, {
+    String? folderId,
+  }) {
+    final queryTokens = query.textTokens;
+
+    final matchingNotes = _notes.where((note) {
+      if (note.isDeleted) return false;
+      if (folderId != null && note.folderId != folderId) return false;
+      if (!_matchesInFilters(note, query.inFilters)) return false;
+      if (!_matchesHasFilters(note, query.hasFilters)) return false;
+      if (queryTokens.isEmpty) return true;
+      return queryTokens.every(
+        (token) => _matchesTokenInNote(note, token, query.inFilters),
+      );
+    }).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    return matchingNotes;
+  }
+
+  String _buildSearchableNoteText(Note note) {
+    final buffer = StringBuffer()
+      ..write(note.title)
+      ..write(' ')
+      ..write(_extractSearchableTextFromContent(note.content))
+      ..write(' ')
+      ..write(note.pdfPath ?? '');
+
+    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) {
+      buffer
+        ..write(' ')
+        ..write(p.basename(note.pdfPath!));
+    }
+
+    for (final attachment in note.attachments) {
+      buffer
+        ..write(' ')
+        ..write(attachment.name)
+        ..write(' ')
+        ..write(attachment.path)
+        ..write(' ')
+        ..write(attachment.mimeType ?? '');
+
+      if (attachment.path.isNotEmpty) {
+        buffer
+          ..write(' ')
+          ..write(p.basename(attachment.path));
+      }
+    }
+
+    return buffer.toString().toLowerCase();
+  }
+
+  bool _matchesInFilters(Note note, Set<String> inFilters) {
+    if (inFilters.isEmpty) return true;
+
+    final typeFilters =
+        inFilters.where((filter) => _isTypeInFilter(filter)).toSet();
+    if (typeFilters.isNotEmpty &&
+        !typeFilters.any((filter) => _matchesTypeInFilter(note, filter))) {
+      return false;
+    }
+
+    if (inFilters.contains('attachment') && note.attachments.isEmpty) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _isTypeInFilter(String filter) {
+    return filter == 'pdf' || filter == 'txt' || filter == 'markdown';
+  }
+
+  bool _matchesTypeInFilter(Note note, String filter) {
+    switch (filter) {
+      case 'pdf':
+        return _noteHasPdfAsset(note);
+      case 'txt':
+        return note.type == NoteType.text ||
+            _noteHasAttachmentExtension(note, {
+              '.txt',
+            });
+      case 'markdown':
+        return note.type == NoteType.markdown ||
+            _noteHasAttachmentExtension(note, {
+              '.md',
+              '.markdown',
+            });
+      default:
+        return true;
+    }
+  }
+
+  bool _matchesHasFilters(Note note, Set<String> hasFilters) {
+    for (final filter in hasFilters) {
+      switch (filter) {
+        case 'attachment':
+          if (note.attachments.isEmpty) return false;
+          break;
+        case 'image':
+          if (!_noteHasImageAttachment(note)) return false;
+          break;
+        case 'pdf':
+          if (!_noteHasPdfAsset(note)) return false;
+          break;
+      }
+    }
+
+    return true;
+  }
+
+  bool _matchesTokenInNote(
+    Note note,
+    String token,
+    Set<String> inFilters,
+  ) {
+    final scopedFilters = inFilters.where((filter) {
+      return filter == 'text' ||
+          filter == 'title' ||
+          filter == 'attachment' ||
+          filter == 'pdf';
+    }).toSet();
+
+    if (scopedFilters.isEmpty) {
+      return _buildSearchableNoteText(note).contains(token);
+    }
+
+    for (final scope in scopedFilters) {
+      switch (scope) {
+        case 'text':
+          if (_extractSearchableTextFromContent(note.content)
+              .toLowerCase()
+              .contains(token)) {
+            return true;
+          }
+          break;
+        case 'title':
+          if (note.title.toLowerCase().contains(token)) {
+            return true;
+          }
+          break;
+        case 'attachment':
+          if (_buildAttachmentSearchText(note).contains(token)) {
+            return true;
+          }
+          break;
+        case 'pdf':
+          if (_buildPdfSearchText(note).contains(token)) {
+            return true;
+          }
+          break;
+      }
+    }
+
+    return false;
+  }
+
+  String _buildAttachmentSearchText(Note note) {
+    final buffer = StringBuffer();
+    for (final attachment in note.attachments) {
+      buffer
+        ..write(attachment.name)
+        ..write(' ')
+        ..write(attachment.path)
+        ..write(' ')
+        ..write(attachment.mimeType ?? '');
+
+      if (attachment.path.isNotEmpty) {
+        buffer
+          ..write(' ')
+          ..write(p.basename(attachment.path));
+      }
+    }
+    return buffer.toString().toLowerCase();
+  }
+
+  String _buildPdfSearchText(Note note) {
+    final buffer = StringBuffer();
+    if (note.type == NoteType.pdf) {
+      buffer.write(note.title);
+    }
+    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) {
+      buffer
+        ..write(' ')
+        ..write(note.pdfPath)
+        ..write(' ')
+        ..write(p.basename(note.pdfPath!));
+    }
+    for (final attachment in note.attachments) {
+      if (_attachmentHasExtension(attachment, {'.pdf'}) ||
+          (attachment.mimeType?.toLowerCase() == 'application/pdf')) {
+        buffer
+          ..write(' ')
+          ..write(attachment.name)
+          ..write(' ')
+          ..write(attachment.path);
+      }
+    }
+    return buffer.toString().toLowerCase();
+  }
+
+  bool _noteHasPdfAsset(Note note) {
+    if (note.type == NoteType.pdf) return true;
+    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) return true;
+    return note.attachments.any((attachment) {
+      return _attachmentHasExtension(attachment, {'.pdf'}) ||
+          (attachment.mimeType?.toLowerCase() == 'application/pdf');
+    });
+  }
+
+  bool _noteHasImageAttachment(Note note) {
+    const imageExtensions = {
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.webp',
+      '.svg',
+      '.bmp',
+      '.ico',
+      '.tif',
+      '.tiff',
+    };
+
+    return note.attachments.any((attachment) {
+      if ((attachment.mimeType ?? '').toLowerCase().startsWith('image/')) {
+        return true;
+      }
+      return _attachmentHasExtension(attachment, imageExtensions);
+    });
+  }
+
+  bool _noteHasAttachmentExtension(Note note, Set<String> extensions) {
+    return note.attachments.any(
+      (attachment) => _attachmentHasExtension(attachment, extensions),
+    );
+  }
+
+  bool _attachmentHasExtension(
+    NoteAttachment attachment,
+    Set<String> extensions,
+  ) {
+    final pathExt = _safeExtension(attachment.path);
+    if (pathExt.isNotEmpty && extensions.contains(pathExt)) {
+      return true;
+    }
+
+    final nameExt = _safeExtension(attachment.name);
+    return nameExt.isNotEmpty && extensions.contains(nameExt);
+  }
+
+  String _safeExtension(String value) {
+    final normalized = value.split('?').first.split('#').first;
+    return p.extension(normalized).toLowerCase();
+  }
+
+  String _extractSearchableTextFromContent(String content) {
+    if (content.isEmpty) {
+      return '';
+    }
+
+    final trimmed = content.trimLeft();
+    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+      return content;
+    }
+
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is List<dynamic>) {
+        return _extractInsertText(decoded);
+      }
+      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
+        return _extractInsertText(decoded['ops'] as List<dynamic>);
+      }
+    } catch (_) {
+      // Fall back to raw content if this is not valid JSON/quill-delta.
+    }
+
+    return content;
+  }
+
+  String _extractInsertText(List<dynamic> operations) {
+    final buffer = StringBuffer();
+
+    for (final op in operations) {
+      if (op is! Map) continue;
+      final insertValue = op['insert'];
+      if (insertValue is String) {
+        buffer.write(insertValue);
+        continue;
+      }
+
+      if (insertValue is Map) {
+        for (final value in insertValue.values) {
+          if (value is String) {
+            buffer
+              ..write(' ')
+              ..write(value);
+          }
+        }
+      }
+    }
+
+    return buffer.toString();
   }
 
   /// Get notes by tag

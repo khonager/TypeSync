@@ -90,6 +90,29 @@ class FoldersProvider extends ChangeNotifier {
   /// Get dirty folders for sync
   List<Folder> get dirtyFolders => _folders.where((f) => f.isDirty).toList();
 
+  /// Search folders by name/subtitle.
+  List<Folder> searchFolders(
+    String query, {
+    String? parentId,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final queryTokens = normalizedQuery
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+
+    return _folders.where((folder) {
+      if (folder.isDeleted) return false;
+      if (parentId != null && folder.parentId != parentId) return false;
+      if (queryTokens.isEmpty) return true;
+
+      final searchableText =
+          '${folder.name} ${folder.subtitle ?? ''}'.toLowerCase();
+      return queryTokens.every(searchableText.contains);
+    }).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
   // ===========================================
   // INITIALIZATION
   // ===========================================

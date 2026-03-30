@@ -7,10 +7,10 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
@@ -37,6 +37,7 @@ import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/search_query.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -54,8 +55,31 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const List<String> _inSearchSuggestions = [
+    'in:text',
+    'in:title',
+    'in:attachment',
+    'in:pdf',
+    'in:txt',
+    'in:markdown',
+  ];
+  static const List<String> _hasSearchSuggestions = [
+    'has:attachment',
+    'has:image',
+    'has:pdf',
+  ];
+  static const List<String> _isSearchSuggestions = [
+    'is:file',
+    'is:folder',
+  ];
+
   // Current folder being viewed (null = root)
   String? _currentFolderId;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+  List<String> _searchSuggestions = const <String>[];
+  int _selectedSearchSuggestionIndex = 0;
 
   // View mode (grid or list)
   bool _isGridView = true;
@@ -515,18 +539,40 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
+    final parsedSearchQuery = SearchQuery.parse(_searchQuery);
+    final isSearchActive = parsedSearchQuery.isActive;
+    final noteOpenSearchQuery = parsedSearchQuery.textTokens.isNotEmpty
+        ? parsedSearchQuery.plainTextQuery
+        : null;
 
     // Get current folder for title
     final currentFolder = _currentFolderId != null
         ? foldersProvider.getFolderById(_currentFolderId!)
         : null;
 
-    // Get folders and notes for current view
-    final folders = (_currentFolderId == null
-            ? foldersProvider.rootFolders
-            : foldersProvider.getSubfolders(_currentFolderId!))
-        .cast<Folder>();
-    final notes = notesProvider.getNotesInFolder(_currentFolderId).cast<Note>();
+    // Get folders and notes for current view / global search mode.
+    late final List<Folder> folders;
+    late final List<Note> notes;
+    late final bool showFolderResults;
+    late final bool showFileResults;
+
+    if (isSearchActive) {
+      showFolderResults = parsedSearchQuery.includeFolders;
+      showFileResults = parsedSearchQuery.includeFiles;
+      folders = showFolderResults
+          ? foldersProvider.searchFolders(parsedSearchQuery.plainTextQuery)
+          : <Folder>[];
+      notes = showFileResults
+          ? notesProvider.searchNotesWithQuery(parsedSearchQuery)
+          : <Note>[];
+    } else {
+      showFolderResults = true;
+      showFileResults = true;
+      folders = _currentFolderId == null
+          ? foldersProvider.rootFolders
+          : foldersProvider.getSubfolders(_currentFolderId!);
+      notes = notesProvider.getNotesInFolder(_currentFolderId);
+    }
 
     return Scaffold(
       // Custom app bar matching the design
@@ -538,7 +584,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: _navigateBack,
               )
             : null,
-        title: Text(currentFolder?.name ?? 'TypeSync'),
+        title: Text(
+          isSearchActive
+              ? 'Search results'
+              : (currentFolder?.name ?? 'TypeSync'),
+        ),
         actions: [
           // Sync status indicator
           const SyncStatusIndicator(),
@@ -558,7 +608,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
 
-      body: _buildBody(folders, notes, foldersProvider, notesProvider),
+      body: _buildBody(
+        folders,
+        notes,
+        foldersProvider,
+        notesProvider,
+        isSearchActive: isSearchActive,
+        showFolderResults: showFolderResults,
+        showFileResults: showFileResults,
+        noteOpenSearchQuery: noteOpenSearchQuery,
+      ),
 
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
@@ -580,6 +639,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _authService?.removeListener(_handleAuthStateChanged);
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -695,17 +756,19 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Folder> folders,
     List<Note> notes,
     FoldersProvider foldersProvider,
-    NotesProvider notesProvider,
-  ) {
+    NotesProvider notesProvider, {
+    required bool isSearchActive,
+    required bool showFolderResults,
+    required bool showFileResults,
+    required String? noteOpenSearchQuery,
+  }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
-    if (folders.isEmpty && notes.isEmpty) {
-      return _buildEmptyState();
-    }
+    final hasVisibleItems = folders.isNotEmpty || notes.isNotEmpty;
 
     return DropTarget(
       onDragEntered: (details) {
@@ -732,20 +795,26 @@ class _HomeScreenState extends State<HomeScreen> {
               key: _scrollViewKey,
               controller: _scrollController,
               slivers: [
+                SliverToBoxAdapter(
+                  child: _buildSearchBar(),
+                ),
+
                 // Breadcrumb navigation
-                if (_currentFolderId != null)
+                if (_currentFolderId != null && !isSearchActive)
                   SliverToBoxAdapter(
                     child: _buildBreadcrumb(foldersProvider),
                   ),
 
                 // Folders section
-                if (folders.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
+                if (showFolderResults && folders.isNotEmpty) ...[
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'Folders',
-                        style: TextStyle(
+                        isSearchActive
+                            ? 'Folders (${folders.length})'
+                            : 'Folders',
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey,
@@ -758,7 +827,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FolderGrid(
                             folders: folders,
-                            onFolderTap: _navigateToFolder,
+                            onFolderTap: (folderId) => _handleFolderTap(
+                              folderId,
+                              isSearchActive: isSearchActive,
+                            ),
                             onFolderLongPress: _showFolderOptions,
                             onNoteDropped: _handleNoteDroppedOnFolder,
                             onFolderDropped: _handleFolderDroppedOnFolder,
@@ -770,20 +842,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FolderList(
                             folders: folders,
-                            onFolderTap: _navigateToFolder,
+                            onFolderTap: (folderId) => _handleFolderTap(
+                              folderId,
+                              isSearchActive: isSearchActive,
+                            ),
                             onFolderLongPress: _showFolderOptions,
                           ),
                   ),
                 ],
 
                 // Files section
-                if (notes.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
+                if (showFileResults && notes.isNotEmpty) ...[
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'Files',
-                        style: TextStyle(
+                        isSearchActive ? 'Files (${notes.length})' : 'Files',
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey,
@@ -796,7 +871,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FileGrid(
                             notes: notes,
-                            onNoteTap: _openNote,
+                            onNoteTap: (noteId) => _openNote(
+                              noteId,
+                              searchQuery: noteOpenSearchQuery,
+                            ),
                             onNoteLongPress: _showNoteOptions,
                             useLongPressDrag: _useLongPressGridDrag,
                             onDragStarted: _handleGridDragStarted,
@@ -806,16 +884,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FileList(
                             notes: notes,
-                            onNoteTap: _openNote,
+                            onNoteTap: (noteId) => _openNote(
+                              noteId,
+                              searchQuery: noteOpenSearchQuery,
+                            ),
                             onNoteLongPress: _showNoteOptions,
                           ),
                   ),
                 ],
 
-                // Bottom padding
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 100),
-                ),
+                if (!hasVisibleItems)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildEmptyState(isSearchActive: isSearchActive),
+                  ),
+
+                if (hasVisibleItems)
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: 100),
+                  ),
               ],
             ),
           ),
@@ -858,31 +945,237 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({required bool isSearchActive}) {
+    final icon =
+        isSearchActive ? Icons.search_off_outlined : Icons.folder_open_outlined;
+    final title = isSearchActive
+        ? 'No results found'
+        : (_currentFolderId == null ? 'No notes yet' : 'This folder is empty');
+    final subtitle = isSearchActive
+        ? 'Try another keyword or filter like is:file / in:text'
+        : 'Tap + to create a new note';
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.folder_open_outlined,
+            icon,
             size: 64,
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
-            _currentFolderId == null ? 'No notes yet' : 'This folder is empty',
+            title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: Colors.grey,
                 ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Tap + to create a new note',
+            subtitle,
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildSearchBar() {
+    final activeSuggestion = _activeSearchSuggestion();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        children: [
+          Focus(
+            onKeyEvent: (_, event) => _handleSearchKeyEvent(event),
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText:
+                    'Search... (type in: / has: / is:, press Tab to accept)',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Clear search',
+                        onPressed: _clearSearchQuery,
+                      ),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surface.withValues(
+                      alpha: 0.9,
+                    ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: _handleSearchChanged,
+            ),
+          ),
+          if (_searchSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _searchSuggestions.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(_searchSuggestions[i]),
+                        selected: i == _selectedSearchSuggestionIndex,
+                        onSelected: (_) => _applySearchSuggestion(
+                          _searchSuggestions[i],
+                        ),
+                      ),
+                    ),
+                  if (activeSuggestion != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        'Tab',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  KeyEventResult _handleSearchKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent || _searchSuggestions.isEmpty) {
+      return KeyEventResult.ignored;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      final suggestion = _activeSearchSuggestion();
+      if (suggestion == null) return KeyEventResult.ignored;
+      _applySearchSuggestion(suggestion);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _selectedSearchSuggestionIndex =
+            (_selectedSearchSuggestionIndex + 1) % _searchSuggestions.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _selectedSearchSuggestionIndex =
+            (_selectedSearchSuggestionIndex - 1 + _searchSuggestions.length) %
+                _searchSuggestions.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  void _clearSearchQuery() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _searchSuggestions = const <String>[];
+      _selectedSearchSuggestionIndex = 0;
+    });
+  }
+
+  void _handleSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value;
+      _searchSuggestions = _buildSearchSuggestions(value);
+      _selectedSearchSuggestionIndex = 0;
+    });
+  }
+
+  String? _activeSearchSuggestion() {
+    if (_searchSuggestions.isEmpty) return null;
+    final index = _selectedSearchSuggestionIndex.clamp(
+      0,
+      _searchSuggestions.length - 1,
+    );
+    return _searchSuggestions[index];
+  }
+
+  List<String> _buildSearchSuggestions(String query) {
+    final token = _activeSearchToken(query);
+    if (token == null || token.isEmpty) return const <String>[];
+
+    final lowerToken = token.toLowerCase();
+
+    if (lowerToken == 'in' || lowerToken == 'in:') {
+      return _inSearchSuggestions;
+    }
+    if (lowerToken == 'has' || lowerToken == 'has:') {
+      return _hasSearchSuggestions;
+    }
+    if (lowerToken == 'is' || lowerToken == 'is:') {
+      return _isSearchSuggestions;
+    }
+    if (lowerToken.startsWith('in:')) {
+      return _inSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+    if (lowerToken.startsWith('has:')) {
+      return _hasSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+    if (lowerToken.startsWith('is:')) {
+      return _isSearchSuggestions
+          .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+
+    return const <String>[];
+  }
+
+  String? _activeSearchToken(String query) {
+    if (query.isEmpty || query.endsWith(' ')) {
+      return null;
+    }
+
+    final parts = query.split(RegExp(r'\s+'));
+    if (parts.isEmpty) return null;
+    return parts.last;
+  }
+
+  void _applySearchSuggestion(String suggestion) {
+    final currentText = _searchController.text;
+    final lastWhitespace = currentText.lastIndexOf(RegExp(r'\s'));
+    final tokenStart = lastWhitespace >= 0 ? lastWhitespace + 1 : 0;
+    final prefix = currentText.substring(0, tokenStart);
+    final updatedText = '$prefix$suggestion ';
+
+    _searchController.value = TextEditingValue(
+      text: updatedText,
+      selection: TextSelection.collapsed(offset: updatedText.length),
+    );
+
+    setState(() {
+      _searchQuery = updatedText;
+      _searchSuggestions = const <String>[];
+      _selectedSearchSuggestionIndex = 0;
+    });
+
+    _searchFocusNode.requestFocus();
   }
 
   Widget _buildBreadcrumb(FoldersProvider foldersProvider) {
@@ -930,6 +1223,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _handleFolderTap(
+    String folderId, {
+    required bool isSearchActive,
+  }) {
+    if (isSearchActive) {
+      _clearSearchQuery();
+      setState(() {
+        _currentFolderId = folderId;
+      });
+      return;
+    }
+
+    _navigateToFolder(folderId);
+  }
+
   void _navigateBack() {
     if (_currentFolderId != null) {
       final foldersProvider = context.read<FoldersProvider>();
@@ -940,8 +1248,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openNote(String noteId) {
-    AppRouter.openEditor(context, noteId: noteId, folderId: _currentFolderId);
+  void _openNote(
+    String noteId, {
+    String? searchQuery,
+  }) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _searchFocusNode.unfocus();
+
+    final note = context.read<NotesProvider>().getNoteById(noteId);
+    AppRouter.openEditor(
+      context,
+      noteId: noteId,
+      folderId: note?.folderId ?? _currentFolderId,
+      searchQuery: searchQuery,
+    );
   }
 
   void _showCreateOptions() {

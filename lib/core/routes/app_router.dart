@@ -106,6 +106,7 @@ class AppRouter {
     BuildContext context, {
     String? noteId,
     String? folderId,
+    String? searchQuery,
   }) {
     return Navigator.push(
       context,
@@ -113,6 +114,7 @@ class AppRouter {
         builder: (_) => EditorScreen(
           noteId: noteId,
           folderId: folderId,
+          searchQuery: searchQuery,
         ),
       ),
     );
