@@ -304,116 +304,123 @@ class _EditorScreenState extends State<EditorScreen>
         ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
         : null;
 
-    return Scaffold(
-      backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor:
-            bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Center(
-          child: TextField(
-            controller: _titleController,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              hintText: 'Title',
-              contentPadding: EdgeInsets.zero,
-              filled: false,
+    return PopScope(
+        canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          final titleHasFocus = FocusScope.of(context).focusedChild != null &&
+              FocusManager.instance.primaryFocus?.context?.widget
+                  is EditableText;
+          if (_focusNode.hasFocus || titleHasFocus) {
+            FocusScope.of(context).unfocus();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            backgroundColor:
+                bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios),
+              onPressed: () => Navigator.pop(context),
             ),
-            onChanged: _updateTitle,
-          ),
-        ),
-        actions: [
-          // Stats display (Lines/Char counter)
-          EditorStats(
-            lineCount: _lineCount,
-            characterCount: _characterCount,
-          ),
-          // Sync status indicator
-          const SyncStatusIndicator(),
-          // More options
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: _showMoreOptions,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (_note?.hasConflict == true) _buildConflictBanner(),
-          Expanded(
-            child: DropTarget(
-              onDragEntered: (details) {
-                setState(() {
-                  _isDragging = true;
-                });
-              },
-              onDragExited: (details) {
-                setState(() {
-                  _isDragging = false;
-                });
-              },
-              onDragDone: (details) {
-                _handleDroppedFiles(details.files);
-                setState(() {
-                  _isDragging = false;
-                });
-              },
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _buildEditorWithAttachments(bgColor),
-                  EditorToolbar(
-                    controller: _quillController,
-                    onInsertPdf: _insertPdf,
-                    onInsertTable: _insertTable,
-                  ),
-                  if (_isDragging)
-                    Container(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.2),
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(32),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.cloud_upload,
-                                size: 64,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Drop files here to attach',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+            title: Center(
+              child: TextField(
+                controller: _titleController,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  hintText: 'Title',
+                  contentPadding: EdgeInsets.zero,
+                  filled: false,
+                ),
+                onChanged: _updateTitle,
               ),
             ),
+            actions: [
+              // Stats display (Lines/Char counter)
+              EditorStats(
+                lineCount: _lineCount,
+                characterCount: _characterCount,
+              ),
+              // Sync status indicator
+              const SyncStatusIndicator(),
+              // More options
+              IconButton(
+                icon: const Icon(Icons.more_vert),
+                onPressed: _showMoreOptions,
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+          body: Column(
+            children: [
+              if (_note?.hasConflict == true) _buildConflictBanner(),
+              Expanded(
+                child: DropTarget(
+                  onDragEntered: (details) {
+                    setState(() {
+                      _isDragging = true;
+                    });
+                  },
+                  onDragExited: (details) {
+                    setState(() {
+                      _isDragging = false;
+                    });
+                  },
+                  onDragDone: (details) {
+                    _handleDroppedFiles(details.files);
+                    setState(() {
+                      _isDragging = false;
+                    });
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      _buildEditorWithAttachments(bgColor),
+                      EditorToolbar(
+                        controller: _quillController,
+                        onInsertPdf: _insertPdf,
+                        onInsertTable: _insertTable,
+                      ),
+                      if (_isDragging)
+                        Container(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.2),
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.upload_file,
+                                  size: 48,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Drop files to attach',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ));
   }
 
   Widget _buildConflictBanner() {
