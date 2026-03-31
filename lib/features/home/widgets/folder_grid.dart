@@ -58,7 +58,7 @@ class FolderGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+        childAspectRatio: 1,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderGridItem(
@@ -245,16 +245,6 @@ class FolderGridItem extends StatelessWidget {
                     color: folder.backgroundColor != null
                         ? AppColorPalette.getContrastingTextColor(bgColor)
                         : null,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            Text(
-              _formatBytes(stats.totalBytes),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                    fontSize: 10,
                   ),
               textAlign: TextAlign.center,
             ),

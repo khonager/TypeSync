@@ -56,7 +56,7 @@ class FileGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+        childAspectRatio: 1,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileGridItem(
@@ -178,7 +178,6 @@ class FileGridItem extends StatelessWidget {
     required Color iconColor,
   }) {
     final attachmentCount = note.attachments.length;
-    final totalBytes = _noteTotalBytes(note);
 
     return GestureDetector(
       onTap: onTap,
@@ -248,17 +247,6 @@ class FileGridItem extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: textColor,
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _formatBytes(totalBytes),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: textColor.withValues(alpha: 0.72),
-                  fontSize: 10,
                 ),
             textAlign: TextAlign.center,
           ),
