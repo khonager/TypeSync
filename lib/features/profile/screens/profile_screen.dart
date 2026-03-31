@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/user.dart';
 import '../../../core/providers/calendar_provider.dart';
@@ -36,13 +37,95 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  static const String _localStorageTotalPrefsPrefix =
+      'profile_local_storage_total_';
+  static const String _localStorageAppPrefsPrefix =
+      'profile_local_storage_app_';
+  static const String _localStorageFolderSyncPrefsPrefix =
+      'profile_local_storage_folder_sync_';
+
   int _localStorageBytes = 0;
   int _localAppStorageBytes = 0;
   int _localFolderSyncBytes = 0;
   bool _isLoadingLocalStorage = false;
+  bool _hasCachedLocalStorage = false;
+  bool _hasObservedLocalSyncPath = false;
   String? _lastObservedLocalSyncPath;
 
-  Future<void> _refreshStorageInfo() async {
+  String _localStoragePrefsKey(String prefix, String workspaceId) {
+    return '$prefix$workspaceId';
+  }
+
+  Future<void> _loadCachedLocalStorageInfo() async {
+    final authService = context.read<AuthService>();
+    if (authService.isGuestMode) {
+      return;
+    }
+
+    final workspaceId = authService.storageUserId;
+    if (workspaceId == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedAppStorageBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageAppPrefsPrefix, workspaceId),
+      );
+      final savedFolderSyncBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageFolderSyncPrefsPrefix, workspaceId),
+      );
+      final savedTotalStorageBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageTotalPrefsPrefix, workspaceId),
+      );
+      final hasCachedValue = savedAppStorageBytes != null ||
+          savedFolderSyncBytes != null ||
+          savedTotalStorageBytes != null;
+
+      if (!mounted || !hasCachedValue) {
+        return;
+      }
+
+      final nextAppStorageBytes = savedAppStorageBytes ?? 0;
+      final nextFolderSyncBytes = savedFolderSyncBytes ?? 0;
+      final nextTotalStorageBytes =
+          savedTotalStorageBytes ?? nextAppStorageBytes + nextFolderSyncBytes;
+
+      setState(() {
+        _hasCachedLocalStorage = true;
+        _localAppStorageBytes = nextAppStorageBytes;
+        _localFolderSyncBytes = nextFolderSyncBytes;
+        _localStorageBytes = nextTotalStorageBytes;
+      });
+    } catch (_) {
+      // Keep rendering with in-memory values if the cache is unavailable.
+    }
+  }
+
+  Future<void> _persistLocalStorageInfo({
+    required String workspaceId,
+    required int localAppStorageBytes,
+    required int localFolderSyncBytes,
+    required int localStorageBytes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageAppPrefsPrefix, workspaceId),
+        localAppStorageBytes,
+      );
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageFolderSyncPrefsPrefix, workspaceId),
+        localFolderSyncBytes,
+      );
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageTotalPrefsPrefix, workspaceId),
+        localStorageBytes,
+      );
+    } catch (_) {
+      // A missed cache write should not interrupt profile rendering.
+    }
+  }
+
+  Future<void> _refreshCloudStorageInfo() async {
     final authService = context.read<AuthService>();
     if (authService.isGuestMode) {
       return;
@@ -52,44 +135,83 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (!mounted) return;
 
     final cloudUserId = authService.userId;
-    final workspaceId = authService.storageUserId;
-    if (cloudUserId == null || workspaceId == null) return;
+    if (cloudUserId == null) return;
 
     final storageService = context.read<StorageService>();
+
+    await storageService.loadStorageInfo(
+      cloudUserId,
+      fallbackUser: authService.currentUser,
+    );
+  }
+
+  Future<void> _refreshLocalStorageInfo({bool showLoadingState = false}) async {
+    final authService = context.read<AuthService>();
+    if (authService.isGuestMode) {
+      return;
+    }
+
+    final workspaceId = authService.storageUserId;
+    if (workspaceId == null) return;
+
     final localFileService = LocalFileService.instance;
     final localFolderSyncService = context.read<LocalFolderSyncService>();
 
-    setState(() {
-      _isLoadingLocalStorage = true;
-    });
+    if (showLoadingState && mounted) {
+      setState(() {
+        _isLoadingLocalStorage = true;
+      });
+    }
 
     try {
-      await Future.wait([
-        storageService.loadStorageInfo(
-          cloudUserId,
-          fallbackUser: authService.currentUser,
-        ),
-        () async {
-          await localFileService.initialize(workspaceId);
-          final localAppStorageBytes =
-              await localFileService.getTotalStorageBytes();
-          final localFolderSyncBytes =
-              await localFolderSyncService.getTotalStorageBytes();
-          final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
-          if (!mounted) return;
-          setState(() {
-            _localAppStorageBytes = localAppStorageBytes;
-            _localFolderSyncBytes = localFolderSyncBytes;
-            _localStorageBytes = localStorageBytes;
-          });
-        }(),
-      ]);
+      await localFileService.initialize(workspaceId);
+      final localAppStorageBytes =
+          await localFileService.getTotalStorageBytes();
+      final localFolderSyncBytes =
+          await localFolderSyncService.getTotalStorageBytes();
+      final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
+
+      await _persistLocalStorageInfo(
+        workspaceId: workspaceId,
+        localAppStorageBytes: localAppStorageBytes,
+        localFolderSyncBytes: localFolderSyncBytes,
+        localStorageBytes: localStorageBytes,
+      );
+
+      if (!mounted) return;
+
+      final hasChanged = _localAppStorageBytes != localAppStorageBytes ||
+          _localFolderSyncBytes != localFolderSyncBytes ||
+          _localStorageBytes != localStorageBytes ||
+          !_hasCachedLocalStorage;
+
+      if (hasChanged || _isLoadingLocalStorage) {
+        setState(() {
+          _hasCachedLocalStorage = true;
+          _localAppStorageBytes = localAppStorageBytes;
+          _localFolderSyncBytes = localFolderSyncBytes;
+          _localStorageBytes = localStorageBytes;
+        });
+      }
     } finally {
-      if (mounted) {
+      if (showLoadingState && mounted && _isLoadingLocalStorage) {
         setState(() {
           _isLoadingLocalStorage = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshStorageInfo({
+    bool refreshCloud = true,
+    bool refreshLocal = true,
+    bool showLocalLoadingState = false,
+  }) async {
+    if (refreshCloud) {
+      await _refreshCloudStorageInfo();
+    }
+    if (refreshLocal && mounted) {
+      await _refreshLocalStorageInfo(showLoadingState: showLocalLoadingState);
     }
   }
 
@@ -120,10 +242,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Load storage info when screen opens and refresh auth state in case the
-    // user just verified their email in the browser.
+    // Restore the most recent local storage figures immediately, then refresh
+    // only the cloud-backed values when the screen opens.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _refreshStorageInfo();
+      await _loadCachedLocalStorageInfo();
+      if (!mounted) return;
+      await _refreshStorageInfo(refreshLocal: false);
     });
   }
 
@@ -132,11 +256,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.didChangeDependencies();
     final localSyncPath =
         context.watch<LocalFolderSyncService>().syncFolder?.path;
+    if (!_hasObservedLocalSyncPath) {
+      _hasObservedLocalSyncPath = true;
+      _lastObservedLocalSyncPath = localSyncPath;
+      return;
+    }
+
     if (localSyncPath != _lastObservedLocalSyncPath) {
       _lastObservedLocalSyncPath = localSyncPath;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _refreshStorageInfo();
+          _refreshLocalStorageInfo(showLoadingState: !_hasCachedLocalStorage);
         }
       });
     }
@@ -152,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !context.read<AuthService>().isGuestMode) {
-      _refreshStorageInfo();
+      _refreshStorageInfo(showLocalLoadingState: false);
     }
   }
 
