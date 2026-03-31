@@ -66,6 +66,8 @@ class StorageService extends ChangeNotifier {
   int _cloudRecordedBytes = 0;
   int _cloudNoteCount = 0;
   int _cloudAttachmentCount = 0;
+  int _cloudStoredFileBytes = 0;
+  int _cloudStoredFileCount = 0;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -80,6 +82,10 @@ class StorageService extends ChangeNotifier {
   int get cloudRecordedBytes => _cloudRecordedBytes;
   int get cloudNoteCount => _cloudNoteCount;
   int get cloudAttachmentCount => _cloudAttachmentCount;
+  int get cloudStoredFileBytes => _cloudStoredFileBytes;
+  int get cloudStoredFileCount => _cloudStoredFileCount;
+  int get cloudFileCount =>
+      _cloudStoredFileCount > 0 ? _cloudStoredFileCount : _cloudAttachmentCount;
   int get storageLimitBytes => _currentTier.storageLimitBytes;
   double get usagePercent => _storageUsedBytes / storageLimitBytes;
   int get storageRemainingBytes => storageLimitBytes - _storageUsedBytes;
@@ -154,6 +160,8 @@ class StorageService extends ChangeNotifier {
       int attachmentBytes = 0;
       int noteCount = 0;
       int attachmentCount = 0;
+      int storedFileBytes = 0;
+      int storedFileCount = 0;
       var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
       if (fallbackUser != null) {
         _currentTier = fallbackUser.subscriptionTier;
@@ -183,21 +191,21 @@ class StorageService extends ChangeNotifier {
           }
 
           try {
-            final notes = await fdFirestore.collection('notes').get();
+            final notes = await fdFirestore
+                .collection('notes')
+                .where('userId', isEqualTo: userId)
+                .where('isDeleted', isEqualTo: false)
+                .get();
             for (final doc in notes) {
-              if (doc.map['userId'] == userId &&
-                  _boolFromDynamic(doc.map['isDeleted']) == false) {
-                final explicitSize = _intFromDynamic(doc.map['size']);
-                final content = doc.map['content'] as String? ?? '';
-                final noteContentBytes = explicitSize ?? content.length;
-                final attachmentMetrics =
-                    _attachmentMetricsFromDynamic(doc.map['attachments']);
-                totalBytes += noteContentBytes + attachmentMetrics.bytes;
-                contentBytes += noteContentBytes;
-                attachmentBytes += attachmentMetrics.bytes;
-                attachmentCount += attachmentMetrics.count;
-                noteCount++;
-              }
+              final noteMetrics = await _noteStorageMetricsFromDynamic(
+                doc.map,
+                userId: userId,
+              );
+              totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+              contentBytes += noteMetrics.contentBytes;
+              attachmentBytes += noteMetrics.attachmentBytes;
+              attachmentCount += noteMetrics.attachmentCount;
+              noteCount++;
             }
           } catch (e) {
             loadFailed = true;
@@ -235,15 +243,14 @@ class StorageService extends ChangeNotifier {
               .get();
           for (final doc in notesSnapshot.docs) {
             final data = doc.data();
-            final explicitSize = _intFromDynamic(data['size']);
-            final content = data['content'] as String? ?? '';
-            final noteContentBytes = explicitSize ?? content.length;
-            final attachmentMetrics =
-                _attachmentMetricsFromDynamic(data['attachments']);
-            totalBytes += noteContentBytes + attachmentMetrics.bytes;
-            contentBytes += noteContentBytes;
-            attachmentBytes += attachmentMetrics.bytes;
-            attachmentCount += attachmentMetrics.count;
+            final noteMetrics = await _noteStorageMetricsFromDynamic(
+              data,
+              userId: userId,
+            );
+            totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+            contentBytes += noteMetrics.contentBytes;
+            attachmentBytes += noteMetrics.attachmentBytes;
+            attachmentCount += noteMetrics.attachmentCount;
             noteCount++;
           }
         } catch (e) {
@@ -252,14 +259,27 @@ class StorageService extends ChangeNotifier {
         }
       }
 
-      _storageUsedBytes = totalBytes > recordedBytes
-          ? totalBytes
-          : recordedBytes;
+      try {
+        final objectMetrics = await _loadCloudObjectMetrics(userId);
+        storedFileBytes = objectMetrics.bytes;
+        storedFileCount = objectMetrics.count;
+      } catch (e) {
+        loadFailed = true;
+        debugPrint('StorageService.loadStorageInfo object listing error: $e');
+      }
+
+      _storageUsedBytes = [
+        totalBytes,
+        recordedBytes,
+        storedFileBytes,
+      ].reduce((max, value) => value > max ? value : max);
       _cloudContentBytes = contentBytes;
       _cloudAttachmentBytes = attachmentBytes;
       _cloudRecordedBytes = recordedBytes;
       _cloudNoteCount = noteCount;
       _cloudAttachmentCount = attachmentCount;
+      _cloudStoredFileBytes = storedFileBytes;
+      _cloudStoredFileCount = storedFileCount;
       _errorMessage = loadFailed
           ? 'Loaded partial storage info; using best available data.'
           : null;
@@ -604,24 +624,27 @@ class StorageService extends ChangeNotifier {
       int attachmentBytes = 0;
       int noteCount = 0;
       int attachmentCount = 0;
+      int storedFileBytes = 0;
+      int storedFileCount = 0;
 
       if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore != null) {
-          final notes = await fdFirestore.collection('notes').get();
+          final notes = await fdFirestore
+              .collection('notes')
+              .where('userId', isEqualTo: userId)
+              .where('isDeleted', isEqualTo: false)
+              .get();
           for (final doc in notes) {
-            if (doc.map['userId'] == userId && doc.map['isDeleted'] == false) {
-              final explicitSize = _intFromDynamic(doc.map['size']);
-              final content = doc.map['content'] as String? ?? '';
-              final noteContentBytes = explicitSize ?? content.length;
-              final attachmentMetrics =
-                  _attachmentMetricsFromDynamic(doc.map['attachments']);
-              totalBytes += noteContentBytes + attachmentMetrics.bytes;
-              contentBytes += noteContentBytes;
-              attachmentBytes += attachmentMetrics.bytes;
-              attachmentCount += attachmentMetrics.count;
-              noteCount++;
-            }
+            final noteMetrics = await _noteStorageMetricsFromDynamic(
+              doc.map,
+              userId: userId,
+            );
+            totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+            contentBytes += noteMetrics.contentBytes;
+            attachmentBytes += noteMetrics.attachmentBytes;
+            attachmentCount += noteMetrics.attachmentCount;
+            noteCount++;
           }
 
           await fdFirestore.collection('users').document(userId).update({
@@ -636,15 +659,14 @@ class StorageService extends ChangeNotifier {
             .get();
         for (final doc in notesSnapshot.docs) {
           final data = doc.data();
-          final explicitSize = _intFromDynamic(data['size']);
-          final content = data['content'] as String? ?? '';
-          final noteContentBytes = explicitSize ?? content.length;
-          final attachmentMetrics =
-              _attachmentMetricsFromDynamic(data['attachments']);
-          totalBytes += noteContentBytes + attachmentMetrics.bytes;
-          contentBytes += noteContentBytes;
-          attachmentBytes += attachmentMetrics.bytes;
-          attachmentCount += attachmentMetrics.count;
+          final noteMetrics = await _noteStorageMetricsFromDynamic(
+            data,
+            userId: userId,
+          );
+          totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+          contentBytes += noteMetrics.contentBytes;
+          attachmentBytes += noteMetrics.attachmentBytes;
+          attachmentCount += noteMetrics.attachmentCount;
           noteCount++;
         }
 
@@ -653,12 +675,21 @@ class StorageService extends ChangeNotifier {
         });
       }
 
-      _storageUsedBytes = totalBytes;
+      final objectMetrics = await _loadCloudObjectMetrics(userId);
+      storedFileBytes = objectMetrics.bytes;
+      storedFileCount = objectMetrics.count;
+
+      _storageUsedBytes = [
+        totalBytes,
+        storedFileBytes,
+      ].reduce((max, value) => value > max ? value : max);
       _cloudContentBytes = contentBytes;
       _cloudAttachmentBytes = attachmentBytes;
       _cloudRecordedBytes = totalBytes;
       _cloudNoteCount = noteCount;
       _cloudAttachmentCount = attachmentCount;
+      _cloudStoredFileBytes = storedFileBytes;
+      _cloudStoredFileCount = storedFileCount;
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to recalculate storage: $e';
@@ -672,7 +703,34 @@ class StorageService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
-  _AttachmentMetrics _attachmentMetricsFromDynamic(dynamic attachments) {
+  Future<_NoteStorageMetrics> _noteStorageMetricsFromDynamic(
+    Map<dynamic, dynamic> data, {
+    required String userId,
+  }) async {
+    final explicitSize = _intFromDynamic(data['size']);
+    final content = data['content'] as String? ?? '';
+    var noteContentBytes = explicitSize ?? content.length;
+    final attachmentMetrics = await _attachmentMetricsFromDynamic(
+      data['attachments'],
+      userId: userId,
+    );
+
+    final pdfPath = data['pdfPath'] as String?;
+    if (noteContentBytes <= 0 && pdfPath != null && pdfPath.isNotEmpty) {
+      noteContentBytes = await _remoteObjectBytes(userId: userId, path: pdfPath);
+    }
+
+    return _NoteStorageMetrics(
+      contentBytes: noteContentBytes,
+      attachmentBytes: attachmentMetrics.bytes,
+      attachmentCount: attachmentMetrics.count,
+    );
+  }
+
+  Future<_AttachmentMetrics> _attachmentMetricsFromDynamic(
+    dynamic attachments, {
+    required String userId,
+  }) async {
     if (attachments is! List) {
       return const _AttachmentMetrics(bytes: 0, count: 0);
     }
@@ -681,17 +739,97 @@ class StorageService extends ChangeNotifier {
     var count = 0;
     for (final attachment in attachments) {
       if (attachment is Map<String, dynamic>) {
-        total += attachment['size'] as int? ?? 0;
+        final storedSize = _intFromDynamic(attachment['size']) ?? 0;
+        total += storedSize > 0
+            ? storedSize
+            : await _remoteObjectBytes(
+                userId: userId,
+                path: attachment['path'] as String? ?? '',
+              );
         count++;
       } else if (attachment is Map) {
-        final size = attachment['size'];
-        if (size is int) {
-          total += size;
-        }
+        final storedSize = _intFromDynamic(attachment['size']) ?? 0;
+        total += storedSize > 0
+            ? storedSize
+            : await _remoteObjectBytes(
+                userId: userId,
+                path: attachment['path'] as String? ?? '',
+              );
         count++;
       }
     }
     return _AttachmentMetrics(bytes: total, count: count);
+  }
+
+  Future<int> _remoteObjectBytes({
+    required String userId,
+    required String path,
+  }) async {
+    if (path.isEmpty || _isLikelyLocalPath(path)) {
+      return 0;
+    }
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final objectPath = _storageObjectPathFromLocation(
+          path,
+          userId: userId,
+        );
+        if (objectPath == null || objectPath.isEmpty) {
+          return 0;
+        }
+        return await _fetchLinuxObjectSize(objectPath);
+      }
+
+      if (path.startsWith('http://') ||
+          path.startsWith('https://') ||
+          path.startsWith('gs://')) {
+        final metadata = await _firebaseStorage.refFromURL(path).getMetadata();
+        return metadata.size ?? 0;
+      }
+
+      final normalizedPath =
+          path.startsWith('users/') ? path : _storageObjectPath(userId, path);
+      final metadata =
+          await _firebaseStorage.ref().child(normalizedPath).getMetadata();
+      return metadata.size ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  bool _isLikelyLocalPath(String path) {
+    return path.startsWith('/') ||
+        path.startsWith('file://') ||
+        path.contains(':\\');
+  }
+
+  String? _storageObjectPathFromLocation(
+    String path, {
+    required String userId,
+  }) {
+    if (path.startsWith('gs://')) {
+      final uri = Uri.parse(path);
+      final objectPath =
+          uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+      return objectPath.isEmpty ? null : objectPath;
+    }
+
+    if (!path.startsWith('http://') && !path.startsWith('https://')) {
+      if (path.startsWith('users/')) {
+        return path;
+      }
+      return _storageObjectPath(userId, path);
+    }
+
+    final uri = Uri.tryParse(path);
+    if (uri == null) return null;
+    final segments = uri.pathSegments;
+    final objectIndex = segments.indexOf('o');
+    if (objectIndex == -1 || objectIndex + 1 >= segments.length) {
+      return null;
+    }
+    return Uri.decodeComponent(segments[objectIndex + 1]);
   }
 
   int? _intFromDynamic(dynamic value, {int? fallback}) {
@@ -699,13 +837,6 @@ class StorageService extends ChangeNotifier {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value) ?? fallback;
     return fallback;
-  }
-
-  bool _boolFromDynamic(dynamic value) {
-    if (value is bool) return value;
-    if (value is String) return value.toLowerCase() == 'true';
-    if (value is num) return value != 0;
-    return false;
   }
 
   SubscriptionTier _subscriptionTierFromDynamic(
@@ -735,6 +866,85 @@ class StorageService extends ChangeNotifier {
 
   String _storageObjectPath(String userId, String path) =>
       'users/$userId/$path';
+
+  Future<_AttachmentMetrics> _loadCloudObjectMetrics(String userId) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      return _listLinuxStorageObjects(
+        prefix: 'users/$userId/',
+      );
+    }
+
+    final rootRef = _firebaseStorage.ref().child('users/$userId');
+    return _listFirebaseStorageObjects(rootRef);
+  }
+
+  Future<_AttachmentMetrics> _listFirebaseStorageObjects(Reference ref) async {
+    final result = await ref.listAll();
+    var totalBytes = 0;
+    var count = 0;
+
+    for (final item in result.items) {
+      final metadata = await item.getMetadata();
+      totalBytes += metadata.size ?? 0;
+      count++;
+    }
+
+    for (final prefix in result.prefixes) {
+      final nested = await _listFirebaseStorageObjects(prefix);
+      totalBytes += nested.bytes;
+      count += nested.count;
+    }
+
+    return _AttachmentMetrics(bytes: totalBytes, count: count);
+  }
+
+  Future<_AttachmentMetrics> _listLinuxStorageObjects({
+    required String prefix,
+  }) async {
+    final idToken = await _linuxIdToken();
+    String? pageToken;
+    var totalBytes = 0;
+    var count = 0;
+
+    do {
+      final query = <String, String>{
+        'prefix': prefix,
+      };
+      if (pageToken != null && pageToken.isNotEmpty) {
+        query['pageToken'] = pageToken;
+      }
+      final uri = Uri.https(
+        'firebasestorage.googleapis.com',
+        '/v0/b/$_storageBucket/o',
+        query,
+      );
+      final response = await _httpClient.get(
+        uri,
+        headers: {'Authorization': 'Bearer $idToken'},
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_extractHttpError(response));
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final items = body['items'];
+      if (items is List) {
+        for (final item in items) {
+          if (item is Map<String, dynamic>) {
+            totalBytes += _intFromDynamic(item['size']) ?? 0;
+            count++;
+          } else if (item is Map) {
+            totalBytes += _intFromDynamic(item['size']) ?? 0;
+            count++;
+          }
+        }
+      }
+
+      pageToken = body['nextPageToken'] as String?;
+    } while (pageToken != null && pageToken.isNotEmpty);
+
+    return _AttachmentMetrics(bytes: totalBytes, count: count);
+  }
 
   Future<String> _uploadDataLinux({
     required String userId,
@@ -982,6 +1192,18 @@ class _AttachmentMetrics {
   const _AttachmentMetrics({
     required this.bytes,
     required this.count,
+  });
+}
+
+class _NoteStorageMetrics {
+  final int contentBytes;
+  final int attachmentBytes;
+  final int attachmentCount;
+
+  const _NoteStorageMetrics({
+    required this.contentBytes,
+    required this.attachmentBytes,
+    required this.attachmentCount,
   });
 }
 

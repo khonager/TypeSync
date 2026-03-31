@@ -1568,7 +1568,10 @@ class _HomeScreenState extends State<HomeScreen> {
           contentType: 'application/pdf',
         );
         if (storedPath != null) {
-          final updatedNote = note.copyWith(pdfPath: storedPath);
+          final updatedNote = note.copyWith(
+            pdfPath: storedPath,
+            size: await File(filePath).length(),
+          );
           await notesProvider.updateNote(updatedNote);
         } else {
           await notesProvider.deleteNote(note.id);
@@ -1674,7 +1677,10 @@ class _HomeScreenState extends State<HomeScreen> {
           contentType: 'application/pdf',
         );
         if (storedPath != null) {
-          final updatedNote = note.copyWith(pdfPath: storedPath);
+          final updatedNote = note.copyWith(
+            pdfPath: storedPath,
+            size: bytes.length,
+          );
           await notesProvider.updateNote(updatedNote);
         } else {
           await notesProvider.deleteNote(note.id);

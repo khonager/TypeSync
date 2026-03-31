@@ -334,11 +334,25 @@ class _ProfileScreenState extends State<ProfileScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Attachments',
+                        'Note attachments',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       Text(
                         _formatBytes(storageService.cloudAttachmentBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Cloud files',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        '${storageService.cloudFileCount}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -357,23 +371,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Attached files',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        '${storageService.cloudAttachmentCount}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
                   if (storageService.cloudRecordedBytes >
-                      (storageService.cloudContentBytes +
-                          storageService.cloudAttachmentBytes)) ...[
+                      [
+                        storageService.cloudContentBytes +
+                            storageService.cloudAttachmentBytes,
+                        storageService.cloudStoredFileBytes,
+                      ].reduce((a, b) => a > b ? a : b)) ...[
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
