@@ -32,6 +32,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
   int _localStorageBytes = 0;
+  int _localAppStorageBytes = 0;
+  int _localFolderSyncBytes = 0;
   bool _isLoadingLocalStorage = false;
   String? _lastObservedLocalSyncPath;
 
@@ -69,6 +71,8 @@ class _ProfileScreenState extends State<ProfileScreen>
               localAppStorageBytes + localFolderSyncBytes;
           if (!mounted) return;
           setState(() {
+            _localAppStorageBytes = localAppStorageBytes;
+            _localFolderSyncBytes = localFolderSyncBytes;
             _localStorageBytes = localStorageBytes;
           });
         }(),
@@ -89,6 +93,19 @@ class _ProfileScreenState extends State<ProfileScreen>
       return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+  }
+
+  String _formatExactBytes(int bytes) {
+    final digits = bytes.toString();
+    final buffer = StringBuffer();
+    for (var index = 0; index < digits.length; index++) {
+      final remaining = digits.length - index;
+      buffer.write(digits[index]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return '${buffer.toString()} bytes';
   }
 
   @override
@@ -308,10 +325,45 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Stored on this device only. Includes app-local files and the configured Local Folder Sync directory, while cloud files are tracked separately.',
+                    'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _formatExactBytes(_localStorageBytes),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'App-local cache',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(_localAppStorageBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Local Folder Sync',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(_localFolderSyncBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                   ),
 
                   // 95% capacity warning
