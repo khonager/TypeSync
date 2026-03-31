@@ -860,10 +860,53 @@ class SettingsScreen extends StatelessWidget {
     if (conflicts.isEmpty) return;
 
     int currentIndex = 0;
+    bool applyToAllRemaining = false;
+    late void Function() showNextConflict;
 
-    void showNextConflict() {
+    Future<void> resolveConflicts(
+      ConflictResolution resolution, {
+      required BuildContext dialogContext,
+    }) async {
+      final conflictsToResolve = applyToAllRemaining
+          ? conflicts.skip(currentIndex).toList()
+          : [conflicts[currentIndex]];
+
+      for (final conflict in conflictsToResolve) {
+        await syncService.resolveConflict(
+          conflict,
+          resolution,
+          notesProvider: notesProvider,
+          foldersProvider: foldersProvider,
+          userId: userId,
+        );
+      }
+
+      if (!dialogContext.mounted) {
+        return;
+      }
+
+      Navigator.pop(dialogContext);
+      currentIndex += conflictsToResolve.length;
       if (currentIndex >= conflicts.length) {
-        Navigator.pop(context);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                applyToAllRemaining
+                    ? 'Applied ${_resolutionLabel(resolution)} to ${conflictsToResolve.length} conflicts.'
+                    : 'All conflicts resolved',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      showNextConflict();
+    }
+
+    showNextConflict = () {
+      if (currentIndex >= conflicts.length) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('All conflicts resolved')),
         );
@@ -874,103 +917,98 @@ class SettingsScreen extends StatelessWidget {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('Conflict: ${conflict.itemName}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Local modified: ${_formatDateTime(conflict.localModified)}',
-                ),
-                Text(
-                  'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',
-                ),
-                const SizedBox(height: 16),
-                const Text('Choose which version to keep:'),
-              ],
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text('Conflict: ${conflict.itemName}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Local modified: ${_formatDateTime(conflict.localModified)}',
+                  ),
+                  Text(
+                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Choose which version to keep:'),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: applyToAllRemaining,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      'Apply to all remaining conflicts (${conflicts.length - currentIndex})',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        applyToAllRemaining = value ?? false;
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+            actions: [
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.useLocal,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Use Local'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Use Local for All' : 'Use Local',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.useCloud,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Use Cloud'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Use Cloud for All' : 'Use Cloud',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.keepBoth,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Keep Both'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Keep Both for All' : 'Keep Both',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.skip,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Skip'),
-            ),
-          ],
+                  dialogContext: dialogContext,
+                ),
+                child: Text(applyToAllRemaining ? 'Skip All' : 'Skip'),
+              ),
+            ],
+          ),
         ),
       );
-    }
+    };
 
     showNextConflict();
+  }
+
+  String _resolutionLabel(ConflictResolution resolution) {
+    switch (resolution) {
+      case ConflictResolution.useLocal:
+        return 'Use Local';
+      case ConflictResolution.useCloud:
+        return 'Use Cloud';
+      case ConflictResolution.keepBoth:
+        return 'Keep Both';
+      case ConflictResolution.skip:
+        return 'Skip';
+    }
   }
 
   String _formatDateTime(DateTime dateTime) {
