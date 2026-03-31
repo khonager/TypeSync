@@ -19,24 +19,6 @@ int _noteTotalBytes(Note note) {
   return total;
 }
 
-String _buildNoteTooltip(Note note, int totalBytes, int attachmentCount) {
-  final typeLabel = switch (note.type) {
-    NoteType.pdf => 'PDF',
-    NoteType.markdown => 'Markdown',
-    NoteType.text => 'Text',
-  };
-
-  return [
-    note.title,
-    'Type: $typeLabel',
-    'Total size: ${_formatBytes(totalBytes)}',
-    'Note content: ${_formatBytes(note.size)}',
-    'Attachments: $attachmentCount',
-    if (attachmentCount > 0)
-      'Attachment bytes: ${_formatBytes(totalBytes - note.size)}',
-  ].join('\n');
-}
-
 String _formatBytes(int bytes) {
   if (bytes < 1000) return '$bytes B';
   if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
@@ -135,18 +117,11 @@ class FileGridItem extends StatelessWidget {
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
-    final attachmentCount = note.attachments.length;
-    final totalBytes = _noteTotalBytes(note);
-
-    final child = Tooltip(
-      message: _buildNoteTooltip(note, totalBytes, attachmentCount),
-      waitDuration: const Duration(milliseconds: 350),
-      child: _buildFileContent(
-        context,
-        icon: icon,
-        textColor: textColor,
-        iconColor: Colors.white54,
-      ),
+    final child = _buildFileContent(
+      context,
+      icon: icon,
+      textColor: textColor,
+      iconColor: Colors.white54,
     );
     final childWhenDragging = Opacity(
       opacity: 0.3,
@@ -373,88 +348,84 @@ class FileListItem extends StatelessWidget {
       child: Material(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: _buildNoteTooltip(note, totalBytes, attachmentCount),
-          waitDuration: const Duration(milliseconds: 350),
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            onSecondaryTap: onLongPress,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // File icon
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: note.backgroundColor != null
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon, color: iconColor),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          onSecondaryTap: onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // File icon
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: note.backgroundColor != null
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 16),
-                  // File info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                note.title,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      color: textColor,
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                  child: Icon(icon, color: iconColor),
+                ),
+                const SizedBox(width: 16),
+                // File info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              note.title,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color: textColor,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (attachmentCount > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _CountBadge(
+                                icon: Icons.attach_file,
+                                label: '$attachmentCount',
                               ),
                             ),
-                            if (attachmentCount > 0)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: _CountBadge(
-                                  icon: Icons.attach_file,
-                                  label: '$attachmentCount',
-                                ),
-                              ),
-                            if (note.isFavorite)
-                              const Icon(
-                                Icons.star,
+                          if (note.isFavorite)
+                            const Icon(
+                              Icons.star,
+                              size: 16,
+                              color: Colors.amber,
+                            ),
+                          if (note.localOnly)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.cloud_off_outlined,
                                 size: 16,
-                                color: Colors.amber,
+                                color: Colors.orangeAccent,
                               ),
-                            if (note.localOnly)
-                              const Padding(
-                                padding: EdgeInsets.only(left: 8),
-                                child: Icon(
-                                  Icons.cloud_off_outlined,
-                                  size: 16,
-                                  color: Colors.orangeAccent,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${dateFormat.format(note.updatedAt)} • ${_formatBytes(totalBytes)}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: textColor.withValues(alpha: 0.7),
-                              ),
-                        ),
-                      ],
-                    ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${dateFormat.format(note.updatedAt)} • ${_formatBytes(totalBytes)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: textColor.withValues(alpha: 0.7),
+                            ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
