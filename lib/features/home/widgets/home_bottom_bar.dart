@@ -6,7 +6,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/routes/app_router.dart';
 import '../../../core/services/auth_service.dart';
 
 enum HomeBottomBarTab { files, profile }
@@ -16,15 +15,13 @@ enum HomeBottomBarTab { files, profile }
 /// Contains navigation to files, sync, and profile sections.
 class HomeBottomBar extends StatelessWidget {
   final String? currentFolderId;
-  final VoidCallback onNewNote;
-  final VoidCallback onNewFolder;
+  final VoidCallback onAddTap;
   final HomeBottomBarTab selectedTab;
   final VoidCallback onFilesTap;
   final VoidCallback onProfileTap;
 
   const HomeBottomBar({
-    required this.onNewNote,
-    required this.onNewFolder,
+    required this.onAddTap,
     required this.selectedTab,
     required this.onFilesTap,
     required this.onProfileTap,
@@ -61,14 +58,11 @@ class HomeBottomBar extends StatelessWidget {
               isSelected: selectedTab == HomeBottomBarTab.files,
             ),
 
-            // Sync button - navigates to sync status/settings
+            // Add button
             _BottomBarButton(
-              icon: Icons.sync,
-              label: 'Sync',
-              onTap: () {
-                // Show sync options
-                _showSyncOptions(context);
-              },
+              icon: Icons.add_circle_outline,
+              label: 'Add',
+              onTap: onAddTap,
             ),
 
             // Profile button
@@ -78,57 +72,6 @@ class HomeBottomBar extends StatelessWidget {
               onTap: onProfileTap,
               isSelected: selectedTab == HomeBottomBarTab.profile,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSyncOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Productivity',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('Calendar'),
-              subtitle: const Text('Test reminders & events'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.calendar);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.schedule),
-              title: const Text('Timetable'),
-              subtitle: const Text('Weekly class schedule'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.timetable);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist),
-              title: const Text('Homework'),
-              subtitle: const Text('Todo list for assignments'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.homework);
-              },
-            ),
-            const SizedBox(height: 16),
           ],
         ),
       ),

@@ -603,6 +603,12 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: isProfileTab
             ? [
                 IconButton(
+                  icon: const Icon(Icons.schedule_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.timetable),
+                  tooltip: 'Timetable',
+                ),
+                IconButton(
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () =>
                       AppRouter.navigateTo(context, AppRouter.settings),
@@ -617,6 +623,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
                   onPressed: () => setState(() => _isGridView = !_isGridView),
                   tooltip: _isGridView ? 'List view' : 'Grid view',
+                ),
+
+                IconButton(
+                  icon: const Icon(Icons.schedule_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.timetable),
+                  tooltip: 'Timetable',
                 ),
 
                 // Settings
@@ -645,8 +658,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
         currentFolderId: _currentFolderId,
-        onNewNote: _showCreateOptions,
-        onNewFolder: _showCreateOptions,
+        onAddTap: _showCreateOptions,
         selectedTab: _selectedTab,
         onFilesTap: () {
           if (_selectedTab == HomeBottomBarTab.files) {
@@ -665,14 +677,6 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         },
       ),
-
-      // FAB for quick note creation
-      floatingActionButton: isProfileTab
-          ? null
-          : FloatingActionButton(
-              onPressed: _showCreateOptions,
-              child: const Icon(Icons.add),
-            ),
     );
   }
 
@@ -1382,6 +1386,16 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Add',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.note_add),
               title: const Text('Create File'),
@@ -1409,6 +1423,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 _addDocumentFromStorage();
               },
             ),
+            const Divider(height: 24),
+            ListTile(
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Calendar'),
+              subtitle: const Text('Open reminders and events'),
+              onTap: () {
+                Navigator.pop(context);
+                AppRouter.navigateTo(context, AppRouter.calendar);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.checklist),
+              title: const Text('Homework'),
+              subtitle: const Text('Open assignments and tasks'),
+              onTap: () {
+                Navigator.pop(context);
+                AppRouter.navigateTo(context, AppRouter.homework);
+              },
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
