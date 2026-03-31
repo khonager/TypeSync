@@ -33,46 +33,124 @@ class HomeBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
     final isGuest = authService.isGuestMode;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    const barTopPadding = 8.0;
+    const barContentHeight = 64.0;
+    final barBottomPadding = bottomInset > 0 ? bottomInset : 12.0;
+    final barHeight = barContentHeight + barTopPadding + barBottomPadding;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            // Files button
-            _BottomBarButton(
-              icon: Icons.folder_copy_outlined,
-              label: 'Files',
-              onTap: onFilesTap,
-              isSelected: selectedTab == HomeBottomBarTab.files,
+    return SizedBox(
+      height: barHeight,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              height: barHeight,
+              padding: EdgeInsets.fromLTRB(
+                24,
+                barTopPadding,
+                24,
+                barBottomPadding,
+              ),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: _BottomBarButton(
+                        icon: Icons.folder_copy_outlined,
+                        label: 'Files',
+                        onTap: onFilesTap,
+                        isSelected: selectedTab == HomeBottomBarTab.files,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 104),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: _BottomBarButton(
+                        icon: isGuest ? Icons.login : Icons.person_outline,
+                        label: isGuest ? 'Sign In' : 'Profile',
+                        onTap: onProfileTap,
+                        isSelected: selectedTab == HomeBottomBarTab.profile,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-
-            // Add button
-            _BottomBarButton(
-              icon: Icons.add_circle_outline,
-              label: 'Add',
+          ),
+          Positioned(
+            top: -22,
+            child: _CenterAddButton(
+              color: colorScheme.surface,
+              gapColor: theme.scaffoldBackgroundColor,
+              iconColor: Colors.grey,
               onTap: onAddTap,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-            // Profile button
-            _BottomBarButton(
-              icon: isGuest ? Icons.login : Icons.person_outline,
-              label: isGuest ? 'Sign In' : 'Profile',
-              onTap: onProfileTap,
-              isSelected: selectedTab == HomeBottomBarTab.profile,
+class _CenterAddButton extends StatelessWidget {
+  final Color color;
+  final Color gapColor;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _CenterAddButton({
+    required this.color,
+    required this.gapColor,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: gapColor,
+        shape: BoxShape.circle,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Material(
+          color: color,
+          shape: const CircleBorder(),
+          elevation: 2,
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 72,
+              height: 72,
+              child: Icon(
+                Icons.add,
+                color: iconColor,
+                size: 36,
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
