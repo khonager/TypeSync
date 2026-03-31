@@ -70,8 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               await localFileService.getTotalStorageBytes();
           final localFolderSyncBytes =
               await localFolderSyncService.getTotalStorageBytes();
-          final localStorageBytes =
-              localAppStorageBytes + localFolderSyncBytes;
+          final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
           if (!mounted) return;
           setState(() {
             _localAppStorageBytes = localAppStorageBytes;
@@ -126,7 +125,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final localSyncPath = context.watch<LocalFolderSyncService>().syncFolder?.path;
+    final localSyncPath =
+        context.watch<LocalFolderSyncService>().syncFolder?.path;
     if (localSyncPath != _lastObservedLocalSyncPath) {
       _lastObservedLocalSyncPath = localSyncPath;
       WidgetsBinding.instance.addPostFrameCallback((_) {

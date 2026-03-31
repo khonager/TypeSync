@@ -965,7 +965,8 @@ class NotesProvider extends ChangeNotifier {
     var updatedCount = 0;
     for (var index = 0; index < _notes.length; index++) {
       final note = _notes[index];
-      final strippedPdfPath = _isRemoteAssetPath(note.pdfPath) ? null : note.pdfPath;
+      final strippedPdfPath =
+          _isRemoteAssetPath(note.pdfPath) ? null : note.pdfPath;
       final strippedAttachments = note.attachments
           .map(
             (attachment) => _isRemoteAssetPath(attachment.path)

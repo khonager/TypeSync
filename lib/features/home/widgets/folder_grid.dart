@@ -229,8 +229,8 @@ class FolderGridItem extends StatelessWidget {
                     Positioned(
                       right: 8,
                       bottom: 8,
-                      child:
-                          _FolderCountBadge(label: '${stats.recursiveFileCount}'),
+                      child: _FolderCountBadge(
+                          label: '${stats.recursiveFileCount}'),
                     ),
                 ],
               ),
@@ -360,13 +360,14 @@ class FolderListItem extends StatelessWidget {
                     children: [
                       Text(
                         folder.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: folder.backgroundColor != null
-                                  ? AppColorPalette.getContrastingTextColor(
-                                      bgColor,
-                                    )
-                                  : null,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: folder.backgroundColor != null
+                                      ? AppColorPalette.getContrastingTextColor(
+                                          bgColor,
+                                        )
+                                      : null,
+                                ),
                       ),
                       Text(
                         '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
@@ -378,9 +379,10 @@ class FolderListItem extends StatelessWidget {
                           folder.subtitle!.isNotEmpty)
                         Text(
                           folder.subtitle!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey,
+                                  ),
                         ),
                     ],
                   ),

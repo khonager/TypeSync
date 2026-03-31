@@ -741,7 +741,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final childFoldersByParent = <String?, List<Folder>>{};
     for (final folder in allFolders) {
-      childFoldersByParent.putIfAbsent(folder.parentId, () => <Folder>[]).add(folder);
+      childFoldersByParent
+          .putIfAbsent(folder.parentId, () => <Folder>[])
+          .add(folder);
     }
 
     final statsByFolder = <String, FolderVisualStats>{};

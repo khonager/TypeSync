@@ -1135,7 +1135,8 @@ class SettingsScreen extends StatelessWidget {
       return const _ConflictPreviewData.empty();
     }
 
-    final localDir = Directory(p.join(syncFolder.path, _localPathForFolder(folder)));
+    final localDir =
+        Directory(p.join(syncFolder.path, _localPathForFolder(folder)));
     final localExists = await localDir.exists();
     var localItems = 0;
     if (localExists) {
@@ -1172,7 +1173,8 @@ class SettingsScreen extends StatelessWidget {
 
   Future<String> _readLocalPreview(File file, NoteType type) async {
     try {
-      if (type == NoteType.pdf || p.extension(file.path).toLowerCase() == '.pdf') {
+      if (type == NoteType.pdf ||
+          p.extension(file.path).toLowerCase() == '.pdf') {
         return 'PDF file on disk';
       }
 
@@ -1237,10 +1239,8 @@ class SettingsScreen extends StatelessWidget {
     var wroteWhitespace = false;
 
     for (final codeUnit in value.trim().codeUnits) {
-      final isWhitespace = codeUnit == 32 ||
-          codeUnit == 9 ||
-          codeUnit == 10 ||
-          codeUnit == 13;
+      final isWhitespace =
+          codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13;
       if (isWhitespace) {
         if (!wroteWhitespace) {
           buffer.write(' ');

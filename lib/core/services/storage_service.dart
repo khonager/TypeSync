@@ -201,7 +201,8 @@ class StorageService extends ChangeNotifier {
                 doc.map,
                 userId: userId,
               );
-              totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+              totalBytes +=
+                  noteMetrics.contentBytes + noteMetrics.attachmentBytes;
               contentBytes += noteMetrics.contentBytes;
               attachmentBytes += noteMetrics.attachmentBytes;
               attachmentCount += noteMetrics.attachmentCount;
@@ -247,7 +248,8 @@ class StorageService extends ChangeNotifier {
               data,
               userId: userId,
             );
-            totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+            totalBytes +=
+                noteMetrics.contentBytes + noteMetrics.attachmentBytes;
             contentBytes += noteMetrics.contentBytes;
             attachmentBytes += noteMetrics.attachmentBytes;
             attachmentCount += noteMetrics.attachmentCount;
@@ -640,7 +642,8 @@ class StorageService extends ChangeNotifier {
               doc.map,
               userId: userId,
             );
-            totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+            totalBytes +=
+                noteMetrics.contentBytes + noteMetrics.attachmentBytes;
             contentBytes += noteMetrics.contentBytes;
             attachmentBytes += noteMetrics.attachmentBytes;
             attachmentCount += noteMetrics.attachmentCount;
@@ -717,7 +720,8 @@ class StorageService extends ChangeNotifier {
 
     final pdfPath = data['pdfPath'] as String?;
     if (noteContentBytes <= 0 && pdfPath != null && pdfPath.isNotEmpty) {
-      noteContentBytes = await _remoteObjectBytes(userId: userId, path: pdfPath);
+      noteContentBytes =
+          await _remoteObjectBytes(userId: userId, path: pdfPath);
     }
 
     return _NoteStorageMetrics(
