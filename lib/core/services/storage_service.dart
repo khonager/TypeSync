@@ -61,6 +61,11 @@ class StorageService extends ChangeNotifier {
   // Current user subscription info
   SubscriptionTier _currentTier = SubscriptionTier.free;
   int _storageUsedBytes = 0;
+  int _cloudContentBytes = 0;
+  int _cloudAttachmentBytes = 0;
+  int _cloudRecordedBytes = 0;
+  int _cloudNoteCount = 0;
+  int _cloudAttachmentCount = 0;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -70,6 +75,11 @@ class StorageService extends ChangeNotifier {
 
   SubscriptionTier get currentTier => _currentTier;
   int get storageUsedBytes => _storageUsedBytes;
+  int get cloudContentBytes => _cloudContentBytes;
+  int get cloudAttachmentBytes => _cloudAttachmentBytes;
+  int get cloudRecordedBytes => _cloudRecordedBytes;
+  int get cloudNoteCount => _cloudNoteCount;
+  int get cloudAttachmentCount => _cloudAttachmentCount;
   int get storageLimitBytes => _currentTier.storageLimitBytes;
   double get usagePercent => _storageUsedBytes / storageLimitBytes;
   int get storageRemainingBytes => storageLimitBytes - _storageUsedBytes;
@@ -140,6 +150,10 @@ class StorageService extends ChangeNotifier {
 
     try {
       int totalBytes = 0;
+      int contentBytes = 0;
+      int attachmentBytes = 0;
+      int noteCount = 0;
+      int attachmentCount = 0;
       var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
       if (fallbackUser != null) {
         _currentTier = fallbackUser.subscriptionTier;
@@ -175,8 +189,14 @@ class StorageService extends ChangeNotifier {
                   _boolFromDynamic(doc.map['isDeleted']) == false) {
                 final explicitSize = _intFromDynamic(doc.map['size']);
                 final content = doc.map['content'] as String? ?? '';
-                totalBytes += explicitSize ?? content.length;
-                totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
+                final noteContentBytes = explicitSize ?? content.length;
+                final attachmentMetrics =
+                    _attachmentMetricsFromDynamic(doc.map['attachments']);
+                totalBytes += noteContentBytes + attachmentMetrics.bytes;
+                contentBytes += noteContentBytes;
+                attachmentBytes += attachmentMetrics.bytes;
+                attachmentCount += attachmentMetrics.count;
+                noteCount++;
               }
             }
           } catch (e) {
@@ -217,8 +237,14 @@ class StorageService extends ChangeNotifier {
             final data = doc.data();
             final explicitSize = _intFromDynamic(data['size']);
             final content = data['content'] as String? ?? '';
-            totalBytes += explicitSize ?? content.length;
-            totalBytes += _attachmentBytesFromDynamic(data['attachments']);
+            final noteContentBytes = explicitSize ?? content.length;
+            final attachmentMetrics =
+                _attachmentMetricsFromDynamic(data['attachments']);
+            totalBytes += noteContentBytes + attachmentMetrics.bytes;
+            contentBytes += noteContentBytes;
+            attachmentBytes += attachmentMetrics.bytes;
+            attachmentCount += attachmentMetrics.count;
+            noteCount++;
           }
         } catch (e) {
           loadFailed = true;
@@ -229,6 +255,11 @@ class StorageService extends ChangeNotifier {
       _storageUsedBytes = totalBytes > recordedBytes
           ? totalBytes
           : recordedBytes;
+      _cloudContentBytes = contentBytes;
+      _cloudAttachmentBytes = attachmentBytes;
+      _cloudRecordedBytes = recordedBytes;
+      _cloudNoteCount = noteCount;
+      _cloudAttachmentCount = attachmentCount;
       _errorMessage = loadFailed
           ? 'Loaded partial storage info; using best available data.'
           : null;
@@ -569,6 +600,10 @@ class StorageService extends ChangeNotifier {
 
     try {
       int totalBytes = 0;
+      int contentBytes = 0;
+      int attachmentBytes = 0;
+      int noteCount = 0;
+      int attachmentCount = 0;
 
       if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
         final fdFirestore = _firedartFirestore;
@@ -576,10 +611,16 @@ class StorageService extends ChangeNotifier {
           final notes = await fdFirestore.collection('notes').get();
           for (final doc in notes) {
             if (doc.map['userId'] == userId && doc.map['isDeleted'] == false) {
-              final explicitSize = doc.map['size'] as int?;
+              final explicitSize = _intFromDynamic(doc.map['size']);
               final content = doc.map['content'] as String? ?? '';
-              totalBytes += explicitSize ?? content.length;
-              totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
+              final noteContentBytes = explicitSize ?? content.length;
+              final attachmentMetrics =
+                  _attachmentMetricsFromDynamic(doc.map['attachments']);
+              totalBytes += noteContentBytes + attachmentMetrics.bytes;
+              contentBytes += noteContentBytes;
+              attachmentBytes += attachmentMetrics.bytes;
+              attachmentCount += attachmentMetrics.count;
+              noteCount++;
             }
           }
 
@@ -595,10 +636,16 @@ class StorageService extends ChangeNotifier {
             .get();
         for (final doc in notesSnapshot.docs) {
           final data = doc.data();
-          final explicitSize = data['size'] as int?;
+          final explicitSize = _intFromDynamic(data['size']);
           final content = data['content'] as String? ?? '';
-          totalBytes += explicitSize ?? content.length;
-          totalBytes += _attachmentBytesFromDynamic(data['attachments']);
+          final noteContentBytes = explicitSize ?? content.length;
+          final attachmentMetrics =
+              _attachmentMetricsFromDynamic(data['attachments']);
+          totalBytes += noteContentBytes + attachmentMetrics.bytes;
+          contentBytes += noteContentBytes;
+          attachmentBytes += attachmentMetrics.bytes;
+          attachmentCount += attachmentMetrics.count;
+          noteCount++;
         }
 
         await _firebaseFirestore.collection('users').doc(userId).update({
@@ -607,6 +654,11 @@ class StorageService extends ChangeNotifier {
       }
 
       _storageUsedBytes = totalBytes;
+      _cloudContentBytes = contentBytes;
+      _cloudAttachmentBytes = attachmentBytes;
+      _cloudRecordedBytes = totalBytes;
+      _cloudNoteCount = noteCount;
+      _cloudAttachmentCount = attachmentCount;
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to recalculate storage: $e';
@@ -621,20 +673,29 @@ class StorageService extends ChangeNotifier {
   // ===========================================
 
   int _attachmentBytesFromDynamic(dynamic attachments) {
-    if (attachments is! List) return 0;
+    return _attachmentMetricsFromDynamic(attachments).bytes;
+  }
+
+  _AttachmentMetrics _attachmentMetricsFromDynamic(dynamic attachments) {
+    if (attachments is! List) {
+      return const _AttachmentMetrics(bytes: 0, count: 0);
+    }
 
     var total = 0;
+    var count = 0;
     for (final attachment in attachments) {
       if (attachment is Map<String, dynamic>) {
         total += attachment['size'] as int? ?? 0;
+        count++;
       } else if (attachment is Map) {
         final size = attachment['size'];
         if (size is int) {
           total += size;
         }
+        count++;
       }
     }
-    return total;
+    return _AttachmentMetrics(bytes: total, count: count);
   }
 
   int? _intFromDynamic(dynamic value, {int? fallback}) {
@@ -916,6 +977,16 @@ class StorageService extends ChangeNotifier {
       return false;
     }
   }
+}
+
+class _AttachmentMetrics {
+  final int bytes;
+  final int count;
+
+  const _AttachmentMetrics({
+    required this.bytes,
+    required this.count,
+  });
 }
 
 /// Information about a subscription plan
