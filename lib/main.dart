@@ -2,6 +2,8 @@
 ///
 /// Main entry point for the application. Initializes Firebase,
 /// sets up providers, and configures the app theme.
+// ignore_for_file: experimental_member_use
+
 library;
 
 import 'package:flutter/foundation.dart';

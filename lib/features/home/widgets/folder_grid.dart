@@ -230,7 +230,8 @@ class FolderGridItem extends StatelessWidget {
                       right: 8,
                       bottom: 8,
                       child: _FolderCountBadge(
-                          label: '${stats.recursiveFileCount}'),
+                        label: '${stats.recursiveFileCount}',
+                      ),
                     ),
                 ],
               ),
