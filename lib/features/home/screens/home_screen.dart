@@ -584,6 +584,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     return Scaffold(
+      extendBody: true,
       // Custom app bar matching the design
       appBar: AppBar(
         // Show back button when in a folder

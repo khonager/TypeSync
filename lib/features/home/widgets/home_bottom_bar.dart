@@ -10,6 +10,10 @@ import '../../../core/services/auth_service.dart';
 
 enum HomeBottomBarTab { files, profile }
 
+const double _kAddButtonSize = 72;
+const double _kAddButtonGap = 6;
+const double _kAddButtonTopOffset = -22;
+
 /// Bottom navigation bar for home screen
 ///
 /// Contains navigation to files, sync, and profile sections.
@@ -33,8 +37,7 @@ class HomeBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
     final isGuest = authService.isGuestMode;
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     const barTopPadding = 8.0;
     const barContentHeight = 64.0;
@@ -51,57 +54,55 @@ class HomeBottomBar extends StatelessWidget {
             left: 0,
             right: 0,
             bottom: 0,
-            child: Container(
-              height: barHeight,
-              padding: EdgeInsets.fromLTRB(
-                24,
-                barTopPadding,
-                24,
-                barBottomPadding,
-              ),
-              decoration: BoxDecoration(
+            child: CustomPaint(
+              painter: _BottomBarBackgroundPainter(
                 color: colorScheme.surface,
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    width: 0.5,
+                borderColor: Colors.white.withValues(alpha: 0.1),
+              ),
+              child: SizedBox(
+                height: barHeight,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    barTopPadding,
+                    24,
+                    barBottomPadding,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: _BottomBarButton(
+                            icon: Icons.folder_copy_outlined,
+                            label: 'Files',
+                            onTap: onFilesTap,
+                            isSelected: selectedTab == HomeBottomBarTab.files,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 104),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: _BottomBarButton(
+                            icon: isGuest ? Icons.login : Icons.person_outline,
+                            label: isGuest ? 'Sign In' : 'Profile',
+                            onTap: onProfileTap,
+                            isSelected: selectedTab == HomeBottomBarTab.profile,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: _BottomBarButton(
-                        icon: Icons.folder_copy_outlined,
-                        label: 'Files',
-                        onTap: onFilesTap,
-                        isSelected: selectedTab == HomeBottomBarTab.files,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 104),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: _BottomBarButton(
-                        icon: isGuest ? Icons.login : Icons.person_outline,
-                        label: isGuest ? 'Sign In' : 'Profile',
-                        onTap: onProfileTap,
-                        isSelected: selectedTab == HomeBottomBarTab.profile,
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
           Positioned(
-            top: -22,
+            top: _kAddButtonTopOffset,
             child: _CenterAddButton(
               color: colorScheme.surface,
-              gapColor: theme.scaffoldBackgroundColor,
               iconColor: Colors.grey,
               onTap: onAddTap,
             ),
@@ -114,46 +115,80 @@ class HomeBottomBar extends StatelessWidget {
 
 class _CenterAddButton extends StatelessWidget {
   final Color color;
-  final Color gapColor;
   final Color iconColor;
   final VoidCallback onTap;
 
   const _CenterAddButton({
     required this.color,
-    required this.gapColor,
     required this.iconColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: gapColor,
-        shape: BoxShape.circle,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Material(
-          color: color,
-          shape: const CircleBorder(),
-          elevation: 2,
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: 72,
-              height: 72,
-              child: Icon(
-                Icons.add,
-                color: iconColor,
-                size: 36,
-              ),
-            ),
+    return Material(
+      color: color,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: _kAddButtonSize,
+          height: _kAddButtonSize,
+          child: Icon(
+            Icons.add,
+            color: iconColor,
+            size: 36,
           ),
         ),
       ),
     );
+  }
+}
+
+class _BottomBarBackgroundPainter extends CustomPainter {
+  final Color color;
+  final Color borderColor;
+
+  const _BottomBarBackgroundPainter({
+    required this.color,
+    required this.borderColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const cutoutRadius = (_kAddButtonSize / 2) + _kAddButtonGap;
+    const cutoutCenterY = _kAddButtonTopOffset + (_kAddButtonSize / 2);
+    final cutoutCenter = Offset(size.width / 2, cutoutCenterY);
+    final fullRectPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final cutoutPath = Path()
+      ..addOval(Rect.fromCircle(center: cutoutCenter, radius: cutoutRadius));
+    final visiblePath = Path.combine(
+      PathOperation.difference,
+      fullRectPath,
+      cutoutPath,
+    );
+
+    canvas.drawPath(
+      visiblePath,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      visiblePath,
+      Paint()
+        ..color = borderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BottomBarBackgroundPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.borderColor != borderColor;
   }
 }
 
