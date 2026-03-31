@@ -38,6 +38,7 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/search_query.dart';
+import '../../profile/screens/profile_screen.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
@@ -75,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Current folder being viewed (null = root)
   String? _currentFolderId;
+  HomeBottomBarTab _selectedTab = HomeBottomBarTab.files;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
@@ -539,8 +541,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
+    final authService = context.watch<AuthService>();
     final parsedSearchQuery = SearchQuery.parse(_searchQuery);
     final isSearchActive = parsedSearchQuery.isActive;
+    final isProfileTab = _selectedTab == HomeBottomBarTab.profile;
     final noteOpenSearchQuery = parsedSearchQuery.textTokens.isNotEmpty
         ? parsedSearchQuery.plainTextQuery
         : null;
@@ -583,60 +587,92 @@ class _HomeScreenState extends State<HomeScreen> {
       // Custom app bar matching the design
       appBar: AppBar(
         // Show back button when in a folder
-        leading: _currentFolderId != null
+        leading: !isProfileTab && _currentFolderId != null
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_ios),
                 onPressed: _navigateBack,
               )
             : null,
         title: Text(
-          isSearchActive
-              ? 'Search results'
-              : (currentFolder?.name ?? 'TypeSync'),
+          isProfileTab
+              ? (authService.isGuestMode ? 'Sign In' : 'Profile')
+              : isSearchActive
+                  ? 'Search results'
+                  : (currentFolder?.name ?? 'TypeSync'),
         ),
-        actions: [
-          // Sync status indicator
-          const SyncStatusIndicator(),
+        actions: isProfileTab
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.settings),
+                ),
+              ]
+            : [
+                // Sync status indicator
+                const SyncStatusIndicator(),
 
-          // View toggle
-          IconButton(
-            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
-            onPressed: () => setState(() => _isGridView = !_isGridView),
-            tooltip: _isGridView ? 'List view' : 'Grid view',
-          ),
+                // View toggle
+                IconButton(
+                  icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+                  onPressed: () => setState(() => _isGridView = !_isGridView),
+                  tooltip: _isGridView ? 'List view' : 'Grid view',
+                ),
 
-          // Settings
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => AppRouter.navigateTo(context, AppRouter.settings),
-          ),
-        ],
+                // Settings
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.settings),
+                ),
+              ],
       ),
 
-      body: _buildBody(
-        folders,
-        notes,
-        foldersProvider,
-        notesProvider,
-        folderStats: folderStats,
-        isSearchActive: isSearchActive,
-        showFolderResults: showFolderResults,
-        showFileResults: showFileResults,
-        noteOpenSearchQuery: noteOpenSearchQuery,
-      ),
+      body: isProfileTab
+          ? const ProfileScreen(embedded: true)
+          : _buildBody(
+              folders,
+              notes,
+              foldersProvider,
+              notesProvider,
+              folderStats: folderStats,
+              isSearchActive: isSearchActive,
+              showFolderResults: showFolderResults,
+              showFileResults: showFileResults,
+              noteOpenSearchQuery: noteOpenSearchQuery,
+            ),
 
       // Bottom navigation bar matching the design
       bottomNavigationBar: HomeBottomBar(
         currentFolderId: _currentFolderId,
         onNewNote: _showCreateOptions,
         onNewFolder: _showCreateOptions,
+        selectedTab: _selectedTab,
+        onFilesTap: () {
+          if (_selectedTab == HomeBottomBarTab.files) {
+            return;
+          }
+          setState(() {
+            _selectedTab = HomeBottomBarTab.files;
+          });
+        },
+        onProfileTap: () {
+          if (_selectedTab == HomeBottomBarTab.profile) {
+            return;
+          }
+          setState(() {
+            _selectedTab = HomeBottomBarTab.profile;
+          });
+        },
       ),
 
       // FAB for quick note creation
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateOptions,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: isProfileTab
+          ? null
+          : FloatingActionButton(
+              onPressed: _showCreateOptions,
+              child: const Icon(Icons.add),
+            ),
     );
   }
 

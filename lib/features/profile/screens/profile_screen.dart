@@ -23,7 +23,12 @@ import '../../../core/routes/app_router.dart';
 
 /// User profile screen
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool embedded;
+
+  const ProfileScreen({
+    this.embedded = false,
+    super.key,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -158,6 +163,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     final user = authService.currentUser;
 
     if (authService.isGuestMode) {
+      final body = _buildGuestBody(context);
+      if (widget.embedded) {
+        return body;
+      }
+
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -166,30 +176,331 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           title: const Text('Sign In'),
         ),
-        body: Center(
+        body: body,
+      );
+    }
+
+    final body = ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Profile header
+        Center(
+          child: Column(
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                backgroundImage: user?.photoUrl != null
+                    ? NetworkImage(user!.photoUrl!)
+                    : null,
+                child: user?.photoUrl == null
+                    ? Text(
+                        user?.displayName?.isNotEmpty == true
+                            ? user!.displayName![0].toUpperCase()
+                            : user?.email[0].toUpperCase() ?? '?',
+                        style: const TextStyle(fontSize: 32),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              // Name
+              Text(
+                user?.displayName ?? 'No name',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 4),
+              // Email
+              Text(
+                user?.email ?? '',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              // Email verification status
+              if (user != null && !user.emailVerified)
+                TextButton.icon(
+                  onPressed: () {
+                    authService.resendVerificationEmail();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Verification email sent'),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.warning, size: 16),
+                  label: const Text('Verify email'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Storage usage
+        Card(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.login, size: 56),
-                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud Storage',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      storageService.usageFormatted,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: storageService.usagePercent,
+                    backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Subscription tier
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Plan: ${storageService.currentTier.displayName}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        AppRouter.navigateTo(context, AppRouter.subscription);
+                      },
+                      child: const Text('Upgrade'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 Text(
-                  'Sign in to use cloud sync and account features.',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
+                  _formatExactBytes(storageService.storageUsedBytes),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Notes content',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(storageService.cloudContentBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Note attachments',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(storageService.cloudAttachmentBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud files',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '${storageService.cloudFileCount}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud notes',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '${storageService.cloudNoteCount}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                if (storageService.cloudRecordedBytes >
+                    [
+                      storageService.cloudContentBytes +
+                          storageService.cloudAttachmentBytes,
+                      storageService.cloudStoredFileBytes,
+                    ].reduce((a, b) => a > b ? a : b)) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recorded account total',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudRecordedBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () =>
-                      AppRouter.navigateAndClearStack(context, AppRouter.login),
-                  child: const Text('Go to Sign In'),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Local Files',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      _isLoadingLocalStorage
+                          ? 'Calculating...'
+                          : _formatBytes(_localStorageBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _formatExactBytes(_localStorageBytes),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'App-local cache',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(_localAppStorageBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Local Folder Sync',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(_localFolderSyncBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+
+                // 95% capacity warning
+                if (storageService.usagePercent >= 0.95) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            storageService.isStorageFull
+                                ? 'Storage is full! Please upgrade your plan.'
+                                : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
+                            style: const TextStyle(color: Colors.orange),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
-      );
+
+        const SizedBox(height: 16),
+
+        // Edit profile
+        ListTile(
+          leading: const Icon(Icons.edit_outlined),
+          title: const Text('Edit Profile'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showEditProfile(context, authService),
+        ),
+
+        // Change password
+        ListTile(
+          leading: const Icon(Icons.lock_outline),
+          title: const Text('Change Password'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showChangePassword(context),
+        ),
+
+        const Divider(height: 32),
+
+        // Danger zone
+        ListTile(
+          leading: const Icon(Icons.delete_forever, color: Colors.red),
+          title: const Text(
+            'Delete Account',
+            style: TextStyle(color: Colors.red),
+          ),
+          onTap: () => _confirmDeleteAccount(context),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return body;
     }
 
     return Scaffold(
@@ -200,323 +511,32 @@ class _ProfileScreenState extends State<ProfileScreen>
         ),
         title: const Text('Profile'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Profile header
-          Center(
-            child: Column(
-              children: [
-                // Avatar
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  backgroundImage: user?.photoUrl != null
-                      ? NetworkImage(user!.photoUrl!)
-                      : null,
-                  child: user?.photoUrl == null
-                      ? Text(
-                          user?.displayName?.isNotEmpty == true
-                              ? user!.displayName![0].toUpperCase()
-                              : user?.email[0].toUpperCase() ?? '?',
-                          style: const TextStyle(fontSize: 32),
-                        )
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                // Name
-                Text(
-                  user?.displayName ?? 'No name',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 4),
-                // Email
-                Text(
-                  user?.email ?? '',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                // Email verification status
-                if (user != null && !user.emailVerified)
-                  TextButton.icon(
-                    onPressed: () {
-                      authService.resendVerificationEmail();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Verification email sent'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.warning, size: 16),
-                    label: const Text('Verify email'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.orange,
-                    ),
-                  ),
-              ],
+      body: body,
+    );
+  }
+
+  Widget _buildGuestBody(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.login, size: 56),
+            const SizedBox(height: 16),
+            Text(
+              'Sign in to use cloud sync and account features.',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
             ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // Storage usage
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud Storage',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        storageService.usageFormatted,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Progress bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: storageService.usagePercent,
-                      backgroundColor: Colors.grey.withValues(alpha: 0.3),
-                      minHeight: 8,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Subscription tier
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Plan: ${storageService.currentTier.displayName}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          AppRouter.navigateTo(context, AppRouter.subscription);
-                        },
-                        child: const Text('Upgrade'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _formatExactBytes(storageService.storageUsedBytes),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Notes content',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(storageService.cloudContentBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Note attachments',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(storageService.cloudAttachmentBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud files',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        '${storageService.cloudFileCount}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud notes',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        '${storageService.cloudNoteCount}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  if (storageService.cloudRecordedBytes >
-                      [
-                        storageService.cloudContentBytes +
-                            storageService.cloudAttachmentBytes,
-                        storageService.cloudStoredFileBytes,
-                      ].reduce((a, b) => a > b ? a : b)) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Recorded account total',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        Text(
-                          _formatBytes(storageService.cloudRecordedBytes),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Local Files',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        _isLoadingLocalStorage
-                            ? 'Calculating...'
-                            : _formatBytes(_localStorageBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _formatExactBytes(_localStorageBytes),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'App-local cache',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(_localAppStorageBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Local Folder Sync',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(_localFolderSyncBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-
-                  // 95% capacity warning
-                  if (storageService.usagePercent >= 0.95) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              storageService.isStorageFull
-                                  ? 'Storage is full! Please upgrade your plan.'
-                                  : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
-                              style: const TextStyle(color: Colors.orange),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () =>
+                  AppRouter.navigateAndClearStack(context, AppRouter.login),
+              child: const Text('Go to Sign In'),
             ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Edit profile
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Edit Profile'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showEditProfile(context, authService),
-          ),
-
-          // Change password
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Change Password'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showChangePassword(context),
-          ),
-
-          const Divider(height: 32),
-
-          // Danger zone
-          ListTile(
-            leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title: const Text(
-              'Delete Account',
-              style: TextStyle(color: Colors.red),
-            ),
-            onTap: () => _confirmDeleteAccount(context),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

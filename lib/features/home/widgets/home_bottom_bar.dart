@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/auth_service.dart';
 
+enum HomeBottomBarTab { files, profile }
+
 /// Bottom navigation bar for home screen
 ///
 /// Contains navigation to files, sync, and profile sections.
@@ -16,10 +18,16 @@ class HomeBottomBar extends StatelessWidget {
   final String? currentFolderId;
   final VoidCallback onNewNote;
   final VoidCallback onNewFolder;
+  final HomeBottomBarTab selectedTab;
+  final VoidCallback onFilesTap;
+  final VoidCallback onProfileTap;
 
   const HomeBottomBar({
     required this.onNewNote,
     required this.onNewFolder,
+    required this.selectedTab,
+    required this.onFilesTap,
+    required this.onProfileTap,
     super.key,
     this.currentFolderId,
   });
@@ -49,10 +57,8 @@ class HomeBottomBar extends StatelessWidget {
             _BottomBarButton(
               icon: Icons.folder_copy_outlined,
               label: 'Files',
-              onTap: () {
-                // Already on files
-              },
-              isSelected: true,
+              onTap: onFilesTap,
+              isSelected: selectedTab == HomeBottomBarTab.files,
             ),
 
             // Sync button - navigates to sync status/settings
@@ -69,10 +75,8 @@ class HomeBottomBar extends StatelessWidget {
             _BottomBarButton(
               icon: isGuest ? Icons.login : Icons.person_outline,
               label: isGuest ? 'Sign In' : 'Profile',
-              onTap: () => AppRouter.navigateTo(
-                context,
-                isGuest ? AppRouter.login : AppRouter.profile,
-              ),
+              onTap: onProfileTap,
+              isSelected: selectedTab == HomeBottomBarTab.profile,
             ),
           ],
         ),
