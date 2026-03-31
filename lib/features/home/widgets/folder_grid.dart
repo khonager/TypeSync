@@ -4,7 +4,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/theme/app_theme.dart';
@@ -195,7 +194,10 @@ class FolderGridItem extends StatelessWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
+      // Allow a stationary long-press to open the options sheet even when
+      // long-press drag is enabled; dragging still begins once the pointer
+      // moves after the long-press delay.
+      onLongPress: onLongPress,
       onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -262,15 +264,6 @@ class FolderGridItem extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  bool _isMobilePlatform() {
-    if (kIsWeb) {
-      return false;
-    }
-
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 

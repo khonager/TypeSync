@@ -4,7 +4,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/models/note.dart';
@@ -181,7 +180,9 @@ class FileGridItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
+      // Keep the long-press options menu available on touch devices while
+      // still letting LongPressDraggable start a drag once the finger moves.
+      onLongPress: onLongPress,
       onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -254,15 +255,6 @@ class FileGridItem extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  bool _isMobilePlatform() {
-    if (kIsWeb) {
-      return false;
-    }
-
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 
