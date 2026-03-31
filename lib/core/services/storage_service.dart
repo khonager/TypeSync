@@ -766,12 +766,12 @@ class StorageService extends ChangeNotifier {
   }
 
   String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
     }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
   }
 
   // lazy Firebase Functions instance
