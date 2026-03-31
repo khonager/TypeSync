@@ -60,7 +60,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     try {
       await Future.wait([
-        storageService.loadStorageInfo(cloudUserId),
+        storageService.loadStorageInfo(
+          cloudUserId,
+          fallbackUser: authService.currentUser,
+        ),
         () async {
           await localFileService.initialize(workspaceId);
           final localAppStorageBytes =

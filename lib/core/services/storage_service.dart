@@ -132,68 +132,106 @@ class StorageService extends ChangeNotifier {
   /// Load storage info for a user
   ///
   /// Calculates actual storage usage from cloud-synced documents.
-  Future<void> loadStorageInfo(String userId) async {
+  Future<void> loadStorageInfo(String userId, {User? fallbackUser}) async {
     _isLoading = true;
     notifyListeners();
 
+    var loadFailed = false;
+
     try {
       int totalBytes = 0;
-      var recordedBytes = 0;
+      var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
+      if (fallbackUser != null) {
+        _currentTier = fallbackUser.subscriptionTier;
+      }
 
       // Load subscription tier and calculate storage from cloud
       if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore != null) {
-          // 1. Get user document for subscription tier
-          final userDoc =
-              await fdFirestore.collection('users').document(userId).get();
-          if (userDoc.map.isNotEmpty) {
-            _currentTier = SubscriptionTier
-                .values[userDoc.map['subscriptionTier'] as int? ?? 0];
-            recordedBytes = userDoc.map['storageUsedBytes'] as int? ?? 0;
+          try {
+            final userDoc =
+                await fdFirestore.collection('users').document(userId).get();
+            if (userDoc.map.isNotEmpty) {
+              _currentTier = _subscriptionTierFromDynamic(
+                userDoc.map['subscriptionTier'],
+                fallback: _currentTier,
+              );
+              recordedBytes = _intFromDynamic(
+                    userDoc.map['storageUsedBytes'],
+                    fallback: recordedBytes,
+                  ) ??
+                  recordedBytes;
+            }
+          } catch (e) {
+            loadFailed = true;
+            debugPrint('StorageService.loadStorageInfo user doc error: $e');
           }
 
-          // 2. Sum up sizes of all notes from Firedart
-          final notes = await fdFirestore.collection('notes').get();
-          for (final doc in notes) {
-            if (doc.map['userId'] == userId && doc.map['isDeleted'] == false) {
-              final explicitSize = doc.map['size'] as int?;
-              final content = doc.map['content'] as String? ?? '';
-              totalBytes += explicitSize ?? content.length;
-              totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
+          try {
+            final notes = await fdFirestore.collection('notes').get();
+            for (final doc in notes) {
+              if (doc.map['userId'] == userId &&
+                  _boolFromDynamic(doc.map['isDeleted']) == false) {
+                final explicitSize = _intFromDynamic(doc.map['size']);
+                final content = doc.map['content'] as String? ?? '';
+                totalBytes += explicitSize ?? content.length;
+                totalBytes += _attachmentBytesFromDynamic(doc.map['attachments']);
+              }
             }
+          } catch (e) {
+            loadFailed = true;
+            debugPrint('StorageService.loadStorageInfo notes error: $e');
           }
+        } else {
+          loadFailed = true;
         }
       } else {
-        // 1. Get user document for subscription tier
-        final userDoc =
-            await _firebaseFirestore.collection('users').doc(userId).get();
-        if (userDoc.exists) {
-          final data = userDoc.data()!;
-          _currentTier =
-              SubscriptionTier.values[data['subscriptionTier'] as int? ?? 0];
-          recordedBytes = data['storageUsedBytes'] as int? ?? 0;
+        try {
+          final userDoc =
+              await _firebaseFirestore.collection('users').doc(userId).get();
+          if (userDoc.exists) {
+            final data = userDoc.data()!;
+            _currentTier = _subscriptionTierFromDynamic(
+              data['subscriptionTier'],
+              fallback: _currentTier,
+            );
+            recordedBytes = _intFromDynamic(
+                  data['storageUsedBytes'],
+                  fallback: recordedBytes,
+                ) ??
+                recordedBytes;
+          }
+        } catch (e) {
+          loadFailed = true;
+          debugPrint('StorageService.loadStorageInfo user doc error: $e');
         }
 
-        // 2. Sum up sizes of all notes from Firestore
-        final notesSnapshot = await _firebaseFirestore
-            .collection('notes')
-            .where('userId', isEqualTo: userId)
-            .where('isDeleted', isEqualTo: false)
-            .get();
-        for (final doc in notesSnapshot.docs) {
-          final data = doc.data();
-          final explicitSize = data['size'] as int?;
-          final content = data['content'] as String? ?? '';
-          totalBytes += explicitSize ?? content.length;
-          totalBytes += _attachmentBytesFromDynamic(data['attachments']);
+        try {
+          final notesSnapshot = await _firebaseFirestore
+              .collection('notes')
+              .where('userId', isEqualTo: userId)
+              .where('isDeleted', isEqualTo: false)
+              .get();
+          for (final doc in notesSnapshot.docs) {
+            final data = doc.data();
+            final explicitSize = _intFromDynamic(data['size']);
+            final content = data['content'] as String? ?? '';
+            totalBytes += explicitSize ?? content.length;
+            totalBytes += _attachmentBytesFromDynamic(data['attachments']);
+          }
+        } catch (e) {
+          loadFailed = true;
+          debugPrint('StorageService.loadStorageInfo notes error: $e');
         }
       }
 
       _storageUsedBytes = totalBytes > recordedBytes
           ? totalBytes
           : recordedBytes;
-      _errorMessage = null;
+      _errorMessage = loadFailed
+          ? 'Loaded partial storage info; using best available data.'
+          : null;
     } catch (e) {
       _errorMessage = 'Failed to load storage info: $e';
       debugPrint('StorageService.loadStorageInfo error: $e');
@@ -597,6 +635,33 @@ class StorageService extends ChangeNotifier {
       }
     }
     return total;
+  }
+
+  int? _intFromDynamic(dynamic value, {int? fallback}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
+
+  bool _boolFromDynamic(dynamic value) {
+    if (value is bool) return value;
+    if (value is String) return value.toLowerCase() == 'true';
+    if (value is num) return value != 0;
+    return false;
+  }
+
+  SubscriptionTier _subscriptionTierFromDynamic(
+    dynamic value, {
+    SubscriptionTier fallback = SubscriptionTier.free,
+  }) {
+    final tierIndex = _intFromDynamic(value);
+    if (tierIndex == null ||
+        tierIndex < 0 ||
+        tierIndex >= SubscriptionTier.values.length) {
+      return fallback;
+    }
+    return SubscriptionTier.values[tierIndex];
   }
 
   bool get _shouldUseLinuxStorageRest =>
