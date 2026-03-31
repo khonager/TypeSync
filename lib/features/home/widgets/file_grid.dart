@@ -56,7 +56,7 @@ class FileGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1,
+        childAspectRatio: 0.78,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileGridItem(
@@ -186,7 +186,8 @@ class FileGridItem extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
+          AspectRatio(
+            aspectRatio: 1,
             child: Container(
               decoration: BoxDecoration(
                 color: note.backgroundColor != null

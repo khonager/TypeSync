@@ -58,7 +58,7 @@ class FolderGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1,
+        childAspectRatio: 0.78,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderGridItem(
@@ -204,7 +204,8 @@ class FolderGridItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Folder icon container
-            Expanded(
+            AspectRatio(
+              aspectRatio: 1,
               child: Container(
                 decoration: BoxDecoration(
                   color: bgColor,
