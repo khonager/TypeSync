@@ -197,93 +197,71 @@ class FolderGridItem extends StatelessWidget {
       onTap: onTap,
       onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
       onSecondaryTap: onLongPress,
-      child: Tooltip(
-        message: _buildFolderTooltip(stats),
-        waitDuration: const Duration(milliseconds: 350),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Folder icon container
-            AspectRatio(
-              aspectRatio: 1,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: showBorder
-                      ? Border.all(
-                          color: Theme.of(context).colorScheme.primary,
-                          width: 2,
-                        )
-                      : null,
-                ),
-                child: Stack(
-                  children: [
-                    Center(
-                      child: Icon(
-                        showBorder ? Icons.folder_open : Icons.folder,
-                        size: 48,
-                        color: Colors.white.withValues(alpha: 0.7),
-                      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Folder icon container
+          AspectRatio(
+            aspectRatio: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(12),
+                border: showBorder
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      )
+                    : null,
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      showBorder ? Icons.folder_open : Icons.folder,
+                      size: 48,
+                      color: Colors.white.withValues(alpha: 0.7),
                     ),
-                    if (stats.recursiveFileCount > 0)
-                      Positioned(
-                        right: 8,
-                        bottom: 8,
-                        child: _FolderCountBadge(label: '${stats.recursiveFileCount}'),
-                      ),
-                  ],
-                ),
+                  ),
+                  if (stats.recursiveFileCount > 0)
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child:
+                          _FolderCountBadge(label: '${stats.recursiveFileCount}'),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            // Folder name
+          ),
+          const SizedBox(height: 8),
+          // Folder name
+          Text(
+            folder.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: folder.backgroundColor != null
+                      ? AppColorPalette.getContrastingTextColor(bgColor)
+                      : null,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          // Subtitle if present
+          if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
             Text(
-              folder.name,
+              folder.subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: folder.backgroundColor != null
-                        ? AppColorPalette.getContrastingTextColor(bgColor)
-                        : null,
+                    color: Colors.grey,
+                    fontSize: 10,
                   ),
               textAlign: TextAlign.center,
             ),
-            // Subtitle if present
-            if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
-              Text(
-                folder.subtitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey,
-                      fontSize: 10,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-          ],
-        ),
+        ],
       ),
     );
-  }
-
-  String _buildFolderTooltip(FolderVisualStats stats) {
-    return [
-      folder.name,
-      'Files inside: ${stats.recursiveFileCount}',
-      'Direct files: ${stats.directFileCount}',
-      'Subfolders: ${stats.directSubfolderCount}',
-      'Total size: ${_formatBytes(stats.totalBytes)}',
-    ].join('\n');
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1000) return '$bytes B';
-    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
-    if (bytes < 1000 * 1000 * 1000) {
-      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
   }
 
   bool _isMobilePlatform() {
@@ -359,96 +337,79 @@ class FolderListItem extends StatelessWidget {
       child: Material(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: _buildFolderTooltip(stats),
-          waitDuration: const Duration(milliseconds: 350),
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            onSecondaryTap: onLongPress,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Folder icon
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.folder,
-                      color: Colors.white54,
-                    ),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          onSecondaryTap: onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Folder icon
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 16),
-                  // Folder name and subtitle
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          folder.name,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: folder.backgroundColor != null
-                                        ? AppColorPalette.getContrastingTextColor(
-                                            bgColor,
-                                          )
-                                        : null,
-                                  ),
-                        ),
-                        Text(
-                          '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.grey,
-                                  ),
-                        ),
-                        if (folder.subtitle != null &&
-                            folder.subtitle!.isNotEmpty)
-                          Text(
-                            folder.subtitle!,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey,
-                                    ),
-                          ),
-                      ],
-                    ),
+                  child: const Icon(
+                    Icons.folder,
+                    color: Colors.white54,
                   ),
-                  if (stats.recursiveFileCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _FolderCountBadge(
-                        label: '${stats.recursiveFileCount}',
+                ),
+                const SizedBox(width: 16),
+                // Folder name and subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        folder.name,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: folder.backgroundColor != null
+                                  ? AppColorPalette.getContrastingTextColor(
+                                      bgColor,
+                                    )
+                                  : null,
+                            ),
                       ),
-                    ),
-                  // Arrow indicator
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Colors.grey,
+                      Text(
+                        '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey,
+                            ),
+                      ),
+                      if (folder.subtitle != null &&
+                          folder.subtitle!.isNotEmpty)
+                        Text(
+                          folder.subtitle!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey,
+                              ),
+                        ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                if (stats.recursiveFileCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _FolderCountBadge(
+                      label: '${stats.recursiveFileCount}',
+                    ),
+                  ),
+                // Arrow indicator
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.grey,
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
-  }
-
-  String _buildFolderTooltip(FolderVisualStats stats) {
-    return [
-      folder.name,
-      'Files inside: ${stats.recursiveFileCount}',
-      'Direct files: ${stats.directFileCount}',
-      'Subfolders: ${stats.directSubfolderCount}',
-      'Total size: ${_formatBytes(stats.totalBytes)}',
-    ].join('\n');
   }
 
   String _formatBytes(int bytes) {
