@@ -138,6 +138,7 @@ class StorageService extends ChangeNotifier {
 
     try {
       int totalBytes = 0;
+      var recordedBytes = 0;
 
       // Load subscription tier and calculate storage from cloud
       if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
@@ -149,6 +150,7 @@ class StorageService extends ChangeNotifier {
           if (userDoc.map.isNotEmpty) {
             _currentTier = SubscriptionTier
                 .values[userDoc.map['subscriptionTier'] as int? ?? 0];
+            recordedBytes = userDoc.map['storageUsedBytes'] as int? ?? 0;
           }
 
           // 2. Sum up sizes of all notes from Firedart
@@ -170,6 +172,7 @@ class StorageService extends ChangeNotifier {
           final data = userDoc.data()!;
           _currentTier =
               SubscriptionTier.values[data['subscriptionTier'] as int? ?? 0];
+          recordedBytes = data['storageUsedBytes'] as int? ?? 0;
         }
 
         // 2. Sum up sizes of all notes from Firestore
@@ -187,7 +190,9 @@ class StorageService extends ChangeNotifier {
         }
       }
 
-      _storageUsedBytes = totalBytes;
+      _storageUsedBytes = totalBytes > recordedBytes
+          ? totalBytes
+          : recordedBytes;
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load storage info: $e';

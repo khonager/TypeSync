@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/file_picker_helper.dart';
 
@@ -45,6 +46,7 @@ class ConflictInfo {
 
 /// Service for syncing with a local folder
 class LocalFolderSyncService extends ChangeNotifier {
+  static const String _prefsSyncFolderKey = 'local_folder_sync_path';
   Directory? _syncFolder;
   bool _isSyncing = false;
   String? _errorMessage;
@@ -65,6 +67,32 @@ class LocalFolderSyncService extends ChangeNotifier {
   List<ConflictInfo> get conflicts => _conflicts;
   bool get isInitialized => _isInitialized;
 
+  LocalFolderSyncService() {
+    _loadPersistedSyncFolder();
+  }
+
+  /// Get the total size of all files in the configured sync folder.
+  Future<int> getTotalStorageBytes() async {
+    if (kIsWeb || _syncFolder == null || !_isInitialized) {
+      return 0;
+    }
+
+    try {
+      var total = 0;
+      if (await _syncFolder!.exists()) {
+        await for (final entity in _syncFolder!.list(recursive: true)) {
+          if (entity is File) {
+            total += await entity.length();
+          }
+        }
+      }
+      return total;
+    } catch (e) {
+      debugPrint('Failed to calculate local folder sync usage: $e');
+      return 0;
+    }
+  }
+
   // ===========================================
   // INITIALIZATION
   // ===========================================
@@ -84,12 +112,47 @@ class LocalFolderSyncService extends ChangeNotifier {
       }
       _syncFolder = dir;
       _isInitialized = true;
+      await _persistSyncFolder(folderPath);
       notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = 'Failed to set sync folder: $e';
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<void> _loadPersistedSyncFolder() async {
+    if (kIsWeb) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedPath = prefs.getString(_prefsSyncFolderKey);
+      if (savedPath == null || savedPath.isEmpty) {
+        return;
+      }
+
+      final dir = Directory(savedPath);
+      if (!await dir.exists()) {
+        return;
+      }
+
+      _syncFolder = dir;
+      _isInitialized = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to restore local folder sync path: $e');
+    }
+  }
+
+  Future<void> _persistSyncFolder(String folderPath) async {
+    if (kIsWeb) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsSyncFolderKey, folderPath);
+    } catch (e) {
+      debugPrint('Failed to persist local folder sync path: $e');
     }
   }
 

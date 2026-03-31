@@ -15,6 +15,7 @@ import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
@@ -32,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
   int _localStorageBytes = 0;
   bool _isLoadingLocalStorage = false;
+  String? _lastObservedLocalSyncPath;
 
   Future<void> _refreshStorageInfo() async {
     final authService = context.read<AuthService>();
@@ -42,11 +44,13 @@ class _ProfileScreenState extends State<ProfileScreen>
     await authService.refreshCurrentUser();
     if (!mounted) return;
 
+    final cloudUserId = authService.userId;
     final workspaceId = authService.storageUserId;
-    if (workspaceId == null) return;
+    if (cloudUserId == null || workspaceId == null) return;
 
     final storageService = context.read<StorageService>();
     final localFileService = LocalFileService.instance;
+    final localFolderSyncService = context.read<LocalFolderSyncService>();
 
     setState(() {
       _isLoadingLocalStorage = true;
@@ -54,10 +58,15 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     try {
       await Future.wait([
-        storageService.loadStorageInfo(workspaceId),
+        storageService.loadStorageInfo(cloudUserId),
         () async {
           await localFileService.initialize(workspaceId);
-          final localStorageBytes = await localFileService.getTotalStorageBytes();
+          final localAppStorageBytes =
+              await localFileService.getTotalStorageBytes();
+          final localFolderSyncBytes =
+              await localFolderSyncService.getTotalStorageBytes();
+          final localStorageBytes =
+              localAppStorageBytes + localFolderSyncBytes;
           if (!mounted) return;
           setState(() {
             _localStorageBytes = localStorageBytes;
@@ -92,6 +101,20 @@ class _ProfileScreenState extends State<ProfileScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _refreshStorageInfo();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final localSyncPath = context.watch<LocalFolderSyncService>().syncFolder?.path;
+    if (localSyncPath != _lastObservedLocalSyncPath) {
+      _lastObservedLocalSyncPath = localSyncPath;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _refreshStorageInfo();
+        }
+      });
+    }
   }
 
   @override
@@ -285,7 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Stored on this device only. Local and cloud files are tracked independently, so files can exist in either place or both.',
+                    'Stored on this device only. Includes app-local files and the configured Local Folder Sync directory, while cloud files are tracked separately.',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: Colors.grey),

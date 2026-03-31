@@ -882,6 +882,7 @@ class NotesProvider extends ChangeNotifier {
     required String sourceUserId,
     required String targetUserId,
     bool overwriteTarget = false,
+    bool stripRemoteAssetPaths = false,
   }) async {
     if (sourceUserId == targetUserId) return 0;
 
@@ -914,20 +915,22 @@ class NotesProvider extends ChangeNotifier {
           userId: targetUserId,
           isDirty: true,
           syncedAt: null,
-          pdfPath: _rewriteWorkspacePath(
+          pdfPath: _cloneWorkspaceAssetPath(
             note.pdfPath,
             sourceUserId: sourceUserId,
             targetUserId: targetUserId,
+            stripRemotePath: stripRemoteAssetPaths,
           ),
           attachments: note.attachments
               .map(
                 (attachment) => attachment.copyWith(
-                  path: _rewriteWorkspacePath(
+                  path: _cloneWorkspaceAssetPath(
                         attachment.path,
                         sourceUserId: sourceUserId,
                         targetUserId: targetUserId,
+                        stripRemotePath: stripRemoteAssetPaths,
                       ) ??
-                      attachment.path,
+                      '',
                 ),
               )
               .toList(),
@@ -952,16 +955,59 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Remove cloud-backed asset paths from the active workspace so opening notes
+  /// cannot silently fetch attachments from remote URLs.
+  Future<int> stripRemoteAssetPathsFromActiveWorkspace() async {
+    if (_notesBox == null) {
+      return 0;
+    }
+
+    var updatedCount = 0;
+    for (var index = 0; index < _notes.length; index++) {
+      final note = _notes[index];
+      final strippedPdfPath = _isRemoteAssetPath(note.pdfPath) ? null : note.pdfPath;
+      final strippedAttachments = note.attachments
+          .map(
+            (attachment) => _isRemoteAssetPath(attachment.path)
+                ? attachment.copyWith(path: '')
+                : attachment,
+          )
+          .toList();
+
+      final changed = strippedPdfPath != note.pdfPath ||
+          !_listEqualsByPath(note.attachments, strippedAttachments);
+      if (!changed) {
+        continue;
+      }
+
+      final updated = note.copyWith(
+        pdfPath: strippedPdfPath,
+        attachments: strippedAttachments,
+        isDirty: true,
+        updatedAt: DateTime.now(),
+      );
+      _notes[index] = updated;
+      await _notesBox!.put(updated.id, updated);
+      updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+      notifyListeners();
+    }
+    return updatedCount;
+  }
+
   /// Clear error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
   }
 
-  String? _rewriteWorkspacePath(
+  String? _cloneWorkspaceAssetPath(
     String? originalPath, {
     required String sourceUserId,
     required String targetUserId,
+    bool stripRemotePath = false,
   }) {
     if (originalPath == null || originalPath.isEmpty) {
       return originalPath;
@@ -970,7 +1016,7 @@ class NotesProvider extends ChangeNotifier {
     if (originalPath.startsWith('http://') ||
         originalPath.startsWith('https://') ||
         originalPath.startsWith('data:')) {
-      return originalPath;
+      return stripRemotePath ? null : originalPath;
     }
 
     final sourceSegment = p.join('typesync_files', sourceUserId) + p.separator;
@@ -981,6 +1027,32 @@ class NotesProvider extends ChangeNotifier {
     }
 
     return originalPath.replaceFirst(sourceSegment, targetSegment);
+  }
+
+  bool _isRemoteAssetPath(String? path) {
+    if (path == null || path.isEmpty) {
+      return false;
+    }
+    return path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('data:');
+  }
+
+  bool _listEqualsByPath(
+    List<NoteAttachment> left,
+    List<NoteAttachment> right,
+  ) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (var index = 0; index < left.length; index++) {
+      if (left[index].path != right[index].path) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> closeWorkspace() async {

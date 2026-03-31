@@ -289,10 +289,15 @@ class SettingsScreen extends StatelessWidget {
     final targetWorkspace = authService.storageUserId ?? authService.userId!;
 
     if (enabled && sourceWorkspace != targetWorkspace) {
+      final clonedFiles = await LocalFileService.instance.cloneWorkspaceFiles(
+        sourceWorkspace,
+        targetWorkspace,
+      );
       final clonedNotes = await notesProvider.cloneWorkspace(
         sourceUserId: sourceWorkspace,
         targetUserId: targetWorkspace,
         overwriteTarget: false,
+        stripRemoteAssetPaths: true,
       );
       final clonedFolders = await foldersProvider.cloneWorkspace(
         sourceUserId: sourceWorkspace,
@@ -300,11 +305,12 @@ class SettingsScreen extends StatelessWidget {
         overwriteTarget: false,
       );
 
-      if (context.mounted && (clonedNotes > 0 || clonedFolders > 0)) {
+      if (context.mounted &&
+          (clonedFiles > 0 || clonedNotes > 0 || clonedFolders > 0)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Cloned $clonedNotes notes and $clonedFolders folders to local workspace',
+              'Cloned $clonedFiles local files, $clonedNotes notes, and $clonedFolders folders to local workspace',
             ),
           ),
         );
@@ -317,6 +323,9 @@ class SettingsScreen extends StatelessWidget {
     await calendarProvider.initialize(targetWorkspace);
     await homeworkProvider.initialize(targetWorkspace);
     await timetableProvider.initialize(targetWorkspace);
+    final strippedRemoteAssets = enabled
+        ? await notesProvider.stripRemoteAssetPathsFromActiveWorkspace()
+        : 0;
 
     syncService.setSyncEnabled(authService.effectiveSyncEnabled);
     if (authService.effectiveSyncEnabled && authService.userId != null) {
@@ -341,7 +350,11 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            enabled ? 'Local workspace enabled' : 'Returned to cloud workspace',
+            enabled
+                ? strippedRemoteAssets > 0
+                    ? 'Local workspace enabled. Removed $strippedRemoteAssets cloud-backed file links.'
+                    : 'Local workspace enabled'
+                : 'Returned to cloud workspace',
           ),
         ),
       );
