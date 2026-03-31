@@ -325,6 +325,8 @@ class FolderListItem extends StatelessWidget {
     final bgColor = folder.backgroundColor != null
         ? Color(int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
+    final textColor = AppColorPalette.getContrastingTextColor(bgColor);
+    final secondaryTextColor = textColor.withValues(alpha: 0.7);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -345,12 +347,14 @@ class FolderListItem extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: folder.backgroundColor != null
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.folder,
-                    color: Colors.white54,
+                    color: textColor.withValues(alpha: 0.7),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -361,19 +365,14 @@ class FolderListItem extends StatelessWidget {
                     children: [
                       Text(
                         folder.name,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: folder.backgroundColor != null
-                                      ? AppColorPalette.getContrastingTextColor(
-                                          bgColor,
-                                        )
-                                      : null,
-                                ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(color: textColor),
                       ),
                       Text(
                         '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey,
+                              color: secondaryTextColor,
                             ),
                       ),
                       if (folder.subtitle != null &&
@@ -382,7 +381,7 @@ class FolderListItem extends StatelessWidget {
                           folder.subtitle!,
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.grey,
+                                    color: secondaryTextColor,
                                   ),
                         ),
                     ],
@@ -396,9 +395,9 @@ class FolderListItem extends StatelessWidget {
                     ),
                   ),
                 // Arrow indicator
-                const Icon(
+                Icon(
                   Icons.chevron_right,
-                  color: Colors.grey,
+                  color: secondaryTextColor,
                 ),
               ],
             ),

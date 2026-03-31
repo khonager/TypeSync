@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/user.dart';
 import '../../../core/providers/calendar_provider.dart';
@@ -23,7 +24,12 @@ import '../../../core/routes/app_router.dart';
 
 /// User profile screen
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final bool embedded;
+
+  const ProfileScreen({
+    this.embedded = false,
+    super.key,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -31,13 +37,95 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  static const String _localStorageTotalPrefsPrefix =
+      'profile_local_storage_total_';
+  static const String _localStorageAppPrefsPrefix =
+      'profile_local_storage_app_';
+  static const String _localStorageFolderSyncPrefsPrefix =
+      'profile_local_storage_folder_sync_';
+
   int _localStorageBytes = 0;
   int _localAppStorageBytes = 0;
   int _localFolderSyncBytes = 0;
   bool _isLoadingLocalStorage = false;
+  bool _hasCachedLocalStorage = false;
+  bool _hasObservedLocalSyncPath = false;
   String? _lastObservedLocalSyncPath;
 
-  Future<void> _refreshStorageInfo() async {
+  String _localStoragePrefsKey(String prefix, String workspaceId) {
+    return '$prefix$workspaceId';
+  }
+
+  Future<void> _loadCachedLocalStorageInfo() async {
+    final authService = context.read<AuthService>();
+    if (authService.isGuestMode) {
+      return;
+    }
+
+    final workspaceId = authService.storageUserId;
+    if (workspaceId == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedAppStorageBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageAppPrefsPrefix, workspaceId),
+      );
+      final savedFolderSyncBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageFolderSyncPrefsPrefix, workspaceId),
+      );
+      final savedTotalStorageBytes = prefs.getInt(
+        _localStoragePrefsKey(_localStorageTotalPrefsPrefix, workspaceId),
+      );
+      final hasCachedValue = savedAppStorageBytes != null ||
+          savedFolderSyncBytes != null ||
+          savedTotalStorageBytes != null;
+
+      if (!mounted || !hasCachedValue) {
+        return;
+      }
+
+      final nextAppStorageBytes = savedAppStorageBytes ?? 0;
+      final nextFolderSyncBytes = savedFolderSyncBytes ?? 0;
+      final nextTotalStorageBytes =
+          savedTotalStorageBytes ?? nextAppStorageBytes + nextFolderSyncBytes;
+
+      setState(() {
+        _hasCachedLocalStorage = true;
+        _localAppStorageBytes = nextAppStorageBytes;
+        _localFolderSyncBytes = nextFolderSyncBytes;
+        _localStorageBytes = nextTotalStorageBytes;
+      });
+    } catch (_) {
+      // Keep rendering with in-memory values if the cache is unavailable.
+    }
+  }
+
+  Future<void> _persistLocalStorageInfo({
+    required String workspaceId,
+    required int localAppStorageBytes,
+    required int localFolderSyncBytes,
+    required int localStorageBytes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageAppPrefsPrefix, workspaceId),
+        localAppStorageBytes,
+      );
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageFolderSyncPrefsPrefix, workspaceId),
+        localFolderSyncBytes,
+      );
+      await prefs.setInt(
+        _localStoragePrefsKey(_localStorageTotalPrefsPrefix, workspaceId),
+        localStorageBytes,
+      );
+    } catch (_) {
+      // A missed cache write should not interrupt profile rendering.
+    }
+  }
+
+  Future<void> _refreshCloudStorageInfo() async {
     final authService = context.read<AuthService>();
     if (authService.isGuestMode) {
       return;
@@ -47,44 +135,83 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (!mounted) return;
 
     final cloudUserId = authService.userId;
-    final workspaceId = authService.storageUserId;
-    if (cloudUserId == null || workspaceId == null) return;
+    if (cloudUserId == null) return;
 
     final storageService = context.read<StorageService>();
+
+    await storageService.loadStorageInfo(
+      cloudUserId,
+      fallbackUser: authService.currentUser,
+    );
+  }
+
+  Future<void> _refreshLocalStorageInfo({bool showLoadingState = false}) async {
+    final authService = context.read<AuthService>();
+    if (authService.isGuestMode) {
+      return;
+    }
+
+    final workspaceId = authService.storageUserId;
+    if (workspaceId == null) return;
+
     final localFileService = LocalFileService.instance;
     final localFolderSyncService = context.read<LocalFolderSyncService>();
 
-    setState(() {
-      _isLoadingLocalStorage = true;
-    });
+    if (showLoadingState && mounted) {
+      setState(() {
+        _isLoadingLocalStorage = true;
+      });
+    }
 
     try {
-      await Future.wait([
-        storageService.loadStorageInfo(
-          cloudUserId,
-          fallbackUser: authService.currentUser,
-        ),
-        () async {
-          await localFileService.initialize(workspaceId);
-          final localAppStorageBytes =
-              await localFileService.getTotalStorageBytes();
-          final localFolderSyncBytes =
-              await localFolderSyncService.getTotalStorageBytes();
-          final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
-          if (!mounted) return;
-          setState(() {
-            _localAppStorageBytes = localAppStorageBytes;
-            _localFolderSyncBytes = localFolderSyncBytes;
-            _localStorageBytes = localStorageBytes;
-          });
-        }(),
-      ]);
+      await localFileService.initialize(workspaceId);
+      final localAppStorageBytes =
+          await localFileService.getTotalStorageBytes();
+      final localFolderSyncBytes =
+          await localFolderSyncService.getTotalStorageBytes();
+      final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
+
+      await _persistLocalStorageInfo(
+        workspaceId: workspaceId,
+        localAppStorageBytes: localAppStorageBytes,
+        localFolderSyncBytes: localFolderSyncBytes,
+        localStorageBytes: localStorageBytes,
+      );
+
+      if (!mounted) return;
+
+      final hasChanged = _localAppStorageBytes != localAppStorageBytes ||
+          _localFolderSyncBytes != localFolderSyncBytes ||
+          _localStorageBytes != localStorageBytes ||
+          !_hasCachedLocalStorage;
+
+      if (hasChanged || _isLoadingLocalStorage) {
+        setState(() {
+          _hasCachedLocalStorage = true;
+          _localAppStorageBytes = localAppStorageBytes;
+          _localFolderSyncBytes = localFolderSyncBytes;
+          _localStorageBytes = localStorageBytes;
+        });
+      }
     } finally {
-      if (mounted) {
+      if (showLoadingState && mounted && _isLoadingLocalStorage) {
         setState(() {
           _isLoadingLocalStorage = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshStorageInfo({
+    bool refreshCloud = true,
+    bool refreshLocal = true,
+    bool showLocalLoadingState = false,
+  }) async {
+    if (refreshCloud) {
+      await _refreshCloudStorageInfo();
+    }
+    if (refreshLocal && mounted) {
+      await _refreshLocalStorageInfo(showLoadingState: showLocalLoadingState);
     }
   }
 
@@ -115,10 +242,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Load storage info when screen opens and refresh auth state in case the
-    // user just verified their email in the browser.
+    // Restore the most recent local storage figures immediately, then refresh
+    // only the cloud-backed values when the screen opens.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _refreshStorageInfo();
+      await _loadCachedLocalStorageInfo();
+      if (!mounted) return;
+      await _refreshStorageInfo(refreshLocal: false);
     });
   }
 
@@ -127,11 +256,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.didChangeDependencies();
     final localSyncPath =
         context.watch<LocalFolderSyncService>().syncFolder?.path;
+    if (!_hasObservedLocalSyncPath) {
+      _hasObservedLocalSyncPath = true;
+      _lastObservedLocalSyncPath = localSyncPath;
+      return;
+    }
+
     if (localSyncPath != _lastObservedLocalSyncPath) {
       _lastObservedLocalSyncPath = localSyncPath;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _refreshStorageInfo();
+          _refreshLocalStorageInfo(showLoadingState: !_hasCachedLocalStorage);
         }
       });
     }
@@ -147,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !context.read<AuthService>().isGuestMode) {
-      _refreshStorageInfo();
+      _refreshStorageInfo(showLocalLoadingState: false);
     }
   }
 
@@ -158,6 +293,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     final user = authService.currentUser;
 
     if (authService.isGuestMode) {
+      final body = _buildGuestBody(context);
+      if (widget.embedded) {
+        return body;
+      }
+
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -166,30 +306,331 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           title: const Text('Sign In'),
         ),
-        body: Center(
+        body: body,
+      );
+    }
+
+    final body = ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Profile header
+        Center(
+          child: Column(
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                backgroundImage: user?.photoUrl != null
+                    ? NetworkImage(user!.photoUrl!)
+                    : null,
+                child: user?.photoUrl == null
+                    ? Text(
+                        user?.displayName?.isNotEmpty == true
+                            ? user!.displayName![0].toUpperCase()
+                            : user?.email[0].toUpperCase() ?? '?',
+                        style: const TextStyle(fontSize: 32),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              // Name
+              Text(
+                user?.displayName ?? 'No name',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 4),
+              // Email
+              Text(
+                user?.email ?? '',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              // Email verification status
+              if (user != null && !user.emailVerified)
+                TextButton.icon(
+                  onPressed: () {
+                    authService.resendVerificationEmail();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Verification email sent'),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.warning, size: 16),
+                  label: const Text('Verify email'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Storage usage
+        Card(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.login, size: 56),
-                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud Storage',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      storageService.usageFormatted,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: storageService.usagePercent,
+                    backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Subscription tier
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Plan: ${storageService.currentTier.displayName}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        AppRouter.navigateTo(context, AppRouter.subscription);
+                      },
+                      child: const Text('Upgrade'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 Text(
-                  'Sign in to use cloud sync and account features.',
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
+                  _formatExactBytes(storageService.storageUsedBytes),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Notes content',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(storageService.cloudContentBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Note attachments',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(storageService.cloudAttachmentBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud files',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '${storageService.cloudFileCount}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cloud notes',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '${storageService.cloudNoteCount}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                if (storageService.cloudRecordedBytes >
+                    [
+                      storageService.cloudContentBytes +
+                          storageService.cloudAttachmentBytes,
+                      storageService.cloudStoredFileBytes,
+                    ].reduce((a, b) => a > b ? a : b)) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recorded account total',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudRecordedBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () =>
-                      AppRouter.navigateAndClearStack(context, AppRouter.login),
-                  child: const Text('Go to Sign In'),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Local Files',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      _isLoadingLocalStorage
+                          ? 'Calculating...'
+                          : _formatBytes(_localStorageBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _formatExactBytes(_localStorageBytes),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'App-local cache',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(_localAppStorageBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Local Folder Sync',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      _formatBytes(_localFolderSyncBytes),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+
+                // 95% capacity warning
+                if (storageService.usagePercent >= 0.95) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            storageService.isStorageFull
+                                ? 'Storage is full! Please upgrade your plan.'
+                                : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
+                            style: const TextStyle(color: Colors.orange),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
-      );
+
+        const SizedBox(height: 16),
+
+        // Edit profile
+        ListTile(
+          leading: const Icon(Icons.edit_outlined),
+          title: const Text('Edit Profile'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showEditProfile(context, authService),
+        ),
+
+        // Change password
+        ListTile(
+          leading: const Icon(Icons.lock_outline),
+          title: const Text('Change Password'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showChangePassword(context),
+        ),
+
+        const Divider(height: 32),
+
+        // Danger zone
+        ListTile(
+          leading: const Icon(Icons.delete_forever, color: Colors.red),
+          title: const Text(
+            'Delete Account',
+            style: TextStyle(color: Colors.red),
+          ),
+          onTap: () => _confirmDeleteAccount(context),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return body;
     }
 
     return Scaffold(
@@ -200,323 +641,32 @@ class _ProfileScreenState extends State<ProfileScreen>
         ),
         title: const Text('Profile'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Profile header
-          Center(
-            child: Column(
-              children: [
-                // Avatar
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  backgroundImage: user?.photoUrl != null
-                      ? NetworkImage(user!.photoUrl!)
-                      : null,
-                  child: user?.photoUrl == null
-                      ? Text(
-                          user?.displayName?.isNotEmpty == true
-                              ? user!.displayName![0].toUpperCase()
-                              : user?.email[0].toUpperCase() ?? '?',
-                          style: const TextStyle(fontSize: 32),
-                        )
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                // Name
-                Text(
-                  user?.displayName ?? 'No name',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 4),
-                // Email
-                Text(
-                  user?.email ?? '',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                // Email verification status
-                if (user != null && !user.emailVerified)
-                  TextButton.icon(
-                    onPressed: () {
-                      authService.resendVerificationEmail();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Verification email sent'),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.warning, size: 16),
-                    label: const Text('Verify email'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.orange,
-                    ),
-                  ),
-              ],
+      body: body,
+    );
+  }
+
+  Widget _buildGuestBody(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.login, size: 56),
+            const SizedBox(height: 16),
+            Text(
+              'Sign in to use cloud sync and account features.',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
             ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // Storage usage
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud Storage',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        storageService.usageFormatted,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Progress bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: storageService.usagePercent,
-                      backgroundColor: Colors.grey.withValues(alpha: 0.3),
-                      minHeight: 8,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Subscription tier
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Plan: ${storageService.currentTier.displayName}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          AppRouter.navigateTo(context, AppRouter.subscription);
-                        },
-                        child: const Text('Upgrade'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _formatExactBytes(storageService.storageUsedBytes),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Notes content',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(storageService.cloudContentBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Note attachments',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(storageService.cloudAttachmentBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud files',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        '${storageService.cloudFileCount}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Cloud notes',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        '${storageService.cloudNoteCount}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  if (storageService.cloudRecordedBytes >
-                      [
-                        storageService.cloudContentBytes +
-                            storageService.cloudAttachmentBytes,
-                        storageService.cloudStoredFileBytes,
-                      ].reduce((a, b) => a > b ? a : b)) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Recorded account total',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        Text(
-                          _formatBytes(storageService.cloudRecordedBytes),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Local Files',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        _isLoadingLocalStorage
-                            ? 'Calculating...'
-                            : _formatBytes(_localStorageBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _formatExactBytes(_localStorageBytes),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'App-local cache',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(_localAppStorageBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Local Folder Sync',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _formatBytes(_localFolderSyncBytes),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-
-                  // 95% capacity warning
-                  if (storageService.usagePercent >= 0.95) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              storageService.isStorageFull
-                                  ? 'Storage is full! Please upgrade your plan.'
-                                  : 'Storage is almost full (${(storageService.usagePercent * 100).toInt()}%).',
-                              style: const TextStyle(color: Colors.orange),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () =>
+                  AppRouter.navigateAndClearStack(context, AppRouter.login),
+              child: const Text('Go to Sign In'),
             ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Edit profile
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Edit Profile'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showEditProfile(context, authService),
-          ),
-
-          // Change password
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Change Password'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showChangePassword(context),
-          ),
-
-          const Divider(height: 32),
-
-          // Danger zone
-          ListTile(
-            leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title: const Text(
-              'Delete Account',
-              style: TextStyle(color: Colors.red),
-            ),
-            onTap: () => _confirmDeleteAccount(context),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
