@@ -10,9 +10,24 @@ import '../../../core/models/folder.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/color_utils.dart';
 
+class FolderVisualStats {
+  final int recursiveFileCount;
+  final int directFileCount;
+  final int directSubfolderCount;
+  final int totalBytes;
+
+  const FolderVisualStats({
+    required this.recursiveFileCount,
+    required this.directFileCount,
+    required this.directSubfolderCount,
+    required this.totalBytes,
+  });
+}
+
 /// Grid view for folders
 class FolderGrid extends StatelessWidget {
   final List<Folder> folders;
+  final Map<String, FolderVisualStats> folderStats;
   final void Function(String) onFolderTap;
   final void Function(String) onFolderLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
@@ -24,6 +39,7 @@ class FolderGrid extends StatelessWidget {
 
   const FolderGrid({
     required this.folders,
+    required this.folderStats,
     required this.onFolderTap,
     required this.onFolderLongPress,
     super.key,
@@ -47,6 +63,13 @@ class FolderGrid extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderGridItem(
           folder: folders[index],
+          stats: folderStats[folders[index].id] ??
+              const FolderVisualStats(
+                recursiveFileCount: 0,
+                directFileCount: 0,
+                directSubfolderCount: 0,
+                totalBytes: 0,
+              ),
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
           onNoteDropped: onNoteDropped,
@@ -65,6 +88,7 @@ class FolderGrid extends StatelessWidget {
 /// Individual folder item in grid
 class FolderGridItem extends StatelessWidget {
   final Folder folder;
+  final FolderVisualStats stats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
@@ -76,6 +100,7 @@ class FolderGridItem extends StatelessWidget {
 
   const FolderGridItem({
     required this.folder,
+    required this.stats,
     required this.onTap,
     required this.onLongPress,
     super.key,
@@ -172,48 +197,59 @@ class FolderGridItem extends StatelessWidget {
       onTap: onTap,
       onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
       onSecondaryTap: onLongPress,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Folder icon container
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(12),
-                border: showBorder
-                    ? Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
-                      )
-                    : null,
-              ),
-              child: Center(
-                child: Icon(
-                  showBorder ? Icons.folder_open : Icons.folder,
-                  size: 48,
-                  color: Colors.white.withValues(alpha: 0.7),
+      child: Tooltip(
+        message: _buildFolderTooltip(stats),
+        waitDuration: const Duration(milliseconds: 350),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Folder icon container
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: showBorder
+                      ? Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        )
+                      : null,
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Icon(
+                        showBorder ? Icons.folder_open : Icons.folder,
+                        size: 48,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    if (stats.recursiveFileCount > 0)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: _FolderCountBadge(label: '${stats.recursiveFileCount}'),
+                      ),
+                  ],
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          // Folder name
-          Text(
-            folder.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: folder.backgroundColor != null
-                      ? AppColorPalette.getContrastingTextColor(bgColor)
-                      : null,
-                ),
-            textAlign: TextAlign.center,
-          ),
-          // Subtitle if present
-          if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
+            const SizedBox(height: 8),
+            // Folder name
             Text(
-              folder.subtitle!,
+              folder.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: folder.backgroundColor != null
+                        ? AppColorPalette.getContrastingTextColor(bgColor)
+                        : null,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            Text(
+              _formatBytes(stats.totalBytes),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -222,9 +258,41 @@ class FolderGridItem extends StatelessWidget {
                   ),
               textAlign: TextAlign.center,
             ),
-        ],
+            // Subtitle if present
+            if (folder.subtitle != null && folder.subtitle!.isNotEmpty)
+              Text(
+                folder.subtitle!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                      fontSize: 10,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _buildFolderTooltip(FolderVisualStats stats) {
+    return [
+      folder.name,
+      'Files inside: ${stats.recursiveFileCount}',
+      'Direct files: ${stats.directFileCount}',
+      'Subfolders: ${stats.directSubfolderCount}',
+      'Total size: ${_formatBytes(stats.totalBytes)}',
+    ].join('\n');
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
   }
 
   bool _isMobilePlatform() {
@@ -240,11 +308,13 @@ class FolderGridItem extends StatelessWidget {
 /// List view for folders
 class FolderList extends StatelessWidget {
   final List<Folder> folders;
+  final Map<String, FolderVisualStats> folderStats;
   final void Function(String) onFolderTap;
   final void Function(String) onFolderLongPress;
 
   const FolderList({
     required this.folders,
+    required this.folderStats,
     required this.onFolderTap,
     required this.onFolderLongPress,
     super.key,
@@ -256,6 +326,13 @@ class FolderList extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderListItem(
           folder: folders[index],
+          stats: folderStats[folders[index].id] ??
+              const FolderVisualStats(
+                recursiveFileCount: 0,
+                directFileCount: 0,
+                directSubfolderCount: 0,
+                totalBytes: 0,
+              ),
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
         ),
@@ -268,11 +345,13 @@ class FolderList extends StatelessWidget {
 /// Individual folder item in list - matches the widget design (top right in mockup)
 class FolderListItem extends StatelessWidget {
   final Folder folder;
+  final FolderVisualStats stats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
   const FolderListItem({
     required this.folder,
+    required this.stats,
     required this.onTap,
     required this.onLongPress,
     super.key,
@@ -289,65 +368,129 @@ class FolderListItem extends StatelessWidget {
       child: Material(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          onSecondaryTap: onLongPress,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Folder icon
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
+        child: Tooltip(
+          message: _buildFolderTooltip(stats),
+          waitDuration: const Duration(milliseconds: 350),
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            onSecondaryTap: onLongPress,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // Folder icon
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.folder,
+                      color: Colors.white54,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.folder,
-                    color: Colors.white54,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Folder name and subtitle
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        folder.name,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: folder.backgroundColor != null
-                                      ? AppColorPalette.getContrastingTextColor(
-                                          bgColor,
-                                        )
-                                      : null,
-                                ),
-                      ),
-                      if (folder.subtitle != null &&
-                          folder.subtitle!.isNotEmpty)
+                  const SizedBox(width: 16),
+                  // Folder name and subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          folder.subtitle!,
+                          folder.name,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: folder.backgroundColor != null
+                                        ? AppColorPalette.getContrastingTextColor(
+                                            bgColor,
+                                          )
+                                        : null,
+                                  ),
+                        ),
+                        Text(
+                          '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Colors.grey,
                                   ),
                         ),
-                    ],
+                        if (folder.subtitle != null &&
+                            folder.subtitle!.isNotEmpty)
+                          Text(
+                            folder.subtitle!,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.grey,
+                                    ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                // Arrow indicator
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey,
-                ),
-              ],
+                  if (stats.recursiveFileCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _FolderCountBadge(
+                        label: '${stats.recursiveFileCount}',
+                      ),
+                    ),
+                  // Arrow indicator
+                  const Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  String _buildFolderTooltip(FolderVisualStats stats) {
+    return [
+      folder.name,
+      'Files inside: ${stats.recursiveFileCount}',
+      'Direct files: ${stats.directFileCount}',
+      'Subfolders: ${stats.directSubfolderCount}',
+      'Total size: ${_formatBytes(stats.totalBytes)}',
+    ].join('\n');
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+  }
+}
+
+class _FolderCountBadge extends StatelessWidget {
+  final String label;
+
+  const _FolderCountBadge({
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

@@ -672,10 +672,6 @@ class StorageService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
-  int _attachmentBytesFromDynamic(dynamic attachments) {
-    return _attachmentMetricsFromDynamic(attachments).bytes;
-  }
-
   _AttachmentMetrics _attachmentMetricsFromDynamic(dynamic attachments) {
     if (attachments is! List) {
       return const _AttachmentMetrics(bytes: 0, count: 0);
