@@ -574,6 +574,11 @@ class _HomeScreenState extends State<HomeScreen> {
       notes = notesProvider.getNotesInFolder(_currentFolderId);
     }
 
+    final folderStats = _buildFolderStats(
+      allFolders: foldersProvider.folders,
+      allNotes: notesProvider.notes,
+    );
+
     return Scaffold(
       // Custom app bar matching the design
       appBar: AppBar(
@@ -613,6 +618,7 @@ class _HomeScreenState extends State<HomeScreen> {
         notes,
         foldersProvider,
         notesProvider,
+        folderStats: folderStats,
         isSearchActive: isSearchActive,
         showFolderResults: showFolderResults,
         showFileResults: showFileResults,
@@ -724,6 +730,72 @@ class _HomeScreenState extends State<HomeScreen> {
     _updateAutoScroll(0);
   }
 
+  Map<String, FolderVisualStats> _buildFolderStats({
+    required List<Folder> allFolders,
+    required List<Note> allNotes,
+  }) {
+    final notesByFolder = <String?, List<Note>>{};
+    for (final note in allNotes) {
+      notesByFolder.putIfAbsent(note.folderId, () => <Note>[]).add(note);
+    }
+
+    final childFoldersByParent = <String?, List<Folder>>{};
+    for (final folder in allFolders) {
+      childFoldersByParent
+          .putIfAbsent(folder.parentId, () => <Folder>[])
+          .add(folder);
+    }
+
+    final statsByFolder = <String, FolderVisualStats>{};
+
+    FolderVisualStats computeStats(Folder folder) {
+      final cached = statsByFolder[folder.id];
+      if (cached != null) {
+        return cached;
+      }
+
+      final directNotes = notesByFolder[folder.id] ?? const <Note>[];
+      final childFolders = childFoldersByParent[folder.id] ?? const <Folder>[];
+      final directFileCount = directNotes.length;
+      final directSubfolderCount = childFolders.length;
+
+      var recursiveFileCount = directFileCount;
+      var totalBytes = 0;
+      for (final note in directNotes) {
+        totalBytes += _noteTotalBytes(note);
+      }
+
+      for (final child in childFolders) {
+        final childStats = computeStats(child);
+        recursiveFileCount += childStats.recursiveFileCount;
+        totalBytes += childStats.totalBytes;
+      }
+
+      final stats = FolderVisualStats(
+        recursiveFileCount: recursiveFileCount,
+        directFileCount: directFileCount,
+        directSubfolderCount: directSubfolderCount,
+        totalBytes: totalBytes,
+      );
+      statsByFolder[folder.id] = stats;
+      return stats;
+    }
+
+    for (final folder in allFolders) {
+      computeStats(folder);
+    }
+
+    return statsByFolder;
+  }
+
+  int _noteTotalBytes(Note note) {
+    var total = note.size;
+    for (final attachment in note.attachments) {
+      total += attachment.size;
+    }
+    return total;
+  }
+
   void _updateAutoScroll(double delta) {
     _autoScrollDelta = delta;
     if (delta == 0) {
@@ -757,6 +829,7 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Note> notes,
     FoldersProvider foldersProvider,
     NotesProvider notesProvider, {
+    required Map<String, FolderVisualStats> folderStats,
     required bool isSearchActive,
     required bool showFolderResults,
     required bool showFileResults,
@@ -827,6 +900,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FolderGrid(
                             folders: folders,
+                            folderStats: folderStats,
                             onFolderTap: (folderId) => _handleFolderTap(
                               folderId,
                               isSearchActive: isSearchActive,
@@ -842,6 +916,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FolderList(
                             folders: folders,
+                            folderStats: folderStats,
                             onFolderTap: (folderId) => _handleFolderTap(
                               folderId,
                               isSearchActive: isSearchActive,
@@ -1495,7 +1570,10 @@ class _HomeScreenState extends State<HomeScreen> {
           contentType: 'application/pdf',
         );
         if (storedPath != null) {
-          final updatedNote = note.copyWith(pdfPath: storedPath);
+          final updatedNote = note.copyWith(
+            pdfPath: storedPath,
+            size: await File(filePath).length(),
+          );
           await notesProvider.updateNote(updatedNote);
         } else {
           await notesProvider.deleteNote(note.id);
@@ -1601,7 +1679,10 @@ class _HomeScreenState extends State<HomeScreen> {
           contentType: 'application/pdf',
         );
         if (storedPath != null) {
-          final updatedNote = note.copyWith(pdfPath: storedPath);
+          final updatedNote = note.copyWith(
+            pdfPath: storedPath,
+            size: bytes.length,
+          );
           await notesProvider.updateNote(updatedNote);
         } else {
           await notesProvider.deleteNote(note.id);

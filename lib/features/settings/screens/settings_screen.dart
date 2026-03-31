@@ -3,14 +3,19 @@
 /// App settings including theme, sync, and account options.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../../core/models/folder.dart';
+import '../../../core/models/note.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -289,10 +294,15 @@ class SettingsScreen extends StatelessWidget {
     final targetWorkspace = authService.storageUserId ?? authService.userId!;
 
     if (enabled && sourceWorkspace != targetWorkspace) {
+      final clonedFiles = await LocalFileService.instance.cloneWorkspaceFiles(
+        sourceWorkspace,
+        targetWorkspace,
+      );
       final clonedNotes = await notesProvider.cloneWorkspace(
         sourceUserId: sourceWorkspace,
         targetUserId: targetWorkspace,
         overwriteTarget: false,
+        stripRemoteAssetPaths: true,
       );
       final clonedFolders = await foldersProvider.cloneWorkspace(
         sourceUserId: sourceWorkspace,
@@ -300,11 +310,12 @@ class SettingsScreen extends StatelessWidget {
         overwriteTarget: false,
       );
 
-      if (context.mounted && (clonedNotes > 0 || clonedFolders > 0)) {
+      if (context.mounted &&
+          (clonedFiles > 0 || clonedNotes > 0 || clonedFolders > 0)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Cloned $clonedNotes notes and $clonedFolders folders to local workspace',
+              'Cloned $clonedFiles local files, $clonedNotes notes, and $clonedFolders folders to local workspace',
             ),
           ),
         );
@@ -317,6 +328,9 @@ class SettingsScreen extends StatelessWidget {
     await calendarProvider.initialize(targetWorkspace);
     await homeworkProvider.initialize(targetWorkspace);
     await timetableProvider.initialize(targetWorkspace);
+    final strippedRemoteAssets = enabled
+        ? await notesProvider.stripRemoteAssetPathsFromActiveWorkspace()
+        : 0;
 
     syncService.setSyncEnabled(authService.effectiveSyncEnabled);
     if (authService.effectiveSyncEnabled && authService.userId != null) {
@@ -341,7 +355,11 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            enabled ? 'Local workspace enabled' : 'Returned to cloud workspace',
+            enabled
+                ? strippedRemoteAssets > 0
+                    ? 'Local workspace enabled. Removed $strippedRemoteAssets cloud-backed file links.'
+                    : 'Local workspace enabled'
+                : 'Returned to cloud workspace',
           ),
         ),
       );
@@ -847,10 +865,53 @@ class SettingsScreen extends StatelessWidget {
     if (conflicts.isEmpty) return;
 
     int currentIndex = 0;
+    bool applyToAllRemaining = false;
+    late void Function() showNextConflict;
 
-    void showNextConflict() {
+    Future<void> resolveConflicts(
+      ConflictResolution resolution, {
+      required BuildContext dialogContext,
+    }) async {
+      final conflictsToResolve = applyToAllRemaining
+          ? conflicts.skip(currentIndex).toList()
+          : [conflicts[currentIndex]];
+
+      for (final conflict in conflictsToResolve) {
+        await syncService.resolveConflict(
+          conflict,
+          resolution,
+          notesProvider: notesProvider,
+          foldersProvider: foldersProvider,
+          userId: userId,
+        );
+      }
+
+      if (!dialogContext.mounted) {
+        return;
+      }
+
+      Navigator.pop(dialogContext);
+      currentIndex += conflictsToResolve.length;
       if (currentIndex >= conflicts.length) {
-        Navigator.pop(context);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                applyToAllRemaining
+                    ? 'Applied ${_resolutionLabel(resolution)} to ${conflictsToResolve.length} conflicts.'
+                    : 'All conflicts resolved',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      showNextConflict();
+    }
+
+    showNextConflict = () {
+      if (currentIndex >= conflicts.length) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('All conflicts resolved')),
         );
@@ -861,108 +922,414 @@ class SettingsScreen extends StatelessWidget {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('Conflict: ${conflict.itemName}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Local modified: ${_formatDateTime(conflict.localModified)}',
-                ),
-                Text(
-                  'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',
-                ),
-                const SizedBox(height: 16),
-                const Text('Choose which version to keep:'),
-              ],
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text('Conflict: ${conflict.itemName}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This ${conflict.isNote ? "note" : "folder"} has been modified in both locations.',
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Local modified: ${_formatDateTime(conflict.localModified)}',
+                  ),
+                  Text(
+                    'Cloud modified: ${_formatDateTime(conflict.cloudModified)}',
+                  ),
+                  const SizedBox(height: 16),
+                  FutureBuilder<_ConflictPreviewData>(
+                    future: _loadConflictPreview(
+                      conflict: conflict,
+                      syncService: syncService,
+                      notesProvider: notesProvider,
+                      foldersProvider: foldersProvider,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      final preview = snapshot.data;
+                      if (preview == null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _buildConflictPreview(preview),
+                      );
+                    },
+                  ),
+                  const Text('Choose which version to keep:'),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: applyToAllRemaining,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(
+                      'Apply to all remaining conflicts (${conflicts.length - currentIndex})',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        applyToAllRemaining = value ?? false;
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+            actions: [
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.useLocal,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Use Local'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Use Local for All' : 'Use Local',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.useCloud,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Use Cloud'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Use Cloud for All' : 'Use Cloud',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.keepBoth,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Keep Both'),
-            ),
-            TextButton(
-              onPressed: () async {
-                await syncService.resolveConflict(
-                  conflict,
+                  dialogContext: dialogContext,
+                ),
+                child: Text(
+                  applyToAllRemaining ? 'Keep Both for All' : 'Keep Both',
+                ),
+              ),
+              TextButton(
+                onPressed: () => resolveConflicts(
                   ConflictResolution.skip,
-                  notesProvider: notesProvider,
-                  foldersProvider: foldersProvider,
-                  userId: userId,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                  currentIndex++;
-                  showNextConflict();
-                }
-              },
-              child: const Text('Skip'),
-            ),
-          ],
+                  dialogContext: dialogContext,
+                ),
+                child: Text(applyToAllRemaining ? 'Skip All' : 'Skip'),
+              ),
+            ],
+          ),
         ),
       );
-    }
+    };
 
     showNextConflict();
+  }
+
+  String _resolutionLabel(ConflictResolution resolution) {
+    switch (resolution) {
+      case ConflictResolution.useLocal:
+        return 'Use Local';
+      case ConflictResolution.useCloud:
+        return 'Use Cloud';
+      case ConflictResolution.keepBoth:
+        return 'Keep Both';
+      case ConflictResolution.skip:
+        return 'Skip';
+    }
   }
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+  }
+
+  Future<_ConflictPreviewData> _loadConflictPreview({
+    required ConflictInfo conflict,
+    required LocalFolderSyncService syncService,
+    required NotesProvider notesProvider,
+    required FoldersProvider foldersProvider,
+  }) async {
+    if (conflict.isNote) {
+      return _loadNoteConflictPreview(
+        conflict: conflict,
+        syncService: syncService,
+        notesProvider: notesProvider,
+      );
+    }
+
+    return _loadFolderConflictPreview(
+      conflict: conflict,
+      syncService: syncService,
+      foldersProvider: foldersProvider,
+    );
+  }
+
+  Future<_ConflictPreviewData> _loadNoteConflictPreview({
+    required ConflictInfo conflict,
+    required LocalFolderSyncService syncService,
+    required NotesProvider notesProvider,
+  }) async {
+    final note = notesProvider.getNoteById(conflict.itemId);
+    final syncFolder = syncService.syncFolder;
+    if (note == null || syncFolder == null) {
+      return const _ConflictPreviewData.empty();
+    }
+
+    final localPath = p.join(syncFolder.path, _localPathForNote(note));
+    final localFile = File(localPath);
+    final localExists = await localFile.exists();
+    final localSize = localExists ? await localFile.length() : 0;
+    final localPreview = localExists
+        ? await _readLocalPreview(localFile, note.type)
+        : 'Local file not found.';
+    final cloudPreview = _cloudPreviewForNote(note);
+
+    final differences = <String>[
+      if (localExists && localSize != note.size)
+        'Size differs: local ${_formatBytes(localSize)} vs cloud ${_formatBytes(note.size)}',
+      if (_normalizePreview(localPreview) != _normalizePreview(cloudPreview))
+        'Content preview differs',
+      if (localExists) 'Local file path: ${localFile.path}',
+      if (note.pdfPath?.isNotEmpty == true && note.type == NoteType.pdf)
+        'Cloud PDF reference: ${note.pdfPath}',
+    ];
+
+    return _ConflictPreviewData(
+      differences: differences,
+      local: _ConflictSideData(
+        label: 'Local',
+        meta: localExists
+            ? '${_noteTypeLabel(note.type)} • ${_formatBytes(localSize)}'
+            : 'Missing local file',
+        preview: localPreview,
+      ),
+      cloud: _ConflictSideData(
+        label: 'Cloud',
+        meta: '${_noteTypeLabel(note.type)} • ${_formatBytes(note.size)}',
+        preview: cloudPreview,
+      ),
+    );
+  }
+
+  Future<_ConflictPreviewData> _loadFolderConflictPreview({
+    required ConflictInfo conflict,
+    required LocalFolderSyncService syncService,
+    required FoldersProvider foldersProvider,
+  }) async {
+    final folder = foldersProvider.getFolderById(conflict.itemId);
+    final syncFolder = syncService.syncFolder;
+    if (folder == null || syncFolder == null) {
+      return const _ConflictPreviewData.empty();
+    }
+
+    final localDir =
+        Directory(p.join(syncFolder.path, _localPathForFolder(folder)));
+    final localExists = await localDir.exists();
+    var localItems = 0;
+    if (localExists) {
+      await for (final _ in localDir.list()) {
+        localItems++;
+      }
+    }
+
+    final differences = <String>[
+      if (localExists)
+        'Local directory contains $localItems item${localItems == 1 ? '' : 's'}',
+      if ((folder.subtitle ?? '').trim().isNotEmpty)
+        'Cloud subtitle: ${folder.subtitle}',
+      if (folder.parentId != null) 'Cloud folder has a parent folder',
+    ];
+
+    return _ConflictPreviewData(
+      differences: differences,
+      local: _ConflictSideData(
+        label: 'Local',
+        meta: localExists ? 'Directory on disk' : 'Missing local directory',
+        preview: localExists ? localDir.path : 'Local folder not found.',
+      ),
+      cloud: _ConflictSideData(
+        label: 'Cloud',
+        meta: 'Folder in app workspace',
+        preview: [
+          folder.name,
+          if ((folder.subtitle ?? '').trim().isNotEmpty) folder.subtitle!,
+        ].join('\n'),
+      ),
+    );
+  }
+
+  Future<String> _readLocalPreview(File file, NoteType type) async {
+    try {
+      if (type == NoteType.pdf ||
+          p.extension(file.path).toLowerCase() == '.pdf') {
+        return 'PDF file on disk';
+      }
+
+      final raw = await file.readAsString();
+      return _truncatePreview(raw);
+    } catch (e) {
+      return 'Unable to read local file: $e';
+    }
+  }
+
+  String _cloudPreviewForNote(Note note) {
+    if (note.type == NoteType.pdf) {
+      return note.pdfPath?.isNotEmpty == true
+          ? 'PDF note\n${note.pdfPath}'
+          : 'PDF note';
+    }
+
+    final content = note.type == NoteType.markdown
+        ? note.content
+        : _extractPlainText(note.content);
+    return _truncatePreview(content);
+  }
+
+  String _extractPlainText(String content) {
+    if (content.isEmpty) {
+      return '';
+    }
+
+    final trimmed = content.trimLeft();
+    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
+      return content;
+    }
+
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is List<dynamic>) {
+        return Document.fromJson(decoded).toPlainText();
+      }
+      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
+        return Document.fromJson(decoded['ops'] as List<dynamic>).toPlainText();
+      }
+    } catch (_) {
+      return content;
+    }
+
+    return content;
+  }
+
+  String _truncatePreview(String value) {
+    final normalized = value.replaceAll('\r\n', '\n').trim();
+    if (normalized.isEmpty) {
+      return 'No text content';
+    }
+    if (normalized.length <= 400) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 400)}...';
+  }
+
+  String _normalizePreview(String value) {
+    final buffer = StringBuffer();
+    var wroteWhitespace = false;
+
+    for (final codeUnit in value.trim().codeUnits) {
+      final isWhitespace =
+          codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13;
+      if (isWhitespace) {
+        if (!wroteWhitespace) {
+          buffer.write(' ');
+          wroteWhitespace = true;
+        }
+        continue;
+      }
+
+      buffer.writeCharCode(codeUnit);
+      wroteWhitespace = false;
+    }
+
+    return buffer.toString();
+  }
+
+  String _localPathForNote(Note note) {
+    switch (note.type) {
+      case NoteType.pdf:
+        return '${note.title}.pdf';
+      case NoteType.markdown:
+        return '${note.title}.md';
+      case NoteType.text:
+        return '${note.title}.txt';
+    }
+  }
+
+  String _localPathForFolder(Folder folder) => folder.name;
+
+  String _noteTypeLabel(NoteType type) {
+    switch (type) {
+      case NoteType.text:
+        return 'Text';
+      case NoteType.markdown:
+        return 'Markdown';
+      case NoteType.pdf:
+        return 'PDF';
+    }
+  }
+
+  Widget _buildConflictPreview(_ConflictPreviewData preview) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (preview.differences.isNotEmpty) ...[
+          const Text(
+            'Differences',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          ...preview.differences.map(
+            (difference) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $difference'),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _buildConflictSideCard(preview.local),
+        const SizedBox(height: 8),
+        _buildConflictSideCard(preview.cloud),
+      ],
+    );
+  }
+
+  Widget _buildConflictSideCard(_ConflictSideData side) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            side.label,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            side.meta,
+            style: const TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(side.preview),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmSignOut(
@@ -1111,6 +1478,43 @@ class SettingsScreen extends StatelessWidget {
 enum _SignOutAction {
   continueAsGuest,
   deleteLocalAndSignOut,
+}
+
+class _ConflictPreviewData {
+  final List<String> differences;
+  final _ConflictSideData local;
+  final _ConflictSideData cloud;
+
+  const _ConflictPreviewData({
+    required this.differences,
+    required this.local,
+    required this.cloud,
+  });
+
+  const _ConflictPreviewData.empty()
+      : differences = const [],
+        local = const _ConflictSideData(
+          label: 'Local',
+          meta: 'Unavailable',
+          preview: 'No preview available.',
+        ),
+        cloud = const _ConflictSideData(
+          label: 'Cloud',
+          meta: 'Unavailable',
+          preview: 'No preview available.',
+        );
+}
+
+class _ConflictSideData {
+  final String label;
+  final String meta;
+  final String preview;
+
+  const _ConflictSideData({
+    required this.label,
+    required this.meta,
+    required this.preview,
+  });
 }
 
 class _SectionHeader extends StatelessWidget {

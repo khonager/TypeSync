@@ -4,15 +4,29 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/color_utils.dart';
 
+class FolderVisualStats {
+  final int recursiveFileCount;
+  final int directFileCount;
+  final int directSubfolderCount;
+  final int totalBytes;
+
+  const FolderVisualStats({
+    required this.recursiveFileCount,
+    required this.directFileCount,
+    required this.directSubfolderCount,
+    required this.totalBytes,
+  });
+}
+
 /// Grid view for folders
 class FolderGrid extends StatelessWidget {
   final List<Folder> folders;
+  final Map<String, FolderVisualStats> folderStats;
   final void Function(String) onFolderTap;
   final void Function(String) onFolderLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
@@ -24,6 +38,7 @@ class FolderGrid extends StatelessWidget {
 
   const FolderGrid({
     required this.folders,
+    required this.folderStats,
     required this.onFolderTap,
     required this.onFolderLongPress,
     super.key,
@@ -42,11 +57,18 @@ class FolderGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+        childAspectRatio: 0.78,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderGridItem(
           folder: folders[index],
+          stats: folderStats[folders[index].id] ??
+              const FolderVisualStats(
+                recursiveFileCount: 0,
+                directFileCount: 0,
+                directSubfolderCount: 0,
+                totalBytes: 0,
+              ),
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
           onNoteDropped: onNoteDropped,
@@ -65,6 +87,7 @@ class FolderGrid extends StatelessWidget {
 /// Individual folder item in grid
 class FolderGridItem extends StatelessWidget {
   final Folder folder;
+  final FolderVisualStats stats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final void Function(String noteId, String folderId)? onNoteDropped;
@@ -76,6 +99,7 @@ class FolderGridItem extends StatelessWidget {
 
   const FolderGridItem({
     required this.folder,
+    required this.stats,
     required this.onTap,
     required this.onLongPress,
     super.key,
@@ -170,13 +194,17 @@ class FolderGridItem extends StatelessWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
+      // Allow a stationary long-press to open the options sheet even when
+      // long-press drag is enabled; dragging still begins once the pointer
+      // moves after the long-press delay.
+      onLongPress: onLongPress,
       onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Folder icon container
-          Expanded(
+          AspectRatio(
+            aspectRatio: 1,
             child: Container(
               decoration: BoxDecoration(
                 color: bgColor,
@@ -188,12 +216,24 @@ class FolderGridItem extends StatelessWidget {
                       )
                     : null,
               ),
-              child: Center(
-                child: Icon(
-                  showBorder ? Icons.folder_open : Icons.folder,
-                  size: 48,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      showBorder ? Icons.folder_open : Icons.folder,
+                      size: 48,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  if (stats.recursiveFileCount > 0)
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: _FolderCountBadge(
+                        label: '${stats.recursiveFileCount}',
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -226,25 +266,18 @@ class FolderGridItem extends StatelessWidget {
       ),
     );
   }
-
-  bool _isMobilePlatform() {
-    if (kIsWeb) {
-      return false;
-    }
-
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
-  }
 }
 
 /// List view for folders
 class FolderList extends StatelessWidget {
   final List<Folder> folders;
+  final Map<String, FolderVisualStats> folderStats;
   final void Function(String) onFolderTap;
   final void Function(String) onFolderLongPress;
 
   const FolderList({
     required this.folders,
+    required this.folderStats,
     required this.onFolderTap,
     required this.onFolderLongPress,
     super.key,
@@ -256,6 +289,13 @@ class FolderList extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) => FolderListItem(
           folder: folders[index],
+          stats: folderStats[folders[index].id] ??
+              const FolderVisualStats(
+                recursiveFileCount: 0,
+                directFileCount: 0,
+                directSubfolderCount: 0,
+                totalBytes: 0,
+              ),
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
         ),
@@ -268,11 +308,13 @@ class FolderList extends StatelessWidget {
 /// Individual folder item in list - matches the widget design (top right in mockup)
 class FolderListItem extends StatelessWidget {
   final Folder folder;
+  final FolderVisualStats stats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
   const FolderListItem({
     required this.folder,
+    required this.stats,
     required this.onTap,
     required this.onLongPress,
     super.key,
@@ -328,6 +370,12 @@ class FolderListItem extends StatelessWidget {
                                       : null,
                                 ),
                       ),
+                      Text(
+                        '${stats.recursiveFileCount} files • ${_formatBytes(stats.totalBytes)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey,
+                            ),
+                      ),
                       if (folder.subtitle != null &&
                           folder.subtitle!.isNotEmpty)
                         Text(
@@ -340,6 +388,13 @@ class FolderListItem extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (stats.recursiveFileCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _FolderCountBadge(
+                      label: '${stats.recursiveFileCount}',
+                    ),
+                  ),
                 // Arrow indicator
                 const Icon(
                   Icons.chevron_right,
@@ -348,6 +403,42 @@ class FolderListItem extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+  }
+}
+
+class _FolderCountBadge extends StatelessWidget {
+  final String label;
+
+  const _FolderCountBadge({
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

@@ -4,12 +4,28 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/models/note.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/color_utils.dart';
+
+int _noteTotalBytes(Note note) {
+  var total = note.size;
+  for (final attachment in note.attachments) {
+    total += attachment.size;
+  }
+  return total;
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1000) return '$bytes B';
+  if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+  if (bytes < 1000 * 1000 * 1000) {
+    return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+}
 
 /// Grid view for files/notes
 class FileGrid extends StatelessWidget {
@@ -39,7 +55,7 @@ class FileGrid extends StatelessWidget {
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
+        childAspectRatio: 0.78,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileGridItem(
@@ -100,7 +116,6 @@ class FileGridItem extends StatelessWidget {
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
-
     final child = _buildFileContent(
       context,
       icon: icon,
@@ -161,14 +176,19 @@ class FileGridItem extends StatelessWidget {
     required Color textColor,
     required Color iconColor,
   }) {
+    final attachmentCount = note.attachments.length;
+
     return GestureDetector(
       onTap: onTap,
-      onLongPress: useLongPressDrag && _isMobilePlatform() ? null : onLongPress,
+      // Keep the long-press options menu available on touch devices while
+      // still letting LongPressDraggable start a drag once the finger moves.
+      onLongPress: onLongPress,
       onSecondaryTap: onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
+          AspectRatio(
+            aspectRatio: 1,
             child: Container(
               decoration: BoxDecoration(
                 color: note.backgroundColor != null
@@ -209,6 +229,15 @@ class FileGridItem extends StatelessWidget {
                         color: Colors.orangeAccent,
                       ),
                     ),
+                  if (attachmentCount > 0)
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: _CountBadge(
+                        icon: Icons.attach_file,
+                        label: '$attachmentCount',
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -226,15 +255,6 @@ class FileGridItem extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  bool _isMobilePlatform() {
-    if (kIsWeb) {
-      return false;
-    }
-
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 
@@ -301,6 +321,8 @@ class FileListItem extends StatelessWidget {
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
+    final attachmentCount = note.attachments.length;
+    final totalBytes = _noteTotalBytes(note);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -349,6 +371,14 @@ class FileListItem extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (attachmentCount > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _CountBadge(
+                                icon: Icons.attach_file,
+                                label: '$attachmentCount',
+                              ),
+                            ),
                           if (note.isFavorite)
                             const Icon(
                               Icons.star,
@@ -368,7 +398,7 @@ class FileListItem extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        dateFormat.format(note.updatedAt),
+                        '${dateFormat.format(note.updatedAt)} • ${_formatBytes(totalBytes)}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: textColor.withValues(alpha: 0.7),
                             ),
@@ -380,6 +410,42 @@ class FileListItem extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _CountBadge({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

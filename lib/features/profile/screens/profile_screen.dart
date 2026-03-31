@@ -15,6 +15,7 @@ import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
@@ -30,6 +31,12 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
+  int _localStorageBytes = 0;
+  int _localAppStorageBytes = 0;
+  int _localFolderSyncBytes = 0;
+  bool _isLoadingLocalStorage = false;
+  String? _lastObservedLocalSyncPath;
+
   Future<void> _refreshStorageInfo() async {
     final authService = context.read<AuthService>();
     if (authService.isGuestMode) {
@@ -37,10 +44,70 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     await authService.refreshCurrentUser();
+    if (!mounted) return;
+
+    final cloudUserId = authService.userId;
     final workspaceId = authService.storageUserId;
-    if (workspaceId != null && mounted) {
-      await context.read<StorageService>().loadStorageInfo(workspaceId);
+    if (cloudUserId == null || workspaceId == null) return;
+
+    final storageService = context.read<StorageService>();
+    final localFileService = LocalFileService.instance;
+    final localFolderSyncService = context.read<LocalFolderSyncService>();
+
+    setState(() {
+      _isLoadingLocalStorage = true;
+    });
+
+    try {
+      await Future.wait([
+        storageService.loadStorageInfo(
+          cloudUserId,
+          fallbackUser: authService.currentUser,
+        ),
+        () async {
+          await localFileService.initialize(workspaceId);
+          final localAppStorageBytes =
+              await localFileService.getTotalStorageBytes();
+          final localFolderSyncBytes =
+              await localFolderSyncService.getTotalStorageBytes();
+          final localStorageBytes = localAppStorageBytes + localFolderSyncBytes;
+          if (!mounted) return;
+          setState(() {
+            _localAppStorageBytes = localAppStorageBytes;
+            _localFolderSyncBytes = localFolderSyncBytes;
+            _localStorageBytes = localStorageBytes;
+          });
+        }(),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocalStorage = false;
+        });
+      }
     }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1000) return '$bytes B';
+    if (bytes < 1000 * 1000) return '${(bytes / 1000).toStringAsFixed(1)} KB';
+    if (bytes < 1000 * 1000 * 1000) {
+      return '${(bytes / (1000 * 1000)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1000 * 1000 * 1000)).toStringAsFixed(2)} GB';
+  }
+
+  String _formatExactBytes(int bytes) {
+    final digits = bytes.toString();
+    final buffer = StringBuffer();
+    for (var index = 0; index < digits.length; index++) {
+      final remaining = digits.length - index;
+      buffer.write(digits[index]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return '${buffer.toString()} bytes';
   }
 
   @override
@@ -53,6 +120,21 @@ class _ProfileScreenState extends State<ProfileScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _refreshStorageInfo();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final localSyncPath =
+        context.watch<LocalFolderSyncService>().syncFolder?.path;
+    if (localSyncPath != _lastObservedLocalSyncPath) {
+      _lastObservedLocalSyncPath = localSyncPath;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _refreshStorageInfo();
+        }
+      });
+    }
   }
 
   @override
@@ -190,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Storage',
+                        'Cloud Storage',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
@@ -223,6 +305,150 @@ class _ProfileScreenState extends State<ProfileScreen>
                           AppRouter.navigateTo(context, AppRouter.subscription);
                         },
                         child: const Text('Upgrade'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _formatExactBytes(storageService.storageUsedBytes),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Notes content',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudContentBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Note attachments',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudAttachmentBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Cloud files',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        '${storageService.cloudFileCount}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Cloud notes',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        '${storageService.cloudNoteCount}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  if (storageService.cloudRecordedBytes >
+                      [
+                        storageService.cloudContentBytes +
+                            storageService.cloudAttachmentBytes,
+                        storageService.cloudStoredFileBytes,
+                      ].reduce((a, b) => a > b ? a : b)) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Recorded account total',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        Text(
+                          _formatBytes(storageService.cloudRecordedBytes),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Local Files',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        _isLoadingLocalStorage
+                            ? 'Calculating...'
+                            : _formatBytes(_localStorageBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Stored on this device only. Total = app-local cache + Local Folder Sync directory.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _formatExactBytes(_localStorageBytes),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'App-local cache',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(_localAppStorageBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Local Folder Sync',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(_localFolderSyncBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),

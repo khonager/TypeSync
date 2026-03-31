@@ -2247,7 +2247,10 @@ class _EditorScreenState extends State<EditorScreen>
           contentType: 'application/pdf',
         );
         if (remotePath != null) {
-          note = note.copyWith(pdfPath: remotePath);
+          note = note.copyWith(
+            pdfPath: remotePath,
+            size: note.size > 0 ? note.size : await file.length(),
+          );
           changed = true;
         }
       }
