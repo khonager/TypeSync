@@ -7,6 +7,8 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill_internal.dart'
+    show ClipboardServiceProvider;
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -19,6 +21,7 @@ import 'core/services/storage_service.dart';
 import 'core/services/theme_service.dart';
 import 'core/services/local_folder_sync_service.dart';
 import 'core/services/diagnostics_service.dart';
+import 'core/services/plain_text_quill_clipboard_service.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
 import 'core/providers/timetable_provider.dart';
@@ -57,6 +60,11 @@ void main() async {
 
   // Initialize Firedart for Linux support
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+    // Quill's default Linux clipboard bridge probes rich formats by spawning
+    // xclip processes before falling back to plain text, which makes even tiny
+    // paste operations feel sluggish in the editor.
+    ClipboardServiceProvider.setInstance(PlainTextQuillClipboardService());
+
     try {
       // Initialize Auth with persistent TokenStore (or memory fallback if Hive fails)
       final tokenStore = await HiveTokenStore.create();
