@@ -9,6 +9,7 @@ class HomeUpcomingCard extends StatelessWidget {
   final ValueChanged<UpcomingItemViewData>? onItemTap;
   final String title;
   final EdgeInsetsGeometry contentPadding;
+  final HomeUpcomingCardLayout layout;
 
   const HomeUpcomingCard({
     required this.items,
@@ -16,6 +17,7 @@ class HomeUpcomingCard extends StatelessWidget {
     this.onItemTap,
     this.title = 'Upcoming',
     this.contentPadding = const EdgeInsets.fromLTRB(12, 10, 12, 8),
+    this.layout = const HomeUpcomingCardLayout(),
   });
 
   @override
@@ -38,12 +40,13 @@ class HomeUpcomingCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: layout.titleBottomSpacing),
             for (var i = 0; i < items.length; i++)
               _UpcomingRow(
                 item: items[i],
                 showDivider: i < items.length - 1,
                 onTap: onItemTap == null ? null : () => onItemTap!(items[i]),
+                layout: layout,
               ),
           ],
         ),
@@ -52,14 +55,38 @@ class HomeUpcomingCard extends StatelessWidget {
   }
 }
 
+class HomeUpcomingCardLayout {
+  final double titleBottomSpacing;
+  final double rowVerticalPadding;
+  final double iconSize;
+  final double iconSpacing;
+  final double metaSpacing;
+  final double minMetaWidth;
+  final double secondaryMetaSpacing;
+  final BorderRadius itemBorderRadius;
+
+  const HomeUpcomingCardLayout({
+    this.titleBottomSpacing = 4,
+    this.rowVerticalPadding = 10,
+    this.iconSize = 18,
+    this.iconSpacing = 10,
+    this.metaSpacing = 12,
+    this.minMetaWidth = 74,
+    this.secondaryMetaSpacing = 1,
+    this.itemBorderRadius = const BorderRadius.all(Radius.circular(10)),
+  });
+}
+
 class _UpcomingRow extends StatelessWidget {
   final UpcomingItemViewData item;
   final bool showDivider;
   final VoidCallback? onTap;
+  final HomeUpcomingCardLayout layout;
 
   const _UpcomingRow({
     required this.item,
     required this.showDivider,
+    required this.layout,
     this.onTap,
   });
 
@@ -68,15 +95,15 @@ class _UpcomingRow extends StatelessWidget {
     final theme = Theme.of(context);
     final accentColor = item.accentColor(theme);
     final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: EdgeInsets.symmetric(vertical: layout.rowVerticalPadding),
       child: Row(
         children: [
           Icon(
             item.icon,
-            size: 18,
+            size: layout.iconSize,
             color: accentColor,
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: layout.iconSpacing),
           Expanded(
             child: Text(
               item.title,
@@ -87,9 +114,9 @@ class _UpcomingRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: layout.metaSpacing),
           ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 74),
+            constraints: BoxConstraints(minWidth: layout.minMetaWidth),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -104,7 +131,7 @@ class _UpcomingRow extends StatelessWidget {
                   textAlign: TextAlign.right,
                 ),
                 if (item.secondaryMeta != null) ...[
-                  const SizedBox(height: 1),
+                  SizedBox(height: layout.secondaryMetaSpacing),
                   Text(
                     item.secondaryMeta!,
                     maxLines: 1,
@@ -130,7 +157,7 @@ class _UpcomingRow extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: layout.itemBorderRadius,
               onTap: onTap,
               child: row,
             ),
