@@ -7,6 +7,7 @@ import '../core/providers/calendar_provider.dart';
 import '../core/providers/homework_provider.dart';
 import '../core/services/home_widget_service.dart';
 import '../core/services/theme_service.dart';
+import '../core/utils/color_value_compat.dart';
 import '../features/home/models/upcoming_item_view_data.dart';
 
 class HomeWidgetSyncCoordinator extends StatefulWidget {
@@ -87,7 +88,7 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
       calendarLoading ? 'calendar-loading' : 'calendar-ready',
       homeworkLoading ? 'homework-loading' : 'homework-ready',
       brightness.name,
-      accentColor.toARGB32().toString(),
+      colorToArgb32(accentColor).toString(),
       itemSignature,
     ].join('::');
   }

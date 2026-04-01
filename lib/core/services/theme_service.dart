@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'sync_service.dart';
+import '../utils/color_value_compat.dart';
 
 /// Service for managing app theme and appearance
 ///
@@ -218,17 +219,16 @@ class ThemeService extends ChangeNotifier {
   Future<void> _savePreferences({bool syncToCloud = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final accentColorValue = colorToArgb32(_accentColor);
 
       await prefs.setInt(_themeModeKey, _themeMode.index);
-      // ignore: deprecated_member_use
-      await prefs.setInt(_accentColorKey, _accentColor.value);
+      await prefs.setInt(_accentColorKey, accentColorValue);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
 
       if (syncToCloud && _syncService != null) {
         _syncService!.syncSettings({
           'themeMode': _themeMode.index,
-          // ignore: deprecated_member_use
-          'accentColor': _accentColor.value,
+          'accentColor': accentColorValue,
           'syncWithSystem': _syncWithSystem,
         });
       }
