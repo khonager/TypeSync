@@ -3,6 +3,8 @@
 /// Bottom navigation bar matching the design mockup.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,7 +19,7 @@ const double _kBarTopPadding = 8.0;
 const double _kBarContentHeight = 64.0;
 const double _kBarMinBottomPadding = 12.0;
 const double _kScrollPaddingBuffer = 16.0;
-const double _kBarTopCornerRadius = 18.0;
+const double _kNotchShoulderWidth = 14.0;
 
 double homeBottomBarHeightFor(BuildContext context) {
   final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -178,21 +180,39 @@ class _BottomBarBackgroundPainter extends CustomPainter {
     const cutoutRadius = (_kAddButtonSize / 2) + _kAddButtonGap;
     const cutoutCenterY = _kAddButtonTopOffset + (_kAddButtonSize / 2);
     final cutoutCenter = Offset(size.width / 2, cutoutCenterY);
-    final fullRectPath = Path()
-      ..addRRect(
-        RRect.fromRectAndCorners(
-          Rect.fromLTWH(0, 0, size.width, size.height),
-          topLeft: const Radius.circular(_kBarTopCornerRadius),
-          topRight: const Radius.circular(_kBarTopCornerRadius),
-        ),
-      );
-    final cutoutPath = Path()
-      ..addOval(Rect.fromCircle(center: cutoutCenter, radius: cutoutRadius));
-    final visiblePath = Path.combine(
-      PathOperation.difference,
-      fullRectPath,
-      cutoutPath,
+    final leftNotchJoin = Offset(
+      cutoutCenter.dx - cutoutRadius,
+      cutoutCenterY,
     );
+    final rightNotchJoin = Offset(
+      cutoutCenter.dx + cutoutRadius,
+      cutoutCenterY,
+    );
+    final visiblePath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(leftNotchJoin.dx - _kNotchShoulderWidth, 0)
+      ..quadraticBezierTo(
+        leftNotchJoin.dx - (_kNotchShoulderWidth * 0.45),
+        0,
+        leftNotchJoin.dx,
+        leftNotchJoin.dy,
+      )
+      ..arcTo(
+        Rect.fromCircle(center: cutoutCenter, radius: cutoutRadius),
+        math.pi,
+        -math.pi,
+        false,
+      )
+      ..quadraticBezierTo(
+        rightNotchJoin.dx + (_kNotchShoulderWidth * 0.45),
+        0,
+        rightNotchJoin.dx + _kNotchShoulderWidth,
+        0,
+      )
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
 
     canvas.drawPath(
       visiblePath,
