@@ -18,9 +18,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
@@ -115,6 +115,8 @@ class _EditorScreenState extends State<EditorScreen>
   Rect? _matchGlowRect;
   bool _showMatchGlow = false;
   bool _didAttemptInitialSearchJump = false;
+  final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
+  final Map<String, Future<String?>> _attachmentTextFutures = {};
 
   @override
   void initState() {
@@ -549,11 +551,30 @@ class _EditorScreenState extends State<EditorScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         const dividerWidth = 18.0;
-        final availableWidth = constraints.maxWidth - dividerWidth;
+        final availableWidth = (constraints.maxWidth - dividerWidth).clamp(
+          0.0,
+          double.infinity,
+        );
+        if (availableWidth <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final maxAttachmentWidth = availableWidth > 320
+            ? availableWidth - 320.0
+            : availableWidth * 0.5;
+        final resolvedMaxAttachmentWidth = maxAttachmentWidth.clamp(
+          0.0,
+          availableWidth,
+        );
+        final resolvedMinAttachmentWidth =
+            (availableWidth >= 600 ? 280.0 : availableWidth * 0.35).clamp(
+          0.0,
+          resolvedMaxAttachmentWidth,
+        );
         final attachmentWidth =
             (availableWidth * _sideBySideAttachmentFraction).clamp(
-          280.0,
-          availableWidth - 320.0,
+          resolvedMinAttachmentWidth,
+          resolvedMaxAttachmentWidth,
         );
         final editorWidth = availableWidth - attachmentWidth;
 
@@ -589,10 +610,29 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         const dividerHeight = 18.0;
-        final availableHeight = constraints.maxHeight - dividerHeight;
+        final availableHeight = (constraints.maxHeight - dividerHeight).clamp(
+          0.0,
+          double.infinity,
+        );
+        if (availableHeight <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final maxAttachmentHeight = availableHeight > 180
+            ? availableHeight - 180.0
+            : availableHeight * 0.5;
+        final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+          0.0,
+          availableHeight,
+        );
+        final resolvedMinAttachmentHeight =
+            (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+          0.0,
+          resolvedMaxAttachmentHeight,
+        );
         final attachmentHeight = _stackedAttachmentHeight.clamp(
-          180.0,
-          availableHeight - 180.0,
+          resolvedMinAttachmentHeight,
+          resolvedMaxAttachmentHeight,
         );
         final editorHeight = availableHeight - attachmentHeight;
 
@@ -622,6 +662,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) {
+          if (availableWidth <= 0) return;
           setState(() {
             final nextWidth = availableWidth * _sideBySideAttachmentFraction +
                 details.delta.dx;
@@ -654,10 +695,25 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
+          if (availableHeight <= 0) return;
           setState(() {
+            final maxAttachmentHeight = availableHeight > 180
+                ? availableHeight - 180.0
+                : availableHeight * 0.5;
+            final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+              0.0,
+              availableHeight,
+            );
+            final resolvedMinAttachmentHeight =
+                (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+              0.0,
+              resolvedMaxAttachmentHeight,
+            );
             _stackedAttachmentHeight =
-                (_stackedAttachmentHeight + details.delta.dy)
-                    .clamp(180.0, availableHeight - 180.0);
+                (_stackedAttachmentHeight + details.delta.dy).clamp(
+              resolvedMinAttachmentHeight,
+              resolvedMaxAttachmentHeight,
+            );
           });
         },
         child: SizedBox(
@@ -1219,6 +1275,9 @@ class _EditorScreenState extends State<EditorScreen>
     required String? userId,
     required StorageService storageService,
   }) async {
+    _attachmentBytesFutures.remove(attachment.path);
+    _attachmentTextFutures.remove(attachment.path);
+
     if (attachment.path.isEmpty || attachment.path.startsWith('data:')) {
       return true;
     }
@@ -1267,14 +1326,7 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
-        return PdfPreview(
-          build: (_) => bytes,
-          allowPrinting: true,
-          allowSharing: true,
-          canChangeOrientation: false,
-          canChangePageFormat: false,
-          canDebug: false,
-        );
+        return _buildInlinePdfPreview(bytes);
       }
 
       if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
@@ -1308,7 +1360,7 @@ class _EditorScreenState extends State<EditorScreen>
           return RemotePdfEmbed(url: attachment.path);
         }
         return FutureBuilder<Uint8List?>(
-          future: _fetchAttachmentBytes(attachment.path),
+          future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1316,21 +1368,14 @@ class _EditorScreenState extends State<EditorScreen>
             if (!snapshot.hasData) {
               return _buildAttachmentUnavailable(attachment);
             }
-            return PdfPreview(
-              build: (_) => snapshot.data!,
-              allowPrinting: true,
-              allowSharing: true,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              canDebug: false,
-            );
+            return _buildInlinePdfPreview(snapshot.data!);
           },
         );
       }
 
       if (_isSvgAttachment(extension, mimeType)) {
         return FutureBuilder<Uint8List?>(
-          future: _fetchAttachmentBytes(attachment.path),
+          future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1352,7 +1397,7 @@ class _EditorScreenState extends State<EditorScreen>
               attachment.path,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => FutureBuilder<Uint8List?>(
-                future: _fetchAttachmentBytes(attachment.path),
+                future: _cachedAttachmentBytes(attachment.path),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -1376,7 +1421,7 @@ class _EditorScreenState extends State<EditorScreen>
 
       if (_isTextAttachment(extension, mimeType)) {
         return FutureBuilder<String?>(
-          future: _fetchAttachmentText(attachment.path),
+          future: _cachedAttachmentText(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1679,6 +1724,21 @@ class _EditorScreenState extends State<EditorScreen>
   bool _isLocalAttachmentPath(String path) =>
       !path.startsWith('data:') && !_isRemoteAttachmentPath(path);
 
+  Future<Uint8List?> _cachedAttachmentBytes(String path) {
+    return _attachmentBytesFutures.putIfAbsent(
+      path,
+      () => _fetchAttachmentBytes(path),
+    );
+  }
+
+  Future<String?> _cachedAttachmentText(String path) {
+    return _attachmentTextFutures.putIfAbsent(path, () async {
+      final bytes = await _cachedAttachmentBytes(path);
+      if (bytes == null) return null;
+      return utf8.decode(bytes, allowMalformed: true);
+    });
+  }
+
   Future<Uint8List?> _fetchAttachmentBytes(String path) async {
     try {
       final response = await http.get(Uri.parse(path));
@@ -1691,10 +1751,21 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Future<String?> _fetchAttachmentText(String path) async {
-    final bytes = await _fetchAttachmentBytes(path);
-    if (bytes == null) return null;
-    return utf8.decode(bytes, allowMalformed: true);
+  Widget _buildInlinePdfPreview(Uint8List bytes) {
+    return PdfPreview(
+      build: (_) => bytes,
+      allowPrinting: false,
+      allowSharing: false,
+      canChangeOrientation: false,
+      canChangePageFormat: false,
+      canDebug: false,
+      dpi: 144,
+      useActions: false,
+      shouldRepaint: false,
+      scrollViewDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+      ),
+    );
   }
 
   void _showConflictDialog() {
