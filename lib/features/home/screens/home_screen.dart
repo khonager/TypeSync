@@ -1393,70 +1393,80 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showCreateOptions() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                'Add',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+      isScrollControlled: true,
+      builder: (context) {
+        final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.85;
+
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxSheetHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Add',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.note_add),
+                    title: const Text('Create File'),
+                    subtitle: const Text('Create a new note/document'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _createNewNote();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.folder),
+                    title: const Text('Create Folder'),
+                    subtitle: const Text('Create a new folder'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _createNewFolder();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.upload_file),
+                    title: const Text('Add Document from Storage'),
+                    subtitle: const Text('Import a file from your device'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _addDocumentFromStorage();
+                    },
+                  ),
+                  const Divider(height: 24),
+                  ListTile(
+                    leading: const Icon(Icons.calendar_today),
+                    title: const Text('Calendar'),
+                    subtitle: const Text('Open reminders and events'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      AppRouter.navigateTo(context, AppRouter.calendar);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.checklist),
+                    title: const Text('Homework'),
+                    subtitle: const Text('Open assignments and tasks'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      AppRouter.navigateTo(context, AppRouter.homework);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.note_add),
-              title: const Text('Create File'),
-              subtitle: const Text('Create a new note/document'),
-              onTap: () {
-                Navigator.pop(context);
-                _createNewNote();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder),
-              title: const Text('Create Folder'),
-              subtitle: const Text('Create a new folder'),
-              onTap: () {
-                Navigator.pop(context);
-                _createNewFolder();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: const Text('Add Document from Storage'),
-              subtitle: const Text('Import a file from your device'),
-              onTap: () {
-                Navigator.pop(context);
-                _addDocumentFromStorage();
-              },
-            ),
-            const Divider(height: 24),
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('Calendar'),
-              subtitle: const Text('Open reminders and events'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.calendar);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist),
-              title: const Text('Homework'),
-              subtitle: const Text('Open assignments and tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.homework);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
