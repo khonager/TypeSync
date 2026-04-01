@@ -20,7 +20,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
@@ -35,6 +34,7 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
@@ -1752,20 +1752,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildInlinePdfPreview(Uint8List bytes) {
-    return PdfPreview(
-      build: (_) => bytes,
-      allowPrinting: false,
-      allowSharing: false,
-      canChangeOrientation: false,
-      canChangePageFormat: false,
-      canDebug: false,
-      dpi: 144,
-      useActions: false,
-      shouldRepaint: false,
-      scrollViewDecoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-      ),
-    );
+    return InlinePdfPreview(pdfBytes: bytes);
   }
 
   void _showConflictDialog() {

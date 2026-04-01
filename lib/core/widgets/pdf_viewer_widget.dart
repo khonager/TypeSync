@@ -7,8 +7,9 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'inline_pdf_preview.dart';
 
 /// Custom PDF viewer widget
 class PdfViewerWidget extends StatefulWidget {
@@ -24,8 +25,6 @@ class PdfViewerWidget extends StatefulWidget {
 }
 
 class _PdfViewerWidgetState extends State<PdfViewerWidget> {
-  static const double _kPreviewDpi = 144;
-
   Uint8List? _pdfBytes;
   bool _isLoading = true;
   String? _errorMessage;
@@ -116,20 +115,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         Expanded(
           child: _pdfBytes == null
               ? const Center(child: CircularProgressIndicator())
-              : PdfPreview(
-                  build: (_) => _pdfBytes!,
-                  allowPrinting: true,
-                  allowSharing: true,
-                  canChangeOrientation: false,
-                  canChangePageFormat: false,
-                  canDebug: false,
-                  dpi: _kPreviewDpi,
-                  useActions: false,
-                  shouldRepaint: false,
-                  scrollViewDecoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                  ),
-                ),
+              : InlinePdfPreview(pdfBytes: _pdfBytes!),
         ),
       ],
     );
