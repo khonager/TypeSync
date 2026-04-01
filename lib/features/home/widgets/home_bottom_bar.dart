@@ -17,6 +17,7 @@ const double _kBarTopPadding = 8.0;
 const double _kBarContentHeight = 64.0;
 const double _kBarMinBottomPadding = 12.0;
 const double _kScrollPaddingBuffer = 16.0;
+const double _kBarTopCornerRadius = 18.0;
 
 double homeBottomBarHeightFor(BuildContext context) {
   final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -178,7 +179,13 @@ class _BottomBarBackgroundPainter extends CustomPainter {
     const cutoutCenterY = _kAddButtonTopOffset + (_kAddButtonSize / 2);
     final cutoutCenter = Offset(size.width / 2, cutoutCenterY);
     final fullRectPath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+      ..addRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTWH(0, 0, size.width, size.height),
+          topLeft: const Radius.circular(_kBarTopCornerRadius),
+          topRight: const Radius.circular(_kBarTopCornerRadius),
+        ),
+      );
     final cutoutPath = Path()
       ..addOval(Rect.fromCircle(center: cutoutCenter, radius: cutoutRadius));
     final visiblePath = Path.combine(
