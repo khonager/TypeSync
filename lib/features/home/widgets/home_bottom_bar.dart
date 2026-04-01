@@ -19,7 +19,9 @@ const double _kBarTopPadding = 8.0;
 const double _kBarContentHeight = 64.0;
 const double _kBarMinBottomPadding = 12.0;
 const double _kScrollPaddingBuffer = 16.0;
-const double _kNotchShoulderWidth = 14.0;
+const double _kBarTopCornerRadius = 18.0;
+const double _kNotchShoulderWidth = 10.0;
+const double _kNotchShoulderRadius = 12.0;
 
 double homeBottomBarHeightFor(BuildContext context) {
   final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -189,13 +191,13 @@ class _BottomBarBackgroundPainter extends CustomPainter {
       cutoutCenterY,
     );
     final visiblePath = Path()
-      ..moveTo(0, 0)
+      ..moveTo(0, _kBarTopCornerRadius)
+      ..quadraticBezierTo(0, 0, _kBarTopCornerRadius, 0)
       ..lineTo(leftNotchJoin.dx - _kNotchShoulderWidth, 0)
-      ..quadraticBezierTo(
-        leftNotchJoin.dx - (_kNotchShoulderWidth * 0.45),
-        0,
-        leftNotchJoin.dx,
-        leftNotchJoin.dy,
+      ..arcToPoint(
+        leftNotchJoin,
+        radius: const Radius.circular(_kNotchShoulderRadius),
+        clockwise: true,
       )
       ..arcTo(
         Rect.fromCircle(center: cutoutCenter, radius: cutoutRadius),
@@ -203,13 +205,13 @@ class _BottomBarBackgroundPainter extends CustomPainter {
         -math.pi,
         false,
       )
-      ..quadraticBezierTo(
-        rightNotchJoin.dx + (_kNotchShoulderWidth * 0.45),
-        0,
-        rightNotchJoin.dx + _kNotchShoulderWidth,
-        0,
+      ..arcToPoint(
+        Offset(rightNotchJoin.dx + _kNotchShoulderWidth, 0),
+        radius: const Radius.circular(_kNotchShoulderRadius),
+        clockwise: true,
       )
-      ..lineTo(size.width, 0)
+      ..lineTo(size.width - _kBarTopCornerRadius, 0)
+      ..quadraticBezierTo(size.width, 0, size.width, _kBarTopCornerRadius)
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
