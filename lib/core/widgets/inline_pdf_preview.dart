@@ -128,7 +128,7 @@ class _InlinePdfPreviewState extends State<InlinePdfPreview> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.all(12),
       itemCount: _pages.length + (_isLoading ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 16),
       itemBuilder: (context, index) {
