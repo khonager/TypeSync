@@ -3,7 +3,7 @@
 The Flutter side is prepared for an iOS home widget with these identifiers:
 
 - Widget kind: `TypeSyncUpcomingWidget`
-- App Group: `group.com.khonager.typesync`
+- App Group: `group.de.khonager.typesync`
 
 The remaining iOS work needs to be done in Xcode because WidgetKit widgets are
 separate native targets.
@@ -36,7 +36,7 @@ Enable App Groups for both:
 
 Add:
 
-- `group.com.khonager.typesync`
+- `group.de.khonager.typesync`
 
 ## 4. Add the home_widget pod to the extension target
 

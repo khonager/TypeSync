@@ -15,9 +15,9 @@ class HomeWidgetService {
 
   static const String androidWidgetName = 'TypeSyncUpcomingWidgetProvider';
   static const String androidQualifiedName =
-      'com.khonager.typesync.TypeSyncUpcomingWidgetProvider';
+      'de.khonager.typesync.TypeSyncUpcomingWidgetProvider';
   static const String iosWidgetName = 'TypeSyncUpcomingWidget';
-  static const String iosAppGroupId = 'group.com.khonager.typesync';
+  static const String iosAppGroupId = 'group.de.khonager.typesync';
 
   static const String widgetImageKey = 'typesync_upcoming_image';
   static const String placeholderTitleKey =

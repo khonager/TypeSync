@@ -1,4 +1,4 @@
-package com.khonager.typesync
+package de.khonager.typesync
 
 import io.flutter.embedding.android.FlutterActivity
 

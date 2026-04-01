@@ -652,7 +652,7 @@ class AuthService extends ChangeNotifier {
       final actionCodeSettings = firebase.ActionCodeSettings(
         url: 'https://typesync-app.web.app/finishSignUp?email=$email',
         handleCodeInApp: true,
-        androidPackageName: 'com.khonager.typesync',
+        androidPackageName: 'de.khonager.typesync',
         androidMinimumVersion: '1',
         androidInstallApp: true,
       );

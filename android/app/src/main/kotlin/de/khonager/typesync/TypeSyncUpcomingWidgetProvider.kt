@@ -1,4 +1,4 @@
-package com.khonager.typesync
+package de.khonager.typesync
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
