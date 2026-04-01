@@ -20,10 +20,39 @@ class HomeWidgetService {
   static const String iosAppGroupId = 'group.de.khonager.typesync';
 
   static const String widgetImageKey = 'typesync_upcoming_image';
+  static const String compactWidgetImageKey = 'typesync_upcoming_image_280x140';
+  static const String mediumTallWidgetImageKey =
+      'typesync_upcoming_image_360x232';
+  static const String wideWidgetImageKey = 'typesync_upcoming_image_480x176';
+  static const String wideTallWidgetImageKey =
+      'typesync_upcoming_image_480x232';
   static const String placeholderTitleKey =
       'typesync_upcoming_placeholder_title';
   static const String placeholderSubtitleKey =
       'typesync_upcoming_placeholder_subtitle';
+  static const Size defaultWidgetSize = Size(360, 176);
+  static const List<_WidgetSnapshotVariant> _androidWidgetVariants = [
+    _WidgetSnapshotVariant(
+      key: compactWidgetImageKey,
+      logicalSize: Size(280, 140),
+    ),
+    _WidgetSnapshotVariant(
+      key: widgetImageKey,
+      logicalSize: defaultWidgetSize,
+    ),
+    _WidgetSnapshotVariant(
+      key: mediumTallWidgetImageKey,
+      logicalSize: Size(360, 232),
+    ),
+    _WidgetSnapshotVariant(
+      key: wideWidgetImageKey,
+      logicalSize: Size(480, 176),
+    ),
+    _WidgetSnapshotVariant(
+      key: wideTallWidgetImageKey,
+      logicalSize: Size(480, 232),
+    ),
+  ];
 
   bool _configured = false;
 
@@ -62,15 +91,39 @@ class HomeWidgetService {
       placeholderSubtitle,
     );
 
-    await HomeWidget.renderFlutterWidget(
-      _buildPreview(
-        items: items,
-        brightness: brightness,
-        accentColor: accentColor,
+    final renderOperations = <Future<String>>[
+      HomeWidget.renderFlutterWidget(
+        _buildPreview(
+          items: items,
+          brightness: brightness,
+          accentColor: accentColor,
+          logicalSize: defaultWidgetSize,
+        ),
+        key: widgetImageKey,
+        logicalSize: defaultWidgetSize,
       ),
-      key: widgetImageKey,
-      logicalSize: const Size(360, 176),
-    );
+    ];
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      renderOperations.addAll(
+        _androidWidgetVariants
+            .where((variant) => variant.key != widgetImageKey)
+            .map(
+              (variant) => HomeWidget.renderFlutterWidget(
+                _buildPreview(
+                  items: items,
+                  brightness: brightness,
+                  accentColor: accentColor,
+                  logicalSize: variant.logicalSize,
+                ),
+                key: variant.key,
+                logicalSize: variant.logicalSize,
+              ),
+            ),
+      );
+    }
+
+    await Future.wait(renderOperations);
 
     await HomeWidget.updateWidget(
       name: androidWidgetName,
@@ -95,6 +148,7 @@ class HomeWidgetService {
     required List<UpcomingItemViewData> items,
     required Brightness brightness,
     required Color accentColor,
+    required Size logicalSize,
   }) {
     final theme = brightness == Brightness.dark
         ? AppTheme.darkTheme(accentColor)
@@ -103,13 +157,15 @@ class HomeWidgetService {
     return Theme(
       data: theme,
       child: MediaQuery(
-        data: const MediaQueryData(
-          size: Size(360, 176),
+        data: MediaQueryData(
+          size: logicalSize,
           devicePixelRatio: 2,
         ),
         child: Directionality(
           textDirection: TextDirection.ltr,
-          child: Center(
+          child: SizedBox(
+            width: logicalSize.width,
+            height: logicalSize.height,
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: HomeUpcomingWidgetPreview(items: items),
@@ -119,4 +175,14 @@ class HomeWidgetService {
       ),
     );
   }
+}
+
+class _WidgetSnapshotVariant {
+  final String key;
+  final Size logicalSize;
+
+  const _WidgetSnapshotVariant({
+    required this.key,
+    required this.logicalSize,
+  });
 }
