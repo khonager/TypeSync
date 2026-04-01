@@ -1072,40 +1072,181 @@ class _EditorScreenState extends State<EditorScreen>
           ),
           if (_attachmentsExpanded) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: attachments
-                    .map(
-                      (attachment) => ChoiceChip(
-                        selected: activeAttachment?.id == attachment.id,
-                        label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          child: Text(
-                            attachment.name,
-                            overflow: TextOverflow.ellipsis,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final maxChipWidth = constraints.maxWidth.isFinite
+                    ? constraints.maxWidth
+                    : 320.0;
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: attachments
+                        .map(
+                          (attachment) => GestureDetector(
+                            onLongPress: () => _showAttachmentOptions(
+                              attachment,
+                            ),
+                            onSecondaryTap: () => _showAttachmentOptions(
+                              attachment,
+                            ),
+                            child: ChoiceChip(
+                              selected: activeAttachment?.id == attachment.id,
+                              label: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: maxChipWidth,
+                                ),
+                                child: Text(
+                                  attachment.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                ),
+                              ),
+                              onSelected: (selected) {
+                                setState(() {
+                                  _activeAttachmentId =
+                                      selected ? attachment.id : null;
+                                  if (selected) {
+                                    _hideAttachmentPreview = false;
+                                  }
+                                });
+                              },
+                            ),
                           ),
-                        ),
-                        onSelected: (selected) {
-                          setState(() {
-                            _activeAttachmentId =
-                                selected ? attachment.id : null;
-                            if (selected) {
-                              _hideAttachmentPreview = false;
-                            }
-                          });
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
+                        )
+                        .toList(),
+                  ),
+                );
+              },
             ),
           ],
         ],
       ),
     );
+  }
+
+  void _showAttachmentOptions(NoteAttachment attachment) {
+    showModalBottomSheet(
+      context: context,
+      builder: (bottomSheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () async {
+                Navigator.pop(bottomSheetContext);
+                await _deleteAttachment(attachment);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAttachment(NoteAttachment attachment) async {
+    final note = _note;
+    if (note == null || !mounted) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final authService = context.read<AuthService>();
+    final storageService = context.read<StorageService>();
+
+    final deleteSucceeded = await _deleteAttachmentFile(
+      note: note,
+      attachment: attachment,
+      userId: authService.userId,
+      storageService: storageService,
+    );
+    if (!deleteSucceeded) {
+      if (mounted) {
+        final errorMessage = storageService.errorMessage;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              errorMessage ?? 'Failed to delete ${attachment.name}',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final updatedAttachments = note.attachments
+        .where((candidate) => candidate.id != attachment.id)
+        .toList();
+    final updatedNote = note.copyWith(attachments: updatedAttachments);
+    final success = await notesProvider.updateNote(updatedNote);
+    if (!success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Failed to update note after deleting ${attachment.name}'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _note = notesProvider.getNoteById(note.id) ?? updatedNote;
+      if (_activeAttachmentId == attachment.id) {
+        _activeAttachmentId =
+            updatedAttachments.isEmpty ? null : updatedAttachments.first.id;
+      }
+      if (updatedAttachments.isEmpty) {
+        _hideAttachmentPreview = false;
+      }
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted: ${attachment.name}')));
+  }
+
+  Future<bool> _deleteAttachmentFile({
+    required Note note,
+    required NoteAttachment attachment,
+    required String? userId,
+    required StorageService storageService,
+  }) async {
+    if (attachment.path.isEmpty || attachment.path.startsWith('data:')) {
+      return true;
+    }
+
+    if (_isRemoteAttachmentPath(attachment.path)) {
+      if (userId == null) {
+        return false;
+      }
+      return storageService.deleteFile(
+        userId: userId,
+        filePath: _buildCloudFilePath(
+          noteId: note.id,
+          itemId: attachment.id,
+          fileName: attachment.name,
+          bucket: 'attachments',
+        ),
+      );
+    }
+
+    try {
+      final file = File(attachment.path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
