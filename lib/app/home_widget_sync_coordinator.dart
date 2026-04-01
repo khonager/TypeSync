@@ -35,7 +35,7 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
     final items = UpcomingItemViewData.build(
       calendarEvents: calendarProvider.upcomingEvents,
       homeworkItems: homeworkProvider.homework,
-      limit: 3,
+      limit: 6,
     );
     final brightness = themeService.currentBrightness;
     final accentColor = themeService.accentColor;
