@@ -55,7 +55,8 @@ class _InlinePdfPreviewState extends State<InlinePdfPreview> {
     });
 
     try {
-      await for (final page in Printing.raster(widget.pdfBytes, dpi: widget.dpi)) {
+      await for (final page
+          in Printing.raster(widget.pdfBytes, dpi: widget.dpi)) {
         if (!mounted || session != _rasterSession) {
           return;
         }
