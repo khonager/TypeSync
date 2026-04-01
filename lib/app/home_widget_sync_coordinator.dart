@@ -52,12 +52,11 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
         if (!mounted) {
           return;
         }
-        HomeWidgetService.instance
-            .syncUpcoming(
-              items: items,
-              brightness: brightness,
-              accentColor: accentColor,
-            );
+        HomeWidgetService.instance.syncUpcoming(
+          items: items,
+          brightness: brightness,
+          accentColor: accentColor,
+        );
       });
     }
 

@@ -20,7 +20,8 @@ class HomeWidgetService {
   static const String iosAppGroupId = 'group.com.khonager.typesync';
 
   static const String widgetImageKey = 'typesync_upcoming_image';
-  static const String placeholderTitleKey = 'typesync_upcoming_placeholder_title';
+  static const String placeholderTitleKey =
+      'typesync_upcoming_placeholder_title';
   static const String placeholderSubtitleKey =
       'typesync_upcoming_placeholder_subtitle';
 
