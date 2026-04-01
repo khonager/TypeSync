@@ -107,11 +107,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Decode google-services.json
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: echo "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
-
       - name: Setup Android Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -182,11 +177,6 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Decode google-services.json
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: echo "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 -d > android/app/google-services.json
 
       - name: Build APK (Debug)
         run: flutter build apk --debug
