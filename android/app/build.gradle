@@ -30,7 +30,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.typesync.app"
+    namespace "de.khonager.typesync"
     compileSdk 36
     ndkVersion "28.2.13676358"
 
@@ -57,7 +57,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.khonager.typesync"
+        applicationId "de.khonager.typesync"
         minSdkVersion 23
         targetSdk flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
@@ -95,4 +95,3 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'androidx.multidex:multidex:2.0.1'
 }
-

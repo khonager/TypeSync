@@ -21,6 +21,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/routes/app_router.dart';
+import '../../home/widgets/home_bottom_bar.dart';
 
 /// User profile screen
 class ProfileScreen extends StatefulWidget {
@@ -291,9 +292,14 @@ class _ProfileScreenState extends State<ProfileScreen>
     final authService = context.watch<AuthService>();
     final storageService = context.watch<StorageService>();
     final user = authService.currentUser;
+    final bottomScrollPadding =
+        widget.embedded ? homeBottomBarScrollPaddingFor(context) : 16.0;
 
     if (authService.isGuestMode) {
-      final body = _buildGuestBody(context);
+      final body = _buildGuestBody(
+        context,
+        bottomPadding: bottomScrollPadding,
+      );
       if (widget.embedded) {
         return body;
       }
@@ -311,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
 
     final body = ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomScrollPadding),
       children: [
         // Profile header
         Center(
@@ -645,27 +651,37 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildGuestBody(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.login, size: 56),
-            const SizedBox(height: 16),
-            Text(
-              'Sign in to use cloud sync and account features.',
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
+  Widget _buildGuestBody(
+    BuildContext context, {
+    required double bottomPadding,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: constraints.maxHeight - bottomPadding,
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.login, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  'Sign in to use cloud sync and account features.',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () =>
+                      AppRouter.navigateAndClearStack(context, AppRouter.login),
+                  child: const Text('Go to Sign In'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () =>
-                  AppRouter.navigateAndClearStack(context, AppRouter.login),
-              child: const Text('Go to Sign In'),
-            ),
-          ],
+          ),
         ),
       ),
     );

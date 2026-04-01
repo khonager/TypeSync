@@ -18,7 +18,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uuid/uuid.dart';
@@ -35,6 +34,7 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
@@ -115,6 +115,8 @@ class _EditorScreenState extends State<EditorScreen>
   Rect? _matchGlowRect;
   bool _showMatchGlow = false;
   bool _didAttemptInitialSearchJump = false;
+  final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
+  final Map<String, Future<String?>> _attachmentTextFutures = {};
 
   @override
   void initState() {
@@ -549,11 +551,30 @@ class _EditorScreenState extends State<EditorScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         const dividerWidth = 18.0;
-        final availableWidth = constraints.maxWidth - dividerWidth;
+        final availableWidth = (constraints.maxWidth - dividerWidth).clamp(
+          0.0,
+          double.infinity,
+        );
+        if (availableWidth <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final maxAttachmentWidth = availableWidth > 320
+            ? availableWidth - 320.0
+            : availableWidth * 0.5;
+        final resolvedMaxAttachmentWidth = maxAttachmentWidth.clamp(
+          0.0,
+          availableWidth,
+        );
+        final resolvedMinAttachmentWidth =
+            (availableWidth >= 600 ? 280.0 : availableWidth * 0.35).clamp(
+          0.0,
+          resolvedMaxAttachmentWidth,
+        );
         final attachmentWidth =
             (availableWidth * _sideBySideAttachmentFraction).clamp(
-          280.0,
-          availableWidth - 320.0,
+          resolvedMinAttachmentWidth,
+          resolvedMaxAttachmentWidth,
         );
         final editorWidth = availableWidth - attachmentWidth;
 
@@ -589,10 +610,29 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         const dividerHeight = 18.0;
-        final availableHeight = constraints.maxHeight - dividerHeight;
+        final availableHeight = (constraints.maxHeight - dividerHeight).clamp(
+          0.0,
+          double.infinity,
+        );
+        if (availableHeight <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final maxAttachmentHeight = availableHeight > 180
+            ? availableHeight - 180.0
+            : availableHeight * 0.5;
+        final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+          0.0,
+          availableHeight,
+        );
+        final resolvedMinAttachmentHeight =
+            (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+          0.0,
+          resolvedMaxAttachmentHeight,
+        );
         final attachmentHeight = _stackedAttachmentHeight.clamp(
-          180.0,
-          availableHeight - 180.0,
+          resolvedMinAttachmentHeight,
+          resolvedMaxAttachmentHeight,
         );
         final editorHeight = availableHeight - attachmentHeight;
 
@@ -622,6 +662,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) {
+          if (availableWidth <= 0) return;
           setState(() {
             final nextWidth = availableWidth * _sideBySideAttachmentFraction +
                 details.delta.dx;
@@ -654,10 +695,25 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
+          if (availableHeight <= 0) return;
           setState(() {
+            final maxAttachmentHeight = availableHeight > 180
+                ? availableHeight - 180.0
+                : availableHeight * 0.5;
+            final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+              0.0,
+              availableHeight,
+            );
+            final resolvedMinAttachmentHeight =
+                (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+              0.0,
+              resolvedMaxAttachmentHeight,
+            );
             _stackedAttachmentHeight =
-                (_stackedAttachmentHeight + details.delta.dy)
-                    .clamp(180.0, availableHeight - 180.0);
+                (_stackedAttachmentHeight + details.delta.dy).clamp(
+              resolvedMinAttachmentHeight,
+              resolvedMaxAttachmentHeight,
+            );
           });
         },
         child: SizedBox(
@@ -1072,40 +1128,184 @@ class _EditorScreenState extends State<EditorScreen>
           ),
           if (_attachmentsExpanded) ...[
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: attachments
-                    .map(
-                      (attachment) => ChoiceChip(
-                        selected: activeAttachment?.id == attachment.id,
-                        label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          child: Text(
-                            attachment.name,
-                            overflow: TextOverflow.ellipsis,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final maxChipWidth = constraints.maxWidth.isFinite
+                    ? constraints.maxWidth
+                    : 320.0;
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: attachments
+                        .map(
+                          (attachment) => GestureDetector(
+                            onLongPress: () => _showAttachmentOptions(
+                              attachment,
+                            ),
+                            onSecondaryTap: () => _showAttachmentOptions(
+                              attachment,
+                            ),
+                            child: ChoiceChip(
+                              selected: activeAttachment?.id == attachment.id,
+                              label: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: maxChipWidth,
+                                ),
+                                child: Text(
+                                  attachment.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  softWrap: true,
+                                ),
+                              ),
+                              onSelected: (selected) {
+                                setState(() {
+                                  _activeAttachmentId =
+                                      selected ? attachment.id : null;
+                                  if (selected) {
+                                    _hideAttachmentPreview = false;
+                                  }
+                                });
+                              },
+                            ),
                           ),
-                        ),
-                        onSelected: (selected) {
-                          setState(() {
-                            _activeAttachmentId =
-                                selected ? attachment.id : null;
-                            if (selected) {
-                              _hideAttachmentPreview = false;
-                            }
-                          });
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
+                        )
+                        .toList(),
+                  ),
+                );
+              },
             ),
           ],
         ],
       ),
     );
+  }
+
+  void _showAttachmentOptions(NoteAttachment attachment) {
+    showModalBottomSheet(
+      context: context,
+      builder: (bottomSheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () async {
+                Navigator.pop(bottomSheetContext);
+                await _deleteAttachment(attachment);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAttachment(NoteAttachment attachment) async {
+    final note = _note;
+    if (note == null || !mounted) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final authService = context.read<AuthService>();
+    final storageService = context.read<StorageService>();
+
+    final deleteSucceeded = await _deleteAttachmentFile(
+      note: note,
+      attachment: attachment,
+      userId: authService.userId,
+      storageService: storageService,
+    );
+    if (!deleteSucceeded) {
+      if (mounted) {
+        final errorMessage = storageService.errorMessage;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              errorMessage ?? 'Failed to delete ${attachment.name}',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final updatedAttachments = note.attachments
+        .where((candidate) => candidate.id != attachment.id)
+        .toList();
+    final updatedNote = note.copyWith(attachments: updatedAttachments);
+    final success = await notesProvider.updateNote(updatedNote);
+    if (!success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Failed to update note after deleting ${attachment.name}'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _note = notesProvider.getNoteById(note.id) ?? updatedNote;
+      if (_activeAttachmentId == attachment.id) {
+        _activeAttachmentId =
+            updatedAttachments.isEmpty ? null : updatedAttachments.first.id;
+      }
+      if (updatedAttachments.isEmpty) {
+        _hideAttachmentPreview = false;
+      }
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted: ${attachment.name}')));
+  }
+
+  Future<bool> _deleteAttachmentFile({
+    required Note note,
+    required NoteAttachment attachment,
+    required String? userId,
+    required StorageService storageService,
+  }) async {
+    _attachmentBytesFutures.remove(attachment.path);
+    _attachmentTextFutures.remove(attachment.path);
+
+    if (attachment.path.isEmpty || attachment.path.startsWith('data:')) {
+      return true;
+    }
+
+    if (_isRemoteAttachmentPath(attachment.path)) {
+      if (userId == null) {
+        return false;
+      }
+      return storageService.deleteFile(
+        userId: userId,
+        filePath: _buildCloudFilePath(
+          noteId: note.id,
+          itemId: attachment.id,
+          fileName: attachment.name,
+          bucket: 'attachments',
+        ),
+      );
+    }
+
+    try {
+      final file = File(attachment.path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Widget _buildAttachmentPreview(NoteAttachment attachment) {
@@ -1126,14 +1326,7 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
-        return PdfPreview(
-          build: (_) => bytes,
-          allowPrinting: true,
-          allowSharing: true,
-          canChangeOrientation: false,
-          canChangePageFormat: false,
-          canDebug: false,
-        );
+        return _buildInlinePdfPreview(bytes);
       }
 
       if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
@@ -1167,7 +1360,7 @@ class _EditorScreenState extends State<EditorScreen>
           return RemotePdfEmbed(url: attachment.path);
         }
         return FutureBuilder<Uint8List?>(
-          future: _fetchAttachmentBytes(attachment.path),
+          future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1175,21 +1368,14 @@ class _EditorScreenState extends State<EditorScreen>
             if (!snapshot.hasData) {
               return _buildAttachmentUnavailable(attachment);
             }
-            return PdfPreview(
-              build: (_) => snapshot.data!,
-              allowPrinting: true,
-              allowSharing: true,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              canDebug: false,
-            );
+            return _buildInlinePdfPreview(snapshot.data!);
           },
         );
       }
 
       if (_isSvgAttachment(extension, mimeType)) {
         return FutureBuilder<Uint8List?>(
-          future: _fetchAttachmentBytes(attachment.path),
+          future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1211,7 +1397,7 @@ class _EditorScreenState extends State<EditorScreen>
               attachment.path,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => FutureBuilder<Uint8List?>(
-                future: _fetchAttachmentBytes(attachment.path),
+                future: _cachedAttachmentBytes(attachment.path),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -1235,7 +1421,7 @@ class _EditorScreenState extends State<EditorScreen>
 
       if (_isTextAttachment(extension, mimeType)) {
         return FutureBuilder<String?>(
-          future: _fetchAttachmentText(attachment.path),
+          future: _cachedAttachmentText(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -1538,6 +1724,21 @@ class _EditorScreenState extends State<EditorScreen>
   bool _isLocalAttachmentPath(String path) =>
       !path.startsWith('data:') && !_isRemoteAttachmentPath(path);
 
+  Future<Uint8List?> _cachedAttachmentBytes(String path) {
+    return _attachmentBytesFutures.putIfAbsent(
+      path,
+      () => _fetchAttachmentBytes(path),
+    );
+  }
+
+  Future<String?> _cachedAttachmentText(String path) {
+    return _attachmentTextFutures.putIfAbsent(path, () async {
+      final bytes = await _cachedAttachmentBytes(path);
+      if (bytes == null) return null;
+      return utf8.decode(bytes, allowMalformed: true);
+    });
+  }
+
   Future<Uint8List?> _fetchAttachmentBytes(String path) async {
     try {
       final response = await http.get(Uri.parse(path));
@@ -1550,10 +1751,8 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Future<String?> _fetchAttachmentText(String path) async {
-    final bytes = await _fetchAttachmentBytes(path);
-    if (bytes == null) return null;
-    return utf8.decode(bytes, allowMalformed: true);
+  Widget _buildInlinePdfPreview(Uint8List bytes) {
+    return InlinePdfPreview(pdfBytes: bytes);
   }
 
   void _showConflictDialog() {

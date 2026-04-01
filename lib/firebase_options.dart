@@ -74,7 +74,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
     storageBucket: 'typesynced.firebasestorage.app',
-    iosBundleId: 'com.typesync.app',
+    iosBundleId: 'de.khonager.typesync',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -83,7 +83,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
     storageBucket: 'typesynced.firebasestorage.app',
-    iosBundleId: 'com.typesync.app',
+    iosBundleId: 'de.khonager.typesync',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

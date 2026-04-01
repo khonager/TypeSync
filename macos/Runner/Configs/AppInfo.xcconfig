@@ -8,7 +8,7 @@
 PRODUCT_NAME = typesync
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.khonager.typesync
+PRODUCT_BUNDLE_IDENTIFIER = de.khonager.typesync
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.khonager. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 de.khonager. All rights reserved.

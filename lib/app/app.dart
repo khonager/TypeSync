@@ -11,6 +11,7 @@ import '../core/services/theme_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
+import 'home_widget_sync_coordinator.dart';
 import 'service_orchestrator.dart';
 
 class TypeSyncAppContent extends StatelessWidget {
@@ -22,43 +23,45 @@ class TypeSyncAppContent extends StatelessWidget {
     final themeService = context.watch<ThemeService>();
 
     return ServiceOrchestrator(
-      child: MaterialApp(
-        title: 'TypeSync',
-        debugShowCheckedModeBanner: false,
+      child: HomeWidgetSyncCoordinator(
+        child: MaterialApp(
+          title: 'TypeSync',
+          debugShowCheckedModeBanner: false,
 
-        // Theme configuration based on user preference or system setting
-        theme: AppTheme.lightTheme(themeService.accentColor),
-        darkTheme: AppTheme.darkTheme(themeService.accentColor),
-        themeMode: themeService.themeMode,
+          // Theme configuration based on user preference or system setting
+          theme: AppTheme.lightTheme(themeService.accentColor),
+          darkTheme: AppTheme.darkTheme(themeService.accentColor),
+          themeMode: themeService.themeMode,
 
-        // Set AuthWrapper as the home
-        home: const AuthWrapper(),
+          // Set AuthWrapper as the home
+          home: const AuthWrapper(),
 
-        // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
-        routes: {
-          AppRouter.login: AppRouter.routes[AppRouter.login]!,
-          AppRouter.editor: AppRouter.routes[AppRouter.editor]!,
-          AppRouter.register: AppRouter.routes[AppRouter.register]!,
-          AppRouter.settings: AppRouter.routes[AppRouter.settings]!,
-          AppRouter.calendar: AppRouter.routes[AppRouter.calendar]!,
-          AppRouter.timetable: AppRouter.routes[AppRouter.timetable]!,
-          AppRouter.homework: AppRouter.routes[AppRouter.homework]!,
-          AppRouter.profile: AppRouter.routes[AppRouter.profile]!,
-          AppRouter.subscription: AppRouter.routes[AppRouter.subscription]!,
-        },
+          // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
+          routes: {
+            AppRouter.login: AppRouter.routes[AppRouter.login]!,
+            AppRouter.editor: AppRouter.routes[AppRouter.editor]!,
+            AppRouter.register: AppRouter.routes[AppRouter.register]!,
+            AppRouter.settings: AppRouter.routes[AppRouter.settings]!,
+            AppRouter.calendar: AppRouter.routes[AppRouter.calendar]!,
+            AppRouter.timetable: AppRouter.routes[AppRouter.timetable]!,
+            AppRouter.homework: AppRouter.routes[AppRouter.homework]!,
+            AppRouter.profile: AppRouter.routes[AppRouter.profile]!,
+            AppRouter.subscription: AppRouter.routes[AppRouter.subscription]!,
+          },
 
-        // Global error handling for navigation
-        builder: (context, child) {
-          // Apply global text scaling limits for accessibility
-          return MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(
-                MediaQuery.of(context).textScaler.scale(1.0).clamp(0.8, 1.4),
+          // Global error handling for navigation
+          builder: (context, child) {
+            // Apply global text scaling limits for accessibility
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(
+                  MediaQuery.of(context).textScaler.scale(1.0).clamp(0.8, 1.4),
+                ),
               ),
-            ),
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+        ),
       ),
     );
   }

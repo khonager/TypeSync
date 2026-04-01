@@ -32,6 +32,18 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name="de.khonager.typesync.TypeSyncUpcomingWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/typesync_upcoming_widget_info" />
+        </receiver>
         
         <!-- Flutter embedding -->
         <meta-data
@@ -39,6 +51,3 @@
             android:value="2"/>
     </application>
 </manifest>
-
-
-

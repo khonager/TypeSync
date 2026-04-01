@@ -42,6 +42,7 @@ import '../../profile/screens/profile_screen.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
+import '../widgets/home_upcoming_section.dart';
 import '../widgets/sync_status_indicator.dart';
 
 /// Home screen with folder/file browser
@@ -584,6 +585,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     return Scaffold(
+      extendBody: true,
       // Custom app bar matching the design
       appBar: AppBar(
         // Show back button when in a folder
@@ -882,6 +884,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final hasVisibleItems = folders.isNotEmpty || notes.isNotEmpty;
+    final bottomScrollPadding = homeBottomBarScrollPaddingFor(context);
 
     return DropTarget(
       onDragEntered: (details) {
@@ -911,6 +914,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 SliverToBoxAdapter(
                   child: _buildSearchBar(),
                 ),
+
+                if (_currentFolderId == null && !isSearchActive)
+                  const SliverToBoxAdapter(
+                    child: HomeUpcomingSection(),
+                  ),
 
                 // Breadcrumb navigation
                 if (_currentFolderId != null && !isSearchActive)
@@ -1011,12 +1019,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (!hasVisibleItems)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _buildEmptyState(isSearchActive: isSearchActive),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: bottomScrollPadding),
+                      child: _buildEmptyState(isSearchActive: isSearchActive),
+                    ),
                   ),
 
                 if (hasVisibleItems)
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: 100),
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: bottomScrollPadding),
                   ),
               ],
             ),

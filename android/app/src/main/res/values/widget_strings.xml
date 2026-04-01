@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="typesync_widget_description">Upcoming homework and calendar items</string>
+    <string name="typesync_widget_content_description">TypeSync upcoming widget</string>
+    <string name="typesync_widget_placeholder_title">Upcoming in TypeSync</string>
+    <string name="typesync_widget_placeholder_subtitle">Open the app to refresh this widget</string>
+</resources>

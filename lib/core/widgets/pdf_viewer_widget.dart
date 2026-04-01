@@ -5,10 +5,11 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'inline_pdf_preview.dart';
 
 /// Custom PDF viewer widget
 class PdfViewerWidget extends StatefulWidget {
@@ -41,10 +42,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         _errorMessage = null;
       });
 
-      // Read PDF file
       final bytes = await widget.pdfFile.readAsBytes();
 
-      // PDF loaded successfully
       setState(() {
         _pdfBytes = bytes;
         _isLoading = false;
@@ -59,17 +58,12 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   }
 
   @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_errorMessage != null) {
+    if (_errorMessage != null || !widget.pdfFile.existsSync()) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -77,7 +71,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
             Text(
-              _errorMessage!,
+              _errorMessage ?? 'Failed to load PDF: file not found',
               style: Theme.of(context).textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
@@ -92,7 +86,6 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
       );
     }
 
-    // Use Printing's PDF preview which works cross-platform
     return Column(
       children: [
         // Toolbar
@@ -120,16 +113,9 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
 
         // PDF Preview
         Expanded(
-          child: _pdfBytes != null
-              ? PdfPreview(
-                  build: (format) => _pdfBytes!,
-                  allowPrinting: true,
-                  allowSharing: true,
-                  canChangeOrientation: false,
-                  canChangePageFormat: false,
-                  canDebug: false,
-                )
-              : const Center(child: CircularProgressIndicator()),
+          child: _pdfBytes == null
+              ? const Center(child: CircularProgressIndicator())
+              : InlinePdfPreview(pdfBytes: _pdfBytes!),
         ),
       ],
     );
