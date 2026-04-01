@@ -13,6 +13,23 @@ enum HomeBottomBarTab { files, profile }
 const double _kAddButtonSize = 72;
 const double _kAddButtonGap = 6;
 const double _kAddButtonTopOffset = -22;
+const double _kBarTopPadding = 8.0;
+const double _kBarContentHeight = 64.0;
+const double _kBarMinBottomPadding = 12.0;
+const double _kScrollPaddingBuffer = 16.0;
+
+double homeBottomBarHeightFor(BuildContext context) {
+  final bottomInset = MediaQuery.paddingOf(context).bottom;
+  final barBottomPadding =
+      bottomInset > 0 ? bottomInset : _kBarMinBottomPadding;
+  return _kBarContentHeight + _kBarTopPadding + barBottomPadding;
+}
+
+double homeBottomBarScrollPaddingFor(BuildContext context) {
+  return homeBottomBarHeightFor(context) +
+      _kAddButtonTopOffset.abs() +
+      _kScrollPaddingBuffer;
+}
 
 /// Bottom navigation bar for home screen
 ///
@@ -39,10 +56,9 @@ class HomeBottomBar extends StatelessWidget {
     final isGuest = authService.isGuestMode;
     final colorScheme = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    const barTopPadding = 8.0;
-    const barContentHeight = 64.0;
-    final barBottomPadding = bottomInset > 0 ? bottomInset : 12.0;
-    final barHeight = barContentHeight + barTopPadding + barBottomPadding;
+    final barBottomPadding =
+        bottomInset > 0 ? bottomInset : _kBarMinBottomPadding;
+    final barHeight = homeBottomBarHeightFor(context);
 
     return SizedBox(
       height: barHeight,
@@ -64,7 +80,7 @@ class HomeBottomBar extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     24,
-                    barTopPadding,
+                    _kBarTopPadding,
                     24,
                     barBottomPadding,
                   ),

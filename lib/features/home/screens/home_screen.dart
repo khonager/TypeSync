@@ -884,6 +884,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final hasVisibleItems = folders.isNotEmpty || notes.isNotEmpty;
+    final bottomScrollPadding = homeBottomBarScrollPaddingFor(context);
 
     return DropTarget(
       onDragEntered: (details) {
@@ -1018,12 +1019,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (!hasVisibleItems)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _buildEmptyState(isSearchActive: isSearchActive),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: bottomScrollPadding),
+                      child: _buildEmptyState(isSearchActive: isSearchActive),
+                    ),
                   ),
 
                 if (hasVisibleItems)
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: 100),
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: bottomScrollPadding),
                   ),
               ],
             ),
