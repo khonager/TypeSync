@@ -34,7 +34,7 @@
         </activity>
 
         <receiver
-            android:name=".TypeSyncUpcomingWidgetProvider"
+            android:name="com.khonager.typesync.TypeSyncUpcomingWidgetProvider"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -51,5 +51,4 @@
             android:value="2"/>
     </application>
 </manifest>
-
 
