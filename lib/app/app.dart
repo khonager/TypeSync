@@ -41,6 +41,7 @@ class TypeSyncAppContent extends StatelessWidget {
             AppRouter.login: AppRouter.routes[AppRouter.login]!,
             AppRouter.editor: AppRouter.routes[AppRouter.editor]!,
             AppRouter.register: AppRouter.routes[AppRouter.register]!,
+            AppRouter.finishSignUp: AppRouter.routes[AppRouter.finishSignUp]!,
             AppRouter.settings: AppRouter.routes[AppRouter.settings]!,
             AppRouter.calendar: AppRouter.routes[AppRouter.calendar]!,
             AppRouter.timetable: AppRouter.routes[AppRouter.timetable]!,

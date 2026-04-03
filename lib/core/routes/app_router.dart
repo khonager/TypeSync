@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/home/screens/home_screen.dart';
 import '../../features/editor/screens/editor_screen.dart';
+import '../../features/auth/screens/email_link_sign_in_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
@@ -40,6 +41,9 @@ class AppRouter {
   /// Registration screen
   static const String register = '/register';
 
+  /// Email link completion screen
+  static const String finishSignUp = '/finishSignUp';
+
   /// Settings screen
   static const String settings = '/settings';
 
@@ -68,6 +72,7 @@ class AppRouter {
         editor: (_) => const EditorScreen(),
         login: (_) => const LoginScreen(),
         register: (_) => const RegisterScreen(),
+        finishSignUp: (_) => const EmailLinkSignInScreen(),
         settings: (_) => const SettingsScreen(),
         calendar: (_) => const CalendarScreen(),
         timetable: (_) => const TimetableScreen(),

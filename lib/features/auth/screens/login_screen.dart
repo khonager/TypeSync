@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
 import '../../../core/routes/app_router.dart';
+import 'magic_link_dialog.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/expandable_error.dart';
 
@@ -183,6 +184,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('Sign In'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: authService.isLoading
+                        ? null
+                        : () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => const MagicLinkDialog(),
+                            );
+                          },
+                    child: const Text('Email me a sign-in link'),
                   ),
                   const SizedBox(height: 16),
 
