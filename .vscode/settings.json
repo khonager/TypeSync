@@ -1,0 +1,40 @@
+{
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/.git/vendor/**": true,
+    "**/.dart_tool/**": true,
+    "**/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/functions/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true
+  },
+  "files.exclude": {
+    "**/.dart_tool": true,
+    "**/build": true,
+    "**/android/.gradle": true,
+    "**/functions/venv": true,
+    "**/__pycache__": true
+  },
+  "search.exclude": {
+    "**/.dart_tool/**": true,
+    "**/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/functions/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true
+  },
+  "python.analysis.exclude": [
+    "**/functions/venv/**",
+    "**/__pycache__/**",
+    "**/.dart_tool/**",
+    "**/build/**"
+  ],
+  "dart.analysisExcludedFolders": [
+    "${workspaceFolder}/.dart_tool",
+    "${workspaceFolder}/build",
+    "${workspaceFolder}/android/.gradle",
+    "${workspaceFolder}/functions/venv"
+  ]
+}
