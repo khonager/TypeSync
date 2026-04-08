@@ -644,6 +644,10 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW requesting password reset email',
+      );
       await _postEmailFunction(
         'send_password_reset_email_http',
         {
@@ -658,6 +662,10 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
       return true;
     } catch (e) {
+      _diagnostics.error(
+        'AuthService',
+        'AUTH_FLOW password reset email failed: $e',
+      );
       _setError(_mapEmailFunctionError(e));
       _setLoading(false);
       return false;
@@ -695,12 +703,21 @@ class AuthService extends ChangeNotifier {
 
   /// Resend email verification
   Future<bool> resendVerificationEmail() async {
+    _setLoading(true);
+    _clearError();
+
     try {
       final idToken = await _currentIdToken();
       if (idToken == null || idToken.isEmpty) {
         _setError('You need to be signed in to verify your email.');
+        _setLoading(false);
         return false;
       }
+
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW requesting verification email delivery',
+      );
 
       await _postEmailFunction(
         'send_verification_email_http',
@@ -711,9 +728,15 @@ class AuthService extends ChangeNotifier {
         ),
         idToken: idToken,
       );
+      _setLoading(false);
       return true;
     } catch (e) {
+      _diagnostics.error(
+        'AuthService',
+        'AUTH_FLOW verification email delivery failed: $e',
+      );
       _setError(_mapEmailFunctionError(e));
+      _setLoading(false);
       return false;
     }
   }
@@ -1229,21 +1252,49 @@ class AuthService extends ChangeNotifier {
     Map<String, dynamic> payload, {
     String? idToken,
   }) async {
-    final response = await _httpClient.post(
-      _functionUri(functionName),
-      headers: {
-        'Content-Type': 'application/json',
-        if (idToken != null && idToken.isNotEmpty)
-          'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode(payload),
+    final uri = _functionUri(functionName);
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW posting email function=$functionName uri=$uri',
     );
 
+    late http.Response response;
+    try {
+      response = await _httpClient
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (idToken != null && idToken.isNotEmpty)
+                'Authorization': 'Bearer $idToken',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw Exception(
+        'The email service took too long to respond. Please try again.',
+      );
+    } on http.ClientException {
+      throw Exception(
+        'Unable to reach the email service. Check your internet connection and try again.',
+      );
+    }
+
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW email function succeeded function=$functionName status=${response.statusCode}',
+      );
       return;
     }
 
-    throw Exception(_extractFunctionError(response));
+    final extractedError = _extractFunctionError(response);
+    _diagnostics.warning(
+      'AuthService',
+      'AUTH_FLOW email function failed function=$functionName status=${response.statusCode} error=$extractedError',
+    );
+    throw Exception(extractedError);
   }
 
   String _extractFunctionError(http.Response response) {
@@ -1278,6 +1329,16 @@ class AuthService extends ChangeNotifier {
     if (normalized.contains('Authenticated user email is required')) {
       return 'You need to be signed in to verify your email.';
     }
+    if (normalized.contains('Missing bearer token') ||
+        normalized.contains('Invalid auth token')) {
+      return 'Your session expired. Please sign in again and try again.';
+    }
+    if (normalized.contains('Unable to reach the email service')) {
+      return 'Unable to reach the email service. Check your internet connection and try again.';
+    }
+    if (normalized.contains('took too long to respond')) {
+      return 'The email service took too long to respond. Please try again.';
+    }
     if (normalized.contains('Failed to send sign-in email')) {
       return 'Failed to send magic link. Please try again.';
     }
@@ -1291,7 +1352,7 @@ class AuthService extends ChangeNotifier {
       return 'Failed to send reset email. Please try again.';
     }
     if (normalized.contains('Failed to send verification email')) {
-      return 'Failed to send verification email.';
+      return 'Failed to send verification email. Please try again.';
     }
 
     return normalized;

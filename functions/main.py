@@ -88,7 +88,7 @@ def _build_action_code_settings(data: dict) -> auth.ActionCodeSettings:
 
     ios_bundle_id = data.get("iOSBundleId")
     if isinstance(ios_bundle_id, str) and ios_bundle_id:
-        kwargs["iOS_bundle_id"] = ios_bundle_id
+        kwargs["ios_bundle_id"] = ios_bundle_id
 
     return auth.ActionCodeSettings(**kwargs)
 

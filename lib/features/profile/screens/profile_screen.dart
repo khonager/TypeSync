@@ -357,14 +357,8 @@ class _ProfileScreenState extends State<ProfileScreen>
               // Email verification status
               if (user != null && !user.emailVerified)
                 TextButton.icon(
-                  onPressed: () {
-                    authService.resendVerificationEmail();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Verification email sent'),
-                      ),
-                    );
-                  },
+                  onPressed:
+                      authService.isLoading ? null : _resendVerificationEmail,
                   icon: const Icon(Icons.warning, size: 16),
                   label: const Text('Verify email'),
                   style: TextButton.styleFrom(
@@ -733,23 +727,52 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final navigator = Navigator.of(context);
               final authService = context.read<AuthService>();
               final email = authService.currentUser?.email;
-              if (email != null) {
-                authService.resetPassword(email);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password reset email sent'),
-                  ),
-                );
+              if (email == null) {
+                if (!mounted) return;
+                navigator.pop();
+                _showMessage('No email address is available for this account.');
+                return;
               }
+
+              final success = await authService.resetPassword(email);
+              if (!mounted) return;
+
+              navigator.pop();
+              _showMessage(
+                success
+                    ? 'Password reset email sent.'
+                    : authService.errorMessage ??
+                        'We could not send the password reset email. Please try again.',
+              );
             },
             child: const Text('Send Email'),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _resendVerificationEmail() async {
+    final authService = context.read<AuthService>();
+    final success = await authService.resendVerificationEmail();
+
+    if (!mounted) return;
+
+    _showMessage(
+      success
+          ? 'Verification email sent.'
+          : authService.errorMessage ??
+              'We could not send the verification email. Please try again.',
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
