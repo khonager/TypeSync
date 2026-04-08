@@ -221,11 +221,13 @@ The project includes automated CI/CD with GitHub Actions:
 - **`unstable`**: Dev builds - updates the `dev` tag
 
 ### Automatic Releases
-- **Stable releases**: When merged to `stable`, automatically:
+- **CI/CD**: Runs analysis/tests on pushes and pull requests, plus unstable/dev build work.
+- **Stable release workflow**: After `CI/CD` succeeds on `stable`, a separate `Release Stable` workflow:
   - Validates that `pubspec.yaml` and the latest changelog entry match
   - Creates a new tagged release (`v1.0.0`, `v1.0.1`, etc.) only when the changelog introduces a version newer than the latest version tag
   - Otherwise refreshes the rolling `stable-latest` release/tag on the newest `stable` commit
   - Builds Android APK, AAB, Linux bundle, and Web bundle
+- **Stable deploy workflow**: After `CI/CD` succeeds on `stable`, a separate `Deploy Web Stable` workflow builds and deploys the web app
 
 - **Dev releases**: When pushed to `unstable`:
   - Updates the `dev` release tag
