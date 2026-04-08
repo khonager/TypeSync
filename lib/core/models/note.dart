@@ -167,6 +167,9 @@ class Note extends Equatable {
   /// The incoming cloud content that conflicts with local changes
   final String? conflictContent;
 
+  /// Minimum TypeSync app version required to safely render/edit this note.
+  final String? minSupportedAppVersion;
+
   const Note({
     required this.id,
     required this.title,
@@ -190,6 +193,7 @@ class Note extends Equatable {
     this.localOnly = false,
     this.hasConflict = false,
     this.conflictContent,
+    this.minSupportedAppVersion,
   });
 
   /// Creates a new note with default values
@@ -240,6 +244,7 @@ class Note extends Equatable {
     bool? hasConflict,
     String? conflictContent,
     bool clearConflictContent = false,
+    Object? minSupportedAppVersion = _noChange,
   }) {
     return Note(
       id: id ?? this.id,
@@ -269,6 +274,9 @@ class Note extends Equatable {
       conflictContent: clearConflictContent
           ? null
           : (conflictContent ?? this.conflictContent),
+      minSupportedAppVersion: identical(minSupportedAppVersion, _noChange)
+          ? this.minSupportedAppVersion
+          : minSupportedAppVersion as String?,
     );
   }
 
@@ -295,6 +303,7 @@ class Note extends Equatable {
       'attachments':
           attachments.map((attachment) => attachment.toJson()).toList(),
       'localOnly': localOnly,
+      'minSupportedAppVersion': minSupportedAppVersion,
       // We explicitly don't sync conflict state up to the cloud;
       // the cloud is just the source of truth for the remote version.
       // But if we did want to serialize them locally somehow, we might.
@@ -353,6 +362,7 @@ class Note extends Equatable {
               .toList() ??
           <NoteAttachment>[],
       localOnly: json['localOnly'] as bool? ?? false,
+      minSupportedAppVersion: json['minSupportedAppVersion'] as String?,
       hasConflict: false, // from server is never conflicted
       conflictContent: null,
     );
@@ -380,6 +390,7 @@ class Note extends Equatable {
         pdfPath,
         attachments,
         localOnly,
+        minSupportedAppVersion,
         hasConflict,
         conflictContent,
       ];

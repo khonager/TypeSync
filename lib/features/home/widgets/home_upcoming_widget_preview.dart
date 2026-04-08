@@ -34,6 +34,7 @@ class HomeUpcomingWidgetPreview extends StatelessWidget {
                 ? HomeUpcomingCard(
                     items: visibleItems,
                     contentPadding: resolvedLayout.contentPadding,
+                    layout: resolvedLayout.cardLayout,
                   )
                 : _EmptyUpcomingCard(
                     contentPadding: resolvedLayout.contentPadding,
@@ -48,10 +49,12 @@ class HomeUpcomingWidgetPreview extends StatelessWidget {
 class HomeUpcomingWidgetLayoutSpec {
   final int maxItems;
   final EdgeInsets contentPadding;
+  final HomeUpcomingCardLayout cardLayout;
 
   const HomeUpcomingWidgetLayoutSpec({
     required this.maxItems,
     required this.contentPadding,
+    required this.cardLayout,
   });
 
   factory HomeUpcomingWidgetLayoutSpec.fromSize(Size size) {
@@ -63,9 +66,19 @@ class HomeUpcomingWidgetLayoutSpec {
       maxItems: isTall ? 4 : (isCompact ? 2 : 3),
       contentPadding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        isCompact ? 10 : 12,
-        horizontalPadding,
         isCompact ? 8 : 10,
+        horizontalPadding,
+        isCompact ? 6 : 8,
+      ),
+      cardLayout: HomeUpcomingCardLayout(
+        titleBottomSpacing: isCompact ? 2 : 3,
+        rowVerticalPadding: isCompact ? 4 : 5,
+        iconSize: 16,
+        iconSpacing: isCompact ? 8 : 9,
+        metaSpacing: isCompact ? 8 : 10,
+        minMetaWidth: isCompact ? 64 : 68,
+        secondaryMetaSpacing: 0,
+        itemBorderRadius: const BorderRadius.all(Radius.circular(8)),
       ),
     );
   }

@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
@@ -27,13 +28,16 @@ import '../../../core/utils/web_download_stub.dart'
     as web_download;
 
 import '../../../core/models/note.dart';
+import '../../../core/models/typesync_kanban_embed.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
@@ -43,6 +47,7 @@ import '../../../core/models/typesync_table_embed.dart';
 import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
+import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 
 /// Note editor with markdown-like rich text editing
@@ -70,6 +75,8 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
+  static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
+
   // Quill editor controller
   late QuillController _quillController;
 
@@ -92,6 +99,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Auto-save timer
   Timer? _saveTimer;
+  Timer? _caretPersistTimer;
+  bool _didUserFocusEditor = false;
 
   // Stats
   int _characterCount = 0;
@@ -118,9 +127,21 @@ class _EditorScreenState extends State<EditorScreen>
   final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
   final Map<String, Future<String?>> _attachmentTextFutures = {};
 
+  bool get _openedFromSearch {
+    final query = widget.searchQuery?.trim();
+    return query != null && query.isNotEmpty;
+  }
+
+  String? get _caretOffsetPreferenceKey {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return null;
+    return '$_caretOffsetPreferencePrefix$noteId';
+  }
+
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_onEditorFocusChanged);
     _matchGlowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -183,6 +204,13 @@ class _EditorScreenState extends State<EditorScreen>
       }
     }
 
+    if (!_openedFromSearch) {
+      final restoredCaretOffset = await _loadPersistedCaretOffset();
+      if (restoredCaretOffset != null) {
+        _setEditorSelection(restoredCaretOffset);
+      }
+    }
+
     // Listen for content changes
     _quillController.addListener(_onContentChanged);
 
@@ -192,7 +220,13 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Calculate initial stats
     _updateStats();
-    _maybeNavigateToInitialSearchMatch();
+    if (_isCurrentAppVersionCompatibleWithNote()) {
+      if (_openedFromSearch) {
+        _maybeNavigateToInitialSearchMatch();
+      } else {
+        _requestInitialEditorFocus();
+      }
+    }
 
     if (_note != null && !_hasStartedCloudMigration) {
       _hasStartedCloudMigration = true;
@@ -204,10 +238,134 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isUpdatingFromExternal) return;
     _updateStats();
     _scheduleSave();
+    _scheduleCaretOffsetPersist();
+  }
+
+  void _onEditorFocusChanged() {
+    if (_focusNode.hasFocus) {
+      _didUserFocusEditor = true;
+      _scheduleCaretOffsetPersist();
+      return;
+    }
+
+    if (_didUserFocusEditor) {
+      _caretPersistTimer?.cancel();
+      unawaited(_persistCaretOffset(force: true));
+    }
+  }
+
+  void _requestInitialEditorFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _openedFromSearch) return;
+      _focusNode.requestFocus();
+    });
+  }
+
+  void _scheduleCaretOffsetPersist() {
+    if (!_focusNode.hasFocus) return;
+    _caretPersistTimer?.cancel();
+    _caretPersistTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_persistCaretOffset());
+    });
+  }
+
+  Future<int?> _loadPersistedCaretOffset() async {
+    final key = _caretOffsetPreferenceKey;
+    if (key == null) return null;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistCaretOffset({bool force = false}) async {
+    final key = _caretOffsetPreferenceKey;
+    if (key == null) return;
+    if (!_didUserFocusEditor && !force) return;
+    if (!_focusNode.hasFocus && !force) return;
+
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final rawOffset = selection.extentOffset >= 0
+        ? selection.extentOffset
+        : selection.baseOffset;
+    if (rawOffset < 0) return;
+
+    final safeOffset = _safeDocumentOffset(rawOffset);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, safeOffset);
+    } catch (_) {
+      // Best-effort persistence; ignore local preference write failures.
+    }
+  }
+
+  void _setEditorSelection(int offset) {
+    _quillController.updateSelection(
+      TextSelection.collapsed(offset: _safeDocumentOffset(offset)),
+      ChangeSource.local,
+    );
+  }
+
+  int _safeDocumentOffset(int offset) {
+    final maxOffset = _quillController.document.length > 0
+        ? _quillController.document.length - 1
+        : 0;
+    return offset.clamp(0, maxOffset).toInt();
+  }
+
+  String? _minimumVersionRequiredByCurrentDocument() {
+    final operations = _quillController.document.toDelta().toJson();
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      if (insert is! Map) continue;
+      if (insert.containsKey(TypeSyncKanbanEmbed.kanbanType)) {
+        return TypeSyncKanbanEmbed.minimumSupportedAppVersion;
+      }
+    }
+    return null;
+  }
+
+  String? _requiredAppVersionForCurrentNote() {
+    final raw = _note?.minSupportedAppVersion?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return VersionCompatibility.normalize(raw);
+  }
+
+  bool _isCurrentAppVersionCompatibleWithNote() {
+    final minimumVersion = _requiredAppVersionForCurrentNote();
+    if (minimumVersion == null) return true;
+    return VersionCompatibility.isAtLeast(
+      current: kCurrentAppVersion,
+      minimum: minimumVersion,
+    );
+  }
+
+  Future<void> _markCurrentNoteRequiresVersion(String minimumVersion) async {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final updatedNote = await notesProvider.setMinimumSupportedAppVersion(
+      noteId: noteId,
+      minimumVersion: minimumVersion,
+    );
+    if (!mounted || updatedNote == null) return;
+
+    setState(() {
+      _note = updatedNote;
+    });
   }
 
   void _updateStats() {
-    final plainText = _quillController.document.toPlainText();
+    final plainText = RichTextPlainTextService.extractPlainTextFromDelta(
+      _quillController.document.toDelta().toJson(),
+    );
     setState(() {
       _characterCount = plainText.length;
       _lineCount = '\n'.allMatches(plainText).length + 1;
@@ -235,6 +393,11 @@ class _EditorScreenState extends State<EditorScreen>
       characterCount: _characterCount,
       lineCount: _lineCount,
     );
+
+    final minimumVersion = _minimumVersionRequiredByCurrentDocument();
+    if (minimumVersion != null) {
+      unawaited(_markCurrentNoteRequiresVersion(minimumVersion));
+    }
   }
 
   Future<void> _updateTitle(String title) async {
@@ -247,10 +410,15 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _caretPersistTimer?.cancel();
+    if (_didUserFocusEditor) {
+      unawaited(_persistCaretOffset(force: true));
+    }
     _matchGlowStopTimer?.cancel();
     _matchGlowController.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
+    _focusNode.removeListener(_onEditorFocusChanged);
     _focusNode.dispose();
     _scrollController.dispose();
     _titleController.dispose();
@@ -306,6 +474,13 @@ class _EditorScreenState extends State<EditorScreen>
     final bgColor = _note?.backgroundColor != null
         ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
         : null;
+    final requiredVersion = _requiredAppVersionForCurrentNote();
+    final currentVersion = VersionCompatibility.normalize(kCurrentAppVersion);
+    final isUnsupportedVersion = requiredVersion != null &&
+        !VersionCompatibility.isAtLeast(
+          current: currentVersion,
+          minimum: requiredVersion,
+        );
 
     return PopScope(
       canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
@@ -356,70 +531,158 @@ class _EditorScreenState extends State<EditorScreen>
           ],
         ),
         body: Column(
-          children: [
-            if (_note?.hasConflict == true) _buildConflictBanner(),
-            Expanded(
-              child: DropTarget(
-                onDragEntered: (details) {
-                  setState(() {
-                    _isDragging = true;
-                  });
-                },
-                onDragExited: (details) {
-                  setState(() {
-                    _isDragging = false;
-                  });
-                },
-                onDragDone: (details) {
-                  _handleDroppedFiles(details.files);
-                  setState(() {
-                    _isDragging = false;
-                  });
-                },
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    _buildEditorWithAttachments(bgColor),
-                    EditorToolbar(
-                      controller: _quillController,
-                      onInsertPdf: _insertPdf,
-                      onInsertTable: _insertTable,
+          children: isUnsupportedVersion
+              ? [
+                  Expanded(
+                    child: _buildUnsupportedVersionNotice(
+                      requiredVersion: requiredVersion,
+                      currentVersion: currentVersion,
                     ),
-                    if (_isDragging)
-                      Container(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.2),
-                        alignment: Alignment.center,
-                        child: Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(12),
+                  ),
+                ]
+              : [
+                  if (_note?.hasConflict == true) _buildConflictBanner(),
+                  Expanded(
+                    child: DropTarget(
+                      onDragEntered: (details) {
+                        setState(() {
+                          _isDragging = true;
+                        });
+                      },
+                      onDragExited: (details) {
+                        setState(() {
+                          _isDragging = false;
+                        });
+                      },
+                      onDragDone: (details) {
+                        _handleDroppedFiles(details.files);
+                        setState(() {
+                          _isDragging = false;
+                        });
+                      },
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          _buildEditorWithAttachments(bgColor),
+                          EditorToolbar(
+                            controller: _quillController,
+                            onInsertPdf: _insertPdf,
+                            onInsertTable: _insertTable,
+                            onInsertKanban: _insertKanban,
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.upload_file,
-                                size: 48,
-                                color: Theme.of(context).colorScheme.primary,
+                          if (_isDragging)
+                            Container(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.2),
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.upload_file,
+                                      size: 48,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Drop files to attach',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Drop files to attach',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                        ],
                       ),
+                    ),
+                  ),
+                ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnsupportedVersionNotice({
+    required String requiredVersion,
+    required String currentVersion,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          color: colors.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.system_update_alt,
+                      color: colors.onErrorContainer,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Unsupported TypeSync Version',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: colors.onErrorContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 14),
+                Text(
+                  'This file uses features that require TypeSync '
+                  '$requiredVersion or newer.',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyLarge
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Current version: $currentVersion',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Update TypeSync to continue editing this file.',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -758,6 +1021,7 @@ class _EditorScreenState extends State<EditorScreen>
               configurations: QuillEditorConfigurations(
                 editorKey: _editorKey,
                 embedBuilders: const [
+                  TypeSyncKanbanEmbedBuilder(),
                   TypeSyncTableEmbedBuilder(),
                   MarkdownTableEmbedBuilder(),
                 ],
@@ -1966,6 +2230,30 @@ class _EditorScreenState extends State<EditorScreen>
     _focusNode.requestFocus();
   }
 
+  void _insertKanban() {
+    final selection = _quillController.selection;
+    final baseOffset = selection.baseOffset < 0 ? 0 : selection.baseOffset;
+    final extentOffset =
+        selection.extentOffset < 0 ? baseOffset : selection.extentOffset;
+    final insertOffset = baseOffset <= extentOffset ? baseOffset : extentOffset;
+    final replaceLength = (baseOffset - extentOffset).abs();
+    final board = TypeSyncKanbanData.empty();
+
+    _quillController.replaceText(
+      insertOffset,
+      selection.isValid ? replaceLength : 0,
+      TypeSyncKanbanEmbed.toBlockEmbed(board),
+      TextSelection.collapsed(offset: insertOffset + 1),
+    );
+
+    unawaited(
+      _markCurrentNoteRequiresVersion(
+        TypeSyncKanbanEmbed.minimumSupportedAppVersion,
+      ),
+    );
+    _focusNode.requestFocus();
+  }
+
   void _showTagDialog() {
     // TODO: Implement tag dialog
   }
@@ -2122,15 +2410,7 @@ class _EditorScreenState extends State<EditorScreen>
         } else {
           // Text note - export as plain text
           extension = '.txt';
-          // Convert Quill Delta to plain text
-          try {
-            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
-            final document = Document.fromJson(jsonData);
-            content = document.toPlainText();
-          } catch (e) {
-            // If not JSON, use content as-is
-            content = _note!.content;
-          }
+          content = RichTextPlainTextService.extractPlainText(_note!.content);
         }
         fileBytes = utf8.encode(content);
       }

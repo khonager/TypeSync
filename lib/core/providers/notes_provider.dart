@@ -14,7 +14,9 @@ import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
 import '../services/diagnostics_service.dart';
+import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
+import '../utils/version_compatibility.dart';
 import '../utils/search_query.dart';
 
 /// Provider for managing note state
@@ -114,7 +116,7 @@ class NotesProvider extends ChangeNotifier {
     final buffer = StringBuffer()
       ..write(note.title)
       ..write(' ')
-      ..write(_extractSearchableTextFromContent(note.content))
+      ..write(RichTextPlainTextService.extractPlainText(note.content))
       ..write(' ')
       ..write(note.pdfPath ?? '');
 
@@ -221,7 +223,7 @@ class NotesProvider extends ChangeNotifier {
     for (final scope in scopedFilters) {
       switch (scope) {
         case 'text':
-          if (_extractSearchableTextFromContent(note.content)
+          if (RichTextPlainTextService.extractPlainText(note.content)
               .toLowerCase()
               .contains(token)) {
             return true;
@@ -345,56 +347,6 @@ class NotesProvider extends ChangeNotifier {
   String _safeExtension(String value) {
     final normalized = value.split('?').first.split('#').first;
     return p.extension(normalized).toLowerCase();
-  }
-
-  String _extractSearchableTextFromContent(String content) {
-    if (content.isEmpty) {
-      return '';
-    }
-
-    final trimmed = content.trimLeft();
-    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-      return content;
-    }
-
-    try {
-      final decoded = jsonDecode(content);
-      if (decoded is List<dynamic>) {
-        return _extractInsertText(decoded);
-      }
-      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
-        return _extractInsertText(decoded['ops'] as List<dynamic>);
-      }
-    } catch (_) {
-      // Fall back to raw content if this is not valid JSON/quill-delta.
-    }
-
-    return content;
-  }
-
-  String _extractInsertText(List<dynamic> operations) {
-    final buffer = StringBuffer();
-
-    for (final op in operations) {
-      if (op is! Map) continue;
-      final insertValue = op['insert'];
-      if (insertValue is String) {
-        buffer.write(insertValue);
-        continue;
-      }
-
-      if (insertValue is Map) {
-        for (final value in insertValue.values) {
-          if (value is String) {
-            buffer
-              ..write(' ')
-              ..write(value);
-          }
-        }
-      }
-    }
-
-    return buffer.toString();
   }
 
   /// Get notes by tag
@@ -689,6 +641,41 @@ class NotesProvider extends ChangeNotifier {
     } else {
       debugPrint('setBackgroundColor: Update failed');
     }
+  }
+
+  /// Raises the minimum app version required to render/edit a note.
+  ///
+  /// If the note already requires a newer version, this is a no-op.
+  Future<Note?> setMinimumSupportedAppVersion({
+    required String noteId,
+    required String minimumVersion,
+  }) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) return null;
+
+    final note = _notes[index];
+    final normalizedMinimum = VersionCompatibility.normalize(minimumVersion);
+    final currentMinimum = note.minSupportedAppVersion;
+    if (currentMinimum != null &&
+        VersionCompatibility.compare(currentMinimum, normalizedMinimum) >= 0) {
+      return note;
+    }
+
+    final updatedNote = note.copyWith(
+      minSupportedAppVersion: normalizedMinimum,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+    );
+
+    _notes[index] = updatedNote;
+    await _notesBox?.put(noteId, updatedNote);
+
+    if (!updatedNote.localOnly) {
+      _syncService?.syncNote(updatedNote);
+    }
+
+    notifyListeners();
+    return updatedNote;
   }
 
   // ===========================================
@@ -1156,6 +1143,8 @@ class NoteAdapter extends TypeAdapter<Note> {
     }
 
     final localOnly = reader.availableBytes > 0 ? reader.readBool() : false;
+    final minSupportedAppVersionRaw =
+        reader.availableBytes > 0 ? reader.readString() : '';
 
     return Note(
       id: id,
@@ -1180,6 +1169,8 @@ class NoteAdapter extends TypeAdapter<Note> {
       size: size,
       attachments: attachments,
       localOnly: localOnly,
+      minSupportedAppVersion:
+          minSupportedAppVersionRaw.isEmpty ? null : minSupportedAppVersionRaw,
     );
   }
 
@@ -1218,6 +1209,7 @@ class NoteAdapter extends TypeAdapter<Note> {
       writer.writeString(attachment.addedAt.toIso8601String());
     }
     writer.writeBool(obj.localOnly);
+    writer.writeString(obj.minSupportedAppVersion ?? '');
   }
 }
 

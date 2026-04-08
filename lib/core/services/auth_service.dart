@@ -4,6 +4,8 @@
 /// login, registration, password reset, and session management.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
@@ -14,6 +16,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../firebase_options.dart';
 import '../models/user.dart';
 import 'diagnostics_service.dart';
 
@@ -22,6 +25,12 @@ import 'diagnostics_service.dart';
 /// Provides methods for sign in, sign up, sign out, and
 /// password recovery. Maintains current user state.
 class AuthService extends ChangeNotifier {
+  static const String customAuthDomain = 'typesync.khonager.de';
+  static const String customAuthBaseUrl = 'https://$customAuthDomain';
+  static const String finishSignUpPath = '/finishSignUp';
+  static const String loginPath = '/login';
+  static const String _pendingEmailLinkEmailKey = 'pending_email_link_email';
+
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
 
   // Firebase Auth instance (lazy initialization)
@@ -86,6 +95,7 @@ class AuthService extends ChangeNotifier {
   bool _hasError = false;
   String? _guestWorkspaceId;
   String? _pendingGuestImportWorkspaceId;
+  String? _pendingEmailLinkEmail;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -125,6 +135,7 @@ class AuthService extends ChangeNotifier {
   bool get hasError => _hasError;
   String? get guestWorkspaceId => _guestWorkspaceId;
   String? get pendingGuestImportWorkspaceId => _pendingGuestImportWorkspaceId;
+  String? get pendingEmailLinkEmail => _pendingEmailLinkEmail;
 
   /// User ID for local storage (Firebase UID for logged-in users, guest ID for guests)
   String? get userId {
@@ -264,10 +275,11 @@ class AuthService extends ChangeNotifier {
       _guestWorkspaceId = prefs.getString('guest_workspace_id');
       _pendingGuestImportWorkspaceId =
           prefs.getString('pending_guest_import_workspace_id');
+      _pendingEmailLinkEmail = prefs.getString(_pendingEmailLinkEmailKey);
 
       _diagnostics.info(
         'AuthService',
-        'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId isAuthenticated=$isAuthenticated',
+        'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId pendingEmailLink=$_pendingEmailLinkEmail isAuthenticated=$isAuthenticated',
       );
 
       if (!isAuthenticated &&
@@ -493,7 +505,13 @@ class AuthService extends ChangeNotifier {
         );
 
         // Send email verification
-        await credential.user!.sendEmailVerification();
+        await credential.user!.sendEmailVerification(
+          _buildActionCodeSettings(
+            path: loginPath,
+            handleCodeInApp: false,
+            queryParameters: const {'mode': 'verifyEmail'},
+          ),
+        );
       }
 
       _setLoading(false);
@@ -629,7 +647,14 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
-      await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
+      await _firebaseAuth.sendPasswordResetEmail(
+        email: email.trim(),
+        actionCodeSettings: _buildActionCodeSettings(
+          path: loginPath,
+          handleCodeInApp: false,
+          queryParameters: const {'mode': 'resetPassword'},
+        ),
+      );
       _setLoading(false);
       return true;
     } on firebase.FirebaseAuthException catch (e) {
@@ -649,16 +674,16 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
-      final actionCodeSettings = firebase.ActionCodeSettings(
-        url: 'https://typesync-app.web.app/finishSignUp?email=$email',
+      final normalizedEmail = email.trim();
+      final actionCodeSettings = _buildActionCodeSettings(
+        path: finishSignUpPath,
         handleCodeInApp: true,
-        androidPackageName: 'de.khonager.typesync',
-        androidMinimumVersion: '1',
-        androidInstallApp: true,
+        queryParameters: {'email': normalizedEmail},
       );
 
+      await _savePendingEmailLinkEmail(normalizedEmail);
       await _firebaseAuth.sendSignInLinkToEmail(
-        email: email.trim(),
+        email: normalizedEmail,
         actionCodeSettings: actionCodeSettings,
       );
 
@@ -678,10 +703,74 @@ class AuthService extends ChangeNotifier {
   /// Resend email verification
   Future<bool> resendVerificationEmail() async {
     try {
-      await _firebaseAuth.currentUser?.sendEmailVerification();
+      await _firebaseAuth.currentUser?.sendEmailVerification(
+        _buildActionCodeSettings(
+          path: loginPath,
+          handleCodeInApp: false,
+          queryParameters: const {'mode': 'verifyEmail'},
+        ),
+      );
       return true;
     } catch (e) {
       _setError('Failed to send verification email.');
+      return false;
+    }
+  }
+
+  bool isSignInLink(String emailLink) {
+    if (!kIsWeb) {
+      return false;
+    }
+
+    return _firebaseAuth.isSignInWithEmailLink(emailLink);
+  }
+
+  Future<bool> completeSignInWithEmailLink({
+    required String email,
+    String? emailLink,
+  }) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      final normalizedEmail = email.trim();
+      final resolvedEmailLink =
+          emailLink ?? (kIsWeb ? Uri.base.toString() : '');
+
+      if (resolvedEmailLink.isEmpty || !isSignInLink(resolvedEmailLink)) {
+        _setError('This sign-in link is invalid or has expired.');
+        _setLoading(false);
+        return false;
+      }
+
+      final previousGuestWorkspaceId = _guestWorkspaceId;
+      final credential = await _firebaseAuth.signInWithEmailLink(
+        email: normalizedEmail,
+        emailLink: resolvedEmailLink,
+      );
+
+      if (credential.user != null) {
+        _isGuestMode = false;
+        await _setPendingGuestImportWorkspace(
+          previousGuestWorkspaceId,
+          credential.user!.uid,
+        );
+        await _loadUserData(
+          credential.user!.uid,
+          firebaseUser: credential.user,
+        );
+      }
+
+      await _clearPendingEmailLinkEmail();
+      _setLoading(false);
+      return true;
+    } on firebase.FirebaseAuthException catch (e) {
+      _setError(_mapFirebaseError(e.code));
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _setError('Failed to complete email sign-in. Please try again.');
+      _setLoading(false);
       return false;
     }
   }
@@ -1081,6 +1170,41 @@ class AuthService extends ChangeNotifier {
   /// Clear error state manually
   void clearError() {
     _clearError();
+    notifyListeners();
+  }
+
+  firebase.ActionCodeSettings _buildActionCodeSettings({
+    required String path,
+    required bool handleCodeInApp,
+    Map<String, String>? queryParameters,
+  }) {
+    final uri = Uri.parse(customAuthBaseUrl).replace(
+      path: path,
+      queryParameters: queryParameters,
+    );
+
+    return firebase.ActionCodeSettings(
+      url: uri.toString(),
+      handleCodeInApp: handleCodeInApp,
+      linkDomain: customAuthDomain,
+      androidPackageName: 'de.khonager.typesync',
+      androidMinimumVersion: '1',
+      androidInstallApp: handleCodeInApp,
+      iOSBundleId: DefaultFirebaseOptions.ios.iosBundleId,
+    );
+  }
+
+  Future<void> _savePendingEmailLinkEmail(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingEmailLinkEmailKey, email);
+    _pendingEmailLinkEmail = email;
+    notifyListeners();
+  }
+
+  Future<void> _clearPendingEmailLinkEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingEmailLinkEmailKey);
+    _pendingEmailLinkEmail = null;
     notifyListeners();
   }
 

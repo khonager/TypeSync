@@ -15,7 +15,6 @@ import 'package:provider/provider.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter_quill/flutter_quill.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -27,12 +26,13 @@ import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/data_repair_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/migration_service.dart';
+import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
-import '../../../core/services/data_repair_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/color_utils.dart';
@@ -1393,70 +1393,80 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showCreateOptions() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                'Add',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+      isScrollControlled: true,
+      builder: (context) {
+        final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.85;
+
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxSheetHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Add',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.note_add),
+                    title: const Text('Create File'),
+                    subtitle: const Text('Create a new note/document'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _createNewNote();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.folder),
+                    title: const Text('Create Folder'),
+                    subtitle: const Text('Create a new folder'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _createNewFolder();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.upload_file),
+                    title: const Text('Add Document from Storage'),
+                    subtitle: const Text('Import a file from your device'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _addDocumentFromStorage();
+                    },
+                  ),
+                  const Divider(height: 24),
+                  ListTile(
+                    leading: const Icon(Icons.calendar_today),
+                    title: const Text('Calendar'),
+                    subtitle: const Text('Open reminders and events'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      AppRouter.navigateTo(context, AppRouter.calendar);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.checklist),
+                    title: const Text('Homework'),
+                    subtitle: const Text('Open assignments and tasks'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      AppRouter.navigateTo(context, AppRouter.homework);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.note_add),
-              title: const Text('Create File'),
-              subtitle: const Text('Create a new note/document'),
-              onTap: () {
-                Navigator.pop(context);
-                _createNewNote();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder),
-              title: const Text('Create Folder'),
-              subtitle: const Text('Create a new folder'),
-              onTap: () {
-                Navigator.pop(context);
-                _createNewFolder();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: const Text('Add Document from Storage'),
-              subtitle: const Text('Import a file from your device'),
-              onTap: () {
-                Navigator.pop(context);
-                _addDocumentFromStorage();
-              },
-            ),
-            const Divider(height: 24),
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('Calendar'),
-              subtitle: const Text('Open reminders and events'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.calendar);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist),
-              title: const Text('Homework'),
-              subtitle: const Text('Open assignments and tasks'),
-              onTap: () {
-                Navigator.pop(context);
-                AppRouter.navigateTo(context, AppRouter.homework);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -2100,13 +2110,7 @@ class _HomeScreenState extends State<HomeScreen> {
             content = note.content;
           } else {
             extension = '.txt';
-            try {
-              final jsonData = jsonDecode(note.content) as List<dynamic>;
-              final document = Document.fromJson(jsonData);
-              content = document.toPlainText();
-            } catch (e) {
-              content = note.content;
-            }
+            content = RichTextPlainTextService.extractPlainText(note.content);
           }
 
           final file = File('${exportDir.path}/$fileName$extension');
@@ -2167,13 +2171,7 @@ class _HomeScreenState extends State<HomeScreen> {
           content = note.content;
         } else {
           extension = '.txt';
-          try {
-            final jsonData = jsonDecode(note.content) as List<dynamic>;
-            final document = Document.fromJson(jsonData);
-            content = document.toPlainText();
-          } catch (e) {
-            content = note.content;
-          }
+          content = RichTextPlainTextService.extractPlainText(note.content);
         }
 
         final file = File('${folderDir.path}/$fileName$extension');
@@ -2316,15 +2314,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         // Text note - export as plain text
         extension = '.txt';
-        // Convert Quill Delta to plain text
-        try {
-          final jsonData = jsonDecode(note.content) as List<dynamic>;
-          final document = Document.fromJson(jsonData);
-          content = document.toPlainText();
-        } catch (e) {
-          // If not JSON, use content as-is
-          content = note.content;
-        }
+        content = RichTextPlainTextService.extractPlainText(note.content);
       }
 
       // Use file picker to choose export location (with Linux fallback)

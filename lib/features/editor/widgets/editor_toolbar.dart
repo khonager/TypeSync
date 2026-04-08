@@ -20,11 +20,13 @@ class EditorToolbar extends StatefulWidget {
   final QuillController controller;
   final VoidCallback onInsertPdf;
   final VoidCallback onInsertTable;
+  final VoidCallback onInsertKanban;
 
   const EditorToolbar({
     required this.controller,
     required this.onInsertPdf,
     required this.onInsertTable,
+    required this.onInsertKanban,
     super.key,
   });
 
@@ -268,6 +270,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
               _ToolbarButton(
                 icon: Icons.table_chart_outlined,
                 onTap: widget.onInsertTable,
+              ),
+              _ToolbarButton(
+                icon: Icons.view_kanban_outlined,
+                onTap: widget.onInsertKanban,
               ),
               _ToolbarButton(
                 icon: Icons.format_align_left,

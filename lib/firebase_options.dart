@@ -56,7 +56,7 @@ class DefaultFirebaseOptions {
     appId: '1:461465199276:web:default',
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
-    authDomain: 'typesynced.firebaseapp.com',
+    authDomain: 'typesync.khonager.de',
     storageBucket: 'typesynced.firebasestorage.app',
   );
 
@@ -101,7 +101,7 @@ class DefaultFirebaseOptions {
     appId: '1:461465199276:web:default',
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
-    authDomain: 'typesynced.firebaseapp.com',
+    authDomain: 'typesync.khonager.de',
     storageBucket: 'typesynced.firebasestorage.app',
   );
 }
