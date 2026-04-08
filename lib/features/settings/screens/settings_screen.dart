@@ -1594,6 +1594,7 @@ class _ReleaseNotesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1621,6 +1622,10 @@ class _ReleaseNotesCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (release.important.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildImportantSection(context, colors, release.important),
+            ],
             if (release.title.trim().isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
@@ -1628,31 +1633,136 @@ class _ReleaseNotesCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
-            if (release.changes.isNotEmpty) ...[
+            if (release.newFeatures.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildSection(
+                context,
+                title: 'New Features',
+                items: release.newFeatures,
+              ),
+            ],
+            if (release.fixesImprovements.isNotEmpty) ...[
               const SizedBox(height: 10),
-              for (final change in release.changes) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: Icon(Icons.circle, size: 7),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        change,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-              ],
+              _buildSection(
+                context,
+                title: 'Fixes & Improvements',
+                items: release.fixesImprovements,
+              ),
+            ],
+            if (release.notes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildSection(
+                context,
+                title: 'Notes',
+                items: release.notes,
+                headingColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                textColor: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                bulletColor: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+              ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildImportantSection(
+    BuildContext context,
+    ColorScheme colors,
+    List<String> items,
+  ) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.primary.withValues(alpha: 0.65)),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.priority_high, size: 16, color: colors.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Important',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: colors.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '• $item',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSection(
+    BuildContext context, {
+    required String title,
+    required List<String> items,
+    Color? headingColor,
+    Color? textColor,
+    Color? bulletColor,
+  }) {
+    final defaultHeadingColor = Theme.of(context).colorScheme.onSurface;
+    final defaultTextColor = Theme.of(context).colorScheme.onSurface;
+    final resolvedHeadingColor = headingColor ?? defaultHeadingColor;
+    final resolvedTextColor = textColor ?? defaultTextColor;
+    final resolvedBulletColor = bulletColor ?? resolvedTextColor;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: resolvedHeadingColor,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 6),
+        for (final item in items) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Icon(Icons.circle, size: 7, color: resolvedBulletColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  item,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: resolvedTextColor,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+        ],
+      ],
     );
   }
 }

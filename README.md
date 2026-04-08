@@ -245,6 +245,11 @@ flutter analyze
 
 ### Changelog Workflow
 - Canonical source: `changelog/changelog.yaml`
+- Release entry sections:
+  - `important` (highlighted at top in-app)
+  - `new_features`
+  - `fixes_improvements`
+  - `notes` (muted at bottom in-app)
 - Generate app and release artifacts:
 
 ```bash

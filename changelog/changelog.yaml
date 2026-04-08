@@ -1,18 +1,226 @@
-schema_version: 1
+schema_version: 2
 releases:
-  - version: 1.1.0
+  - version: 1.1.15
     date: 2026-04-08
-    title: Kanban + Compatibility
-    changes:
-      - Added interactive TypeSync Kanban embeds for rich text notes.
-      - Notes now track the minimum supported app version for feature compatibility.
-      - Older app versions now show an explicit upgrade message for unsupported notes.
-      - Editor now restores and autofocuses your previous caret position per file.
+    title: Structured Editors + Forward Compatibility
+    important:
+      - Files can now declare minimum supported app versions, and unsupported app builds show a clear upgrade message instead of silently failing.
+    new_features:
+      - Added TypeSync Kanban and Table embed blocks inside rich-text notes.
+      - Added per-file cursor restore so editing resumes where you left off.
+      - Added structured in-app changelog foundation and generation pipeline.
+    fixes_improvements:
+      - Added sync support for the new Kanban and Table embeds.
+      - Improved editor open behavior to immediately allow typing for normal opens.
+    notes:
+      - This release entry is currently ahead of the latest git tag and reflects post-v1.1.14 work.
+
+  - version: 1.1.14
+    date: 2026-04-01
+    title: Platform Stability + Widget Polish
+    new_features:
+      - Refined widget resizing behavior for a cleaner home experience.
+    fixes_improvements:
+      - Fixed NixOS lock/build behavior.
+      - Reduced layout friction on smaller widget sizes.
+    notes:
+      - This patch focused on stability and UI polish.
+
+  - version: 1.1.13
+    date: 2026-04-01
+    title: Upcoming Tasks + Attachment UX
+    important:
+      - Android package identifier migration occurred in this cycle (`com` to `de` namespace adjustments).
+    new_features:
+      - Added Upcoming tasks widget/module surfaces.
+      - Added attachment delete action and improved PDF attachment zoom/loading behavior.
+      - Improved bottom bar visual design and rounded treatment.
+    fixes_improvements:
+      - Fixed package mismatch/build config issues.
+      - Improved bottom bar screen-size behavior to avoid overlay conflicts.
+      - Cleaned workflow secret handling and repository config hygiene.
+    notes:
+      - Includes iOS widget setup documentation additions.
+
+  - version: 1.1.12
+    date: 2026-03-31
+    title: Navigation and Readability
+    new_features:
+      - Refined add/sync button placement in the home UI.
+    fixes_improvements:
+      - Improved profile loading responsiveness.
+      - Fixed bottom bar behavior.
+      - Improved folder readability in list view.
+
+  - version: 1.1.11
+    date: 2026-03-31
+    title: Storage Visibility + Conflict Resolution
+    important:
+      - Merge conflict handling now includes clearer visual diffing and bulk apply support.
+    new_features:
+      - Added cloud/local storage visibility in profile.
+      - Added note counters and related status indicators.
+    fixes_improvements:
+      - Repaired cloud storage size accounting.
+      - Improved storage unit clarity (MiB/MB presentation updates).
+      - Fixed slow plain-text paste behavior.
+    notes:
+      - Several hover-based hints were removed to reduce visual noise.
+
+  - version: 1.1.10
+    date: 2026-03-30
+    title: Search and Import Power-Up
+    new_features:
+      - Added full-text search.
+      - Added search syntax support and suggestion/highlight behavior.
+      - Added Anytype import workflow improvements.
+      - Added icon update automation script.
+    fixes_improvements:
+      - Fixed mobile search behavior.
+      - Improved overlay interactions and storage forecasting display.
+
+  - version: 1.1.9
+    date: 2026-03-15
+    title: Guest Mode Continuity
+    important:
+      - Guest-to-account transition now keeps more user data and files during onboarding flows.
+    new_features:
+      - Added guest local file import after login.
+      - Added sign-out option to delete local workspace data explicitly.
+    fixes_improvements:
+      - Improved guest mode navigation and login switching behavior.
+
+  - version: 1.1.8
+    date: 2026-03-14
+    title: Desktop Interaction Upgrade
+    new_features:
+      - Added right-click interactions in file areas.
+    fixes_improvements:
+      - Improved drag-and-drop handling and responsiveness.
+
+  - version: 1.1.7
+    date: 2026-03-14
+    title: Attachments Expansion
+    new_features:
+      - Added broader supported attachment file types.
+      - Added Linux upload support for cloud-backed attachments.
+      - Added PDF cloud upload flow.
+    fixes_improvements:
+      - Improved web PDF upload/view handling.
+      - Improved attachment bar sizing and PDF preview resize/reposition behavior.
+
+  - version: 1.1.6
+    date: 2026-03-14
+    title: Linux Reliability Patch
+    fixes_improvements:
+      - Fixed Linux folder display issues.
+      - Improved Linux build stability.
+      - General analyze/test cleanup.
+
+  - version: 1.1.5
+    date: 2026-03-09
+    title: Pipeline and Config Hardening
+    important:
+      - Firebase configuration and generated files were stabilized for CI/build consistency.
+    new_features:
+      - Expanded web build/release workflow support.
+    fixes_improvements:
+      - Fixed Linux build regressions.
+      - Improved unstable web pipeline behavior.
+
+  - version: 1.1.4
+    date: 2026-03-08
+    title: File Flow Improvements
+    new_features:
+      - Added file picker enhancements.
+      - Added web download export support.
+      - Added folder color change support.
+      - Added additional PDF-oriented feature updates.
+    fixes_improvements:
+      - Fixed local-only file sync edge cases.
+      - Fixed export window behavior and Firebase init edge cases.
+
+  - version: 1.1.3
+    date: 2026-03-05
+    title: Web Session Stability
+    fixes_improvements:
+      - Fixed logout refresh behavior on web.
+      - Hardened web deploy flow.
+
+  - version: 1.1.2
+    date: 2026-03-05
+    title: Web Delivery Increment
+    new_features:
+      - Added web release build pipeline support in CI.
+    fixes_improvements:
+      - Improved Android logout behavior.
+
+  - version: 1.1.1
+    date: 2026-03-05
+    title: Auth and Build Cleanup
+    fixes_improvements:
+      - Fixed Firebase initialization behavior.
+      - Improved logout stability.
+      - Addressed version/build pipeline issues.
+
+  - version: 1.1.0
+    date: 2026-03-04
+    title: Subscription and Storage Control
+    important:
+      - Storage usage checks became stricter and more accurate for subscription-aware limits.
+    new_features:
+      - Added accurate storage quota/size checks in product flows.
+      - Added Enter-key submit flow for password prompts.
+      - Added release signing improvements for Android distribution.
+    fixes_improvements:
+      - Improved note/folder sync reliability with Firebase.
+      - Improved build stability across Android/Linux/Nix environments.
+
+  - version: 1.0.4
+    date: 2026-01-17
+    title: Release Metadata Sync
+    notes:
+      - Tag refresh only; no additional code changes from v1.0.3.
+
+  - version: 1.0.3
+    date: 2026-01-17
+    title: Branding Refresh
+    new_features:
+      - Updated app icon set across platforms.
+
+  - version: 1.0.2
+    date: 2026-01-16
+    title: Dependency Reproducibility
+    fixes_improvements:
+      - Improved dependency lock handling for more reproducible builds.
+      - Adjusted lockfile tracking strategy in git.
+
+  - version: 1.0.1
+    date: 2026-01-16
+    title: Release Automation Follow-Up
+    new_features:
+      - Added release auto-increment workflow improvements.
+    fixes_improvements:
+      - Adjusted dependency refresh handling after initial release.
 
   - version: 1.0.0
-    date: 2025-01-14
-    title: Initial Public Release
-    changes:
-      - Core TypeSync experience with folders, files, and rich-text editing.
-      - Local-first persistence with optional cloud sync and cross-device updates.
-      - Attachments, import/export foundations, and productivity modules.
+    date: 2026-01-16
+    title: First Working Stable Release
+    important:
+      - This is treated as the first stable/working public version.
+    new_features:
+      - Core note/folder management with rich-text editing.
+      - Guest/local mode and cloud-backed account mode.
+      - Calendar, homework, and timetable productivity modules.
+      - Drag-and-drop, PDF support, local folder sync, and file export foundations.
+      - Theme customization, editor toolbar controls, and attachment workflows.
+    fixes_improvements:
+      - Major sync reliability and auth-flow stabilization before stable release.
+      - Build and CI hardening across Linux/Android/Web/Nix.
+
+  - version: 0.9.0
+    date: 2026-01-13
+    title: Pre-Release Prototype Phase
+    notes:
+      - Covers early bootstrap and internal development before the first stable release.
+      - Includes initial architecture setup, Firebase integration experiments, and CI/build groundwork.

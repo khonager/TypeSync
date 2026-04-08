@@ -1,10 +1,21 @@
-# TypeSync 1.1.0
+# TypeSync 1.1.15
 
 Released: 2026-04-08
 
-Kanban + Compatibility
+Structured Editors + Forward Compatibility
 
-- Added interactive TypeSync Kanban embeds for rich text notes.
-- Notes now track the minimum supported app version for feature compatibility.
-- Older app versions now show an explicit upgrade message for unsupported notes.
-- Editor now restores and autofocuses your previous caret position per file.
+## Important
+- Files can now declare minimum supported app versions, and unsupported app builds show a clear upgrade message instead of silently failing.
+
+## New Features
+- Added TypeSync Kanban and Table embed blocks inside rich-text notes.
+- Added per-file cursor restore so editing resumes where you left off.
+- Added structured in-app changelog foundation and generation pipeline.
+
+## Fixes & Improvements
+- Added sync support for the new Kanban and Table embeds.
+- Improved editor open behavior to immediately allow typing for normal opens.
+
+## Notes
+- This release entry is currently ahead of the latest git tag and reflects post-v1.1.14 work.
+

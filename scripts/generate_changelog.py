@@ -72,6 +72,13 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
     i = 0
     schema_version: int | None = None
     releases: list[dict[str, Any]] = []
+    list_section_keys = {
+        "important",
+        "new_features",
+        "fixes_improvements",
+        "notes",
+        "changes",
+    }
 
     while i < len(lines):
         line = lines[i]
@@ -113,7 +120,12 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
                         "Release fields must use 4-space indentation under '- '."
                     )
 
-                if body.text == "changes:":
+                if body.text.endswith(":"):
+                    section_key = body.text[:-1].strip()
+                    if section_key not in list_section_keys:
+                        raise ValueError(
+                            f"Unknown release list section: {section_key!r}"
+                        )
                     i += 1
                     changes: list[str] = []
                     while i < len(lines):
@@ -126,7 +138,7 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
                             )
                         changes.append(_normalize_scalar(bullet.text[2:]))
                         i += 1
-                    release["changes"] = changes
+                    release[section_key] = changes
                     continue
 
                 key, value = _split_key_value(body.text)
@@ -140,13 +152,32 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
     if not releases:
         raise ValueError("At least one release entry is required.")
 
+    section_keys = (
+        "important",
+        "new_features",
+        "fixes_improvements",
+        "notes",
+        "changes",  # legacy alias; mapped into fixes_improvements
+    )
+
     for release in releases:
-        for required in ("version", "date", "title", "changes"):
+        for required in ("version", "date", "title"):
             if required not in release:
                 raise ValueError(f"Release missing required key: {required!r}")
-        if not isinstance(release["changes"], list) or not release["changes"]:
+
+        for section_key in section_keys:
+            value = release.get(section_key)
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                raise ValueError(
+                    f"Release {release.get('version', '<unknown>')} has non-list section {section_key!r}."
+                )
+
+        has_any_section = any(release.get(section_key) for section_key in section_keys)
+        if not has_any_section:
             raise ValueError(
-                f"Release {release.get('version', '<unknown>')} must include non-empty changes."
+                f"Release {release.get('version', '<unknown>')} must include at least one section."
             )
 
     releases.sort(key=lambda r: _parse_version(str(r["version"])), reverse=True)
@@ -157,7 +188,16 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
             "version": str(release["version"]),
             "date": str(release["date"]),
             "title": str(release["title"]),
-            "changes": [str(change) for change in release["changes"]],
+            "important": [str(item) for item in release.get("important", [])],
+            "newFeatures": [str(item) for item in release.get("new_features", [])],
+            "fixesImprovements": [
+                str(item)
+                for item in (
+                    release.get("fixes_improvements", [])
+                    + release.get("changes", [])
+                )
+            ],
+            "notes": [str(item) for item in release.get("notes", [])],
         }
         for release in releases
     ]
@@ -178,7 +218,18 @@ def _latest_markdown(payload: dict[str, Any]) -> str:
         release["title"],
         "",
     ]
-    lines.extend(f"- {change}" for change in release["changes"])
+    sections = [
+        ("Important", release.get("important", [])),
+        ("New Features", release.get("newFeatures", [])),
+        ("Fixes & Improvements", release.get("fixesImprovements", [])),
+        ("Notes", release.get("notes", [])),
+    ]
+    for heading, items in sections:
+        if not items:
+            continue
+        lines.append(f"## {heading}")
+        lines.extend(f"- {item}" for item in items)
+        lines.append("")
     lines.append("")
     return "\n".join(lines)
 
@@ -186,7 +237,17 @@ def _latest_markdown(payload: dict[str, Any]) -> str:
 def _latest_text(payload: dict[str, Any]) -> str:
     release = payload["releases"][0]
     lines = [f"TypeSync {release['version']} - {release['title']}"]
-    lines.extend(f"- {change}" for change in release["changes"])
+    sections = [
+        ("Important", release.get("important", [])),
+        ("New Features", release.get("newFeatures", [])),
+        ("Fixes & Improvements", release.get("fixesImprovements", [])),
+        ("Notes", release.get("notes", [])),
+    ]
+    for heading, items in sections:
+        if not items:
+            continue
+        lines.append(f"{heading}:")
+        lines.extend(f"- {item}" for item in items)
     lines.append("")
     return "\n".join(lines)
 
