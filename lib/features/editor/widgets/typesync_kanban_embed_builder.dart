@@ -114,22 +114,21 @@ class _TypeSyncKanbanEmbedWidget extends StatelessWidget {
   }
 
   Future<void> _editBoard(BuildContext context) async {
-    final editedBoard = await showDialog<TypeSyncKanbanData>(
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => _TypeSyncKanbanEditorDialog(
         initialBoard: board,
+        onBoardChanged: _persistBoard,
       ),
     );
+  }
 
-    if (editedBoard == null || !context.mounted) {
-      return;
-    }
-
+  void _persistBoard(TypeSyncKanbanData nextBoard) {
     final offset = node.documentOffset;
     controller.replaceText(
       offset,
       1,
-      TypeSyncKanbanEmbed.toBlockEmbed(editedBoard),
+      TypeSyncKanbanEmbed.toBlockEmbed(nextBoard),
       TextSelection.collapsed(offset: offset + 1),
     );
   }
@@ -283,9 +282,11 @@ class _KanbanCardPreview extends StatelessWidget {
 
 class _TypeSyncKanbanEditorDialog extends StatefulWidget {
   final TypeSyncKanbanData initialBoard;
+  final ValueChanged<TypeSyncKanbanData> onBoardChanged;
 
   const _TypeSyncKanbanEditorDialog({
     required this.initialBoard,
+    required this.onBoardChanged,
   });
 
   @override
@@ -318,7 +319,16 @@ class _TypeSyncKanbanEditorDialogState
     final dialogHeight = math.min(mediaQuery.size.height * 0.86, 820.0);
 
     return AlertDialog(
-      title: const Text('Edit kanban board'),
+      title: Row(
+        children: [
+          const Expanded(child: Text('Edit kanban board')),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: dialogWidth,
         height: dialogHeight,
@@ -331,11 +341,7 @@ class _TypeSyncKanbanEditorDialogState
                 labelText: 'Board title',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _board = _board.copyWith(title: value);
-                });
-              },
+              onChanged: (value) => _commitBoard(_board.copyWith(title: value)),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -356,6 +362,13 @@ class _TypeSyncKanbanEditorDialogState
                   'Long-press a card to drag it to another column',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                Text(
+                  'Changes save and sync automatically',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w600,
                       ),
                 ),
               ],
@@ -391,17 +404,14 @@ class _TypeSyncKanbanEditorDialogState
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, _board),
-          child: const Text('Save'),
-        ),
-      ],
     );
+  }
+
+  void _commitBoard(TypeSyncKanbanData nextBoard) {
+    setState(() {
+      _board = nextBoard;
+    });
+    widget.onBoardChanged(nextBoard);
   }
 
   Widget _buildEditableColumn(BuildContext context, int columnIndex) {
@@ -670,24 +680,22 @@ class _TypeSyncKanbanEditorDialogState
   }
 
   void _addColumn() {
-    setState(() {
-      _board = _board.copyWith(
+    _commitBoard(
+      _board.copyWith(
         columns: [
           ..._board.columns,
           TypeSyncKanbanColumnData.create(
             title: 'Column ${_board.columns.length + 1}',
           ),
         ],
-      );
-    });
+      ),
+    );
   }
 
   void _updateColumnTitle(int columnIndex, String value) {
     final columns = List<TypeSyncKanbanColumnData>.from(_board.columns);
     columns[columnIndex] = columns[columnIndex].copyWith(title: value);
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   void _moveColumn(int columnIndex, int delta) {
@@ -700,9 +708,7 @@ class _TypeSyncKanbanEditorDialogState
     final column = columns.removeAt(columnIndex);
     columns.insert(targetIndex, column);
 
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   void _deleteColumn(int columnIndex) {
@@ -712,9 +718,7 @@ class _TypeSyncKanbanEditorDialogState
 
     final columns = List<TypeSyncKanbanColumnData>.from(_board.columns)
       ..removeAt(columnIndex);
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   Future<void> _showCardEditor({
@@ -723,16 +727,56 @@ class _TypeSyncKanbanEditorDialogState
   }) async {
     final existingCard =
         cardIndex == null ? null : _board.columns[columnIndex].cards[cardIndex];
+    final draftCardId = existingCard?.id ?? TypeSyncKanbanCardData.create().id;
     final titleController =
         TextEditingController(text: existingCard?.title ?? '');
     final descriptionController = TextEditingController(
       text: existingCard?.description ?? '',
     );
 
-    final result = await showDialog<TypeSyncKanbanCardData>(
+    void syncCardFromControllers() {
+      final rawTitle = titleController.text;
+      final rawDescription = descriptionController.text;
+      final trimmedTitle = rawTitle.trim();
+      final trimmedDescription = rawDescription.trim();
+
+      if (existingCard == null &&
+          trimmedTitle.isEmpty &&
+          trimmedDescription.isEmpty) {
+        return;
+      }
+
+      final nextCard = TypeSyncKanbanCardData(
+        id: draftCardId,
+        title: trimmedTitle.isEmpty ? 'Untitled card' : trimmedTitle,
+        description: trimmedDescription,
+      );
+
+      _upsertCard(
+        columnIndex: columnIndex,
+        cardId: draftCardId,
+        nextCard: nextCard,
+      );
+    }
+
+    titleController.addListener(syncCardFromControllers);
+    descriptionController.addListener(syncCardFromControllers);
+
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(existingCard == null ? 'Add card' : 'Edit card'),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(existingCard == null ? 'Add card' : 'Edit card'),
+            ),
+            IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.pop(dialogContext),
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: 420,
           child: Column(
@@ -756,50 +800,27 @@ class _TypeSyncKanbanEditorDialogState
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Changes save and sync automatically',
+                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(dialogContext).colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final title = titleController.text.trim();
-              Navigator.pop(
-                dialogContext,
-                (existingCard ?? TypeSyncKanbanCardData.create()).copyWith(
-                  title: title.isEmpty ? 'Untitled card' : title,
-                  description: descriptionController.text.trim(),
-                ),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
+    titleController.removeListener(syncCardFromControllers);
+    descriptionController.removeListener(syncCardFromControllers);
     titleController.dispose();
     descriptionController.dispose();
-
-    if (result == null) {
-      return;
-    }
-
-    final columns = List<TypeSyncKanbanColumnData>.from(_board.columns);
-    final cards = List<TypeSyncKanbanCardData>.from(columns[columnIndex].cards);
-    if (cardIndex == null) {
-      cards.add(result);
-    } else {
-      cards[cardIndex] = result;
-    }
-    columns[columnIndex] = columns[columnIndex].copyWith(cards: cards);
-
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
   }
 
   void _deleteCard(int columnIndex, int cardIndex) {
@@ -808,9 +829,7 @@ class _TypeSyncKanbanEditorDialogState
       ..removeAt(cardIndex);
     columns[columnIndex] = columns[columnIndex].copyWith(cards: cards);
 
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   void _moveCardWithinColumn(int columnIndex, int cardIndex, int delta) {
@@ -827,9 +846,7 @@ class _TypeSyncKanbanEditorDialogState
     final columns = List<TypeSyncKanbanColumnData>.from(_board.columns);
     columns[columnIndex] = columns[columnIndex].copyWith(cards: cards);
 
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   void _moveCardAcrossColumns(int columnIndex, int cardIndex, int delta) {
@@ -852,9 +869,7 @@ class _TypeSyncKanbanEditorDialogState
       cards: targetCards,
     );
 
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   void _moveDraggedCardToColumn({
@@ -890,9 +905,26 @@ class _TypeSyncKanbanEditorDialogState
       cards: targetCards,
     );
 
-    setState(() {
-      _board = _board.copyWith(columns: columns);
-    });
+    _commitBoard(_board.copyWith(columns: columns));
+  }
+
+  void _upsertCard({
+    required int columnIndex,
+    required String cardId,
+    required TypeSyncKanbanCardData nextCard,
+  }) {
+    final columns = List<TypeSyncKanbanColumnData>.from(_board.columns);
+    final cards = List<TypeSyncKanbanCardData>.from(columns[columnIndex].cards);
+    final existingIndex = cards.indexWhere((card) => card.id == cardId);
+
+    if (existingIndex >= 0) {
+      cards[existingIndex] = nextCard;
+    } else {
+      cards.add(nextCard);
+    }
+
+    columns[columnIndex] = columns[columnIndex].copyWith(cards: cards);
+    _commitBoard(_board.copyWith(columns: columns));
   }
 
   _KanbanCardLocation? _findCardLocation(String cardId) {
