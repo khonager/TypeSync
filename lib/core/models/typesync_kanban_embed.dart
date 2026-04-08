@@ -238,6 +238,7 @@ class TypeSyncKanbanEmbed extends CustomBlockEmbed {
   const TypeSyncKanbanEmbed(String data) : super(kanbanType, data);
 
   static const String kanbanType = 'typesync_kanban';
+  static const String minimumSupportedAppVersion = '1.1.0';
 
   static TypeSyncKanbanEmbed fromBoard(TypeSyncKanbanData board) {
     return TypeSyncKanbanEmbed(board.toEmbedData());

@@ -37,6 +37,7 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
@@ -219,10 +220,12 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Calculate initial stats
     _updateStats();
-    if (_openedFromSearch) {
-      _maybeNavigateToInitialSearchMatch();
-    } else {
-      _requestInitialEditorFocus();
+    if (_isCurrentAppVersionCompatibleWithNote()) {
+      if (_openedFromSearch) {
+        _maybeNavigateToInitialSearchMatch();
+      } else {
+        _requestInitialEditorFocus();
+      }
     }
 
     if (_note != null && !_hasStartedCloudMigration) {
@@ -316,6 +319,49 @@ class _EditorScreenState extends State<EditorScreen>
     return offset.clamp(0, maxOffset).toInt();
   }
 
+  String? _minimumVersionRequiredByCurrentDocument() {
+    final operations = _quillController.document.toDelta().toJson();
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      if (insert is! Map) continue;
+      if (insert.containsKey(TypeSyncKanbanEmbed.kanbanType)) {
+        return TypeSyncKanbanEmbed.minimumSupportedAppVersion;
+      }
+    }
+    return null;
+  }
+
+  String? _requiredAppVersionForCurrentNote() {
+    final raw = _note?.minSupportedAppVersion?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return VersionCompatibility.normalize(raw);
+  }
+
+  bool _isCurrentAppVersionCompatibleWithNote() {
+    final minimumVersion = _requiredAppVersionForCurrentNote();
+    if (minimumVersion == null) return true;
+    return VersionCompatibility.isAtLeast(
+      current: kCurrentAppVersion,
+      minimum: minimumVersion,
+    );
+  }
+
+  Future<void> _markCurrentNoteRequiresVersion(String minimumVersion) async {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final updatedNote = await notesProvider.setMinimumSupportedAppVersion(
+      noteId: noteId,
+      minimumVersion: minimumVersion,
+    );
+    if (!mounted || updatedNote == null) return;
+
+    setState(() {
+      _note = updatedNote;
+    });
+  }
+
   void _updateStats() {
     final plainText = RichTextPlainTextService.extractPlainTextFromDelta(
       _quillController.document.toDelta().toJson(),
@@ -347,6 +393,11 @@ class _EditorScreenState extends State<EditorScreen>
       characterCount: _characterCount,
       lineCount: _lineCount,
     );
+
+    final minimumVersion = _minimumVersionRequiredByCurrentDocument();
+    if (minimumVersion != null) {
+      unawaited(_markCurrentNoteRequiresVersion(minimumVersion));
+    }
   }
 
   Future<void> _updateTitle(String title) async {
@@ -423,6 +474,13 @@ class _EditorScreenState extends State<EditorScreen>
     final bgColor = _note?.backgroundColor != null
         ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
         : null;
+    final requiredVersion = _requiredAppVersionForCurrentNote();
+    final currentVersion = VersionCompatibility.normalize(kCurrentAppVersion);
+    final isUnsupportedVersion = requiredVersion != null &&
+        !VersionCompatibility.isAtLeast(
+          current: currentVersion,
+          minimum: requiredVersion,
+        );
 
     return PopScope(
       canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
@@ -473,71 +531,158 @@ class _EditorScreenState extends State<EditorScreen>
           ],
         ),
         body: Column(
-          children: [
-            if (_note?.hasConflict == true) _buildConflictBanner(),
-            Expanded(
-              child: DropTarget(
-                onDragEntered: (details) {
-                  setState(() {
-                    _isDragging = true;
-                  });
-                },
-                onDragExited: (details) {
-                  setState(() {
-                    _isDragging = false;
-                  });
-                },
-                onDragDone: (details) {
-                  _handleDroppedFiles(details.files);
-                  setState(() {
-                    _isDragging = false;
-                  });
-                },
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    _buildEditorWithAttachments(bgColor),
-                    EditorToolbar(
-                      controller: _quillController,
-                      onInsertPdf: _insertPdf,
-                      onInsertTable: _insertTable,
-                      onInsertKanban: _insertKanban,
+          children: isUnsupportedVersion
+              ? [
+                  Expanded(
+                    child: _buildUnsupportedVersionNotice(
+                      requiredVersion: requiredVersion,
+                      currentVersion: currentVersion,
                     ),
-                    if (_isDragging)
-                      Container(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.2),
-                        alignment: Alignment.center,
-                        child: Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(12),
+                  ),
+                ]
+              : [
+                  if (_note?.hasConflict == true) _buildConflictBanner(),
+                  Expanded(
+                    child: DropTarget(
+                      onDragEntered: (details) {
+                        setState(() {
+                          _isDragging = true;
+                        });
+                      },
+                      onDragExited: (details) {
+                        setState(() {
+                          _isDragging = false;
+                        });
+                      },
+                      onDragDone: (details) {
+                        _handleDroppedFiles(details.files);
+                        setState(() {
+                          _isDragging = false;
+                        });
+                      },
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          _buildEditorWithAttachments(bgColor),
+                          EditorToolbar(
+                            controller: _quillController,
+                            onInsertPdf: _insertPdf,
+                            onInsertTable: _insertTable,
+                            onInsertKanban: _insertKanban,
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.upload_file,
-                                size: 48,
-                                color: Theme.of(context).colorScheme.primary,
+                          if (_isDragging)
+                            Container(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.2),
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.upload_file,
+                                      size: 48,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Drop files to attach',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Drop files to attach',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                        ],
                       ),
+                    ),
+                  ),
+                ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnsupportedVersionNotice({
+    required String requiredVersion,
+    required String currentVersion,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          color: colors.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.system_update_alt,
+                      color: colors.onErrorContainer,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Unsupported TypeSync Version',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: colors.onErrorContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 14),
+                Text(
+                  'This file uses features that require TypeSync '
+                  '$requiredVersion or newer.',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyLarge
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Current version: $currentVersion',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Update TypeSync to continue editing this file.',
+                  style: Theme.of(
+                    context,
+                  )
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: colors.onErrorContainer),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2101,6 +2246,11 @@ class _EditorScreenState extends State<EditorScreen>
       TextSelection.collapsed(offset: insertOffset + 1),
     );
 
+    unawaited(
+      _markCurrentNoteRequiresVersion(
+        TypeSyncKanbanEmbed.minimumSupportedAppVersion,
+      ),
+    );
     _focusNode.requestFocus();
   }
 

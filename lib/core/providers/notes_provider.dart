@@ -16,6 +16,7 @@ import '../models/note.dart';
 import '../services/diagnostics_service.dart';
 import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
+import '../utils/version_compatibility.dart';
 import '../utils/search_query.dart';
 
 /// Provider for managing note state
@@ -642,6 +643,41 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Raises the minimum app version required to render/edit a note.
+  ///
+  /// If the note already requires a newer version, this is a no-op.
+  Future<Note?> setMinimumSupportedAppVersion({
+    required String noteId,
+    required String minimumVersion,
+  }) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) return null;
+
+    final note = _notes[index];
+    final normalizedMinimum = VersionCompatibility.normalize(minimumVersion);
+    final currentMinimum = note.minSupportedAppVersion;
+    if (currentMinimum != null &&
+        VersionCompatibility.compare(currentMinimum, normalizedMinimum) >= 0) {
+      return note;
+    }
+
+    final updatedNote = note.copyWith(
+      minSupportedAppVersion: normalizedMinimum,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+    );
+
+    _notes[index] = updatedNote;
+    await _notesBox?.put(noteId, updatedNote);
+
+    if (!updatedNote.localOnly) {
+      _syncService?.syncNote(updatedNote);
+    }
+
+    notifyListeners();
+    return updatedNote;
+  }
+
   // ===========================================
   // SYNC OPERATIONS
   // ===========================================
@@ -1107,6 +1143,8 @@ class NoteAdapter extends TypeAdapter<Note> {
     }
 
     final localOnly = reader.availableBytes > 0 ? reader.readBool() : false;
+    final minSupportedAppVersionRaw =
+        reader.availableBytes > 0 ? reader.readString() : '';
 
     return Note(
       id: id,
@@ -1131,6 +1169,8 @@ class NoteAdapter extends TypeAdapter<Note> {
       size: size,
       attachments: attachments,
       localOnly: localOnly,
+      minSupportedAppVersion:
+          minSupportedAppVersionRaw.isEmpty ? null : minSupportedAppVersionRaw,
     );
   }
 
@@ -1169,6 +1209,7 @@ class NoteAdapter extends TypeAdapter<Note> {
       writer.writeString(attachment.addedAt.toIso8601String());
     }
     writer.writeBool(obj.localOnly);
+    writer.writeString(obj.minSupportedAppVersion ?? '');
   }
 }
 
