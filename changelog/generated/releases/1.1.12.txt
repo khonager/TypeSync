@@ -1,0 +1,7 @@
+TypeSync 1.1.12 - Navigation and Readability
+New Features:
+- Refined add/sync button placement in the home UI.
+Fixes & Improvements:
+- Improved profile loading responsiveness.
+- Fixed bottom bar behavior.
+- Improved folder readability in list view.

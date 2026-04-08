@@ -217,14 +217,15 @@ The project includes automated CI/CD with GitHub Actions:
 
 ### Branches
 - **`main`**: Development branch
-- **`stable`**: Release branch - triggers versioned releases
+- **`stable`**: Stable channel branch
 - **`unstable`**: Dev builds - updates the `dev` tag
 
 ### Automatic Releases
 - **Stable releases**: When merged to `stable`, automatically:
-  - Increments version (semver patch)
-  - Creates tagged release (v1.0.0, v1.0.1, etc.)
-  - Builds Android APK, AAB, and Linux bundle
+  - Validates that `pubspec.yaml` and the latest changelog entry match
+  - Creates a new tagged release (`v1.0.0`, `v1.0.1`, etc.) only when the changelog introduces a version newer than the latest version tag
+  - Otherwise refreshes the rolling `stable-latest` release/tag on the newest `stable` commit
+  - Builds Android APK, AAB, Linux bundle, and Web bundle
 
 - **Dev releases**: When pushed to `unstable`:
   - Updates the `dev` release tag
@@ -255,6 +256,13 @@ flutter analyze
 ```bash
 python3 scripts/generate_changelog.py
 ```
+
+- Generated per-version release bodies for GitHub are written to:
+  - `changelog/generated/releases/<version>.md`
+  - `changelog/generated/releases/<version>.txt`
+- On `stable`, GitHub Actions compares the latest changelog version to the latest `v*` tag:
+  - If the changelog version is newer, CI creates that immutable versioned release
+  - If not, CI updates the rolling `stable-latest` release instead
 
 - Validate generated output is up to date (CI-friendly):
 

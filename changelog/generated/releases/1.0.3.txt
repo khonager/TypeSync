@@ -1,0 +1,3 @@
+TypeSync 1.0.3 - Branding Refresh
+New Features:
+- Updated app icon set across platforms.

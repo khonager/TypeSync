@@ -1,0 +1,8 @@
+TypeSync 1.1.5 - Pipeline and Config Hardening
+Important:
+- Firebase configuration and generated files were stabilized for CI/build consistency.
+New Features:
+- Expanded web build/release workflow support.
+Fixes & Improvements:
+- Fixed Linux build regressions.
+- Improved unstable web pipeline behavior.

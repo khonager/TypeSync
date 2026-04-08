@@ -1,0 +1,5 @@
+TypeSync 1.0.1 - Release Automation Follow-Up
+New Features:
+- Added release auto-increment workflow improvements.
+Fixes & Improvements:
+- Adjusted dependency refresh handling after initial release.
