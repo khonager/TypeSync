@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/utils/web_download_stub.dart'
@@ -73,6 +74,8 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
+  static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
+
   // Quill editor controller
   late QuillController _quillController;
 
@@ -95,6 +98,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Auto-save timer
   Timer? _saveTimer;
+  Timer? _caretPersistTimer;
+  bool _didUserFocusEditor = false;
 
   // Stats
   int _characterCount = 0;
@@ -121,9 +126,21 @@ class _EditorScreenState extends State<EditorScreen>
   final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
   final Map<String, Future<String?>> _attachmentTextFutures = {};
 
+  bool get _openedFromSearch {
+    final query = widget.searchQuery?.trim();
+    return query != null && query.isNotEmpty;
+  }
+
+  String? get _caretOffsetPreferenceKey {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return null;
+    return '$_caretOffsetPreferencePrefix$noteId';
+  }
+
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_onEditorFocusChanged);
     _matchGlowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -186,6 +203,13 @@ class _EditorScreenState extends State<EditorScreen>
       }
     }
 
+    if (!_openedFromSearch) {
+      final restoredCaretOffset = await _loadPersistedCaretOffset();
+      if (restoredCaretOffset != null) {
+        _setEditorSelection(restoredCaretOffset);
+      }
+    }
+
     // Listen for content changes
     _quillController.addListener(_onContentChanged);
 
@@ -195,7 +219,11 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Calculate initial stats
     _updateStats();
-    _maybeNavigateToInitialSearchMatch();
+    if (_openedFromSearch) {
+      _maybeNavigateToInitialSearchMatch();
+    } else {
+      _requestInitialEditorFocus();
+    }
 
     if (_note != null && !_hasStartedCloudMigration) {
       _hasStartedCloudMigration = true;
@@ -207,6 +235,85 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isUpdatingFromExternal) return;
     _updateStats();
     _scheduleSave();
+    _scheduleCaretOffsetPersist();
+  }
+
+  void _onEditorFocusChanged() {
+    if (_focusNode.hasFocus) {
+      _didUserFocusEditor = true;
+      _scheduleCaretOffsetPersist();
+      return;
+    }
+
+    if (_didUserFocusEditor) {
+      _caretPersistTimer?.cancel();
+      unawaited(_persistCaretOffset(force: true));
+    }
+  }
+
+  void _requestInitialEditorFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _openedFromSearch) return;
+      _focusNode.requestFocus();
+    });
+  }
+
+  void _scheduleCaretOffsetPersist() {
+    if (!_focusNode.hasFocus) return;
+    _caretPersistTimer?.cancel();
+    _caretPersistTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_persistCaretOffset());
+    });
+  }
+
+  Future<int?> _loadPersistedCaretOffset() async {
+    final key = _caretOffsetPreferenceKey;
+    if (key == null) return null;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistCaretOffset({bool force = false}) async {
+    final key = _caretOffsetPreferenceKey;
+    if (key == null) return;
+    if (!_didUserFocusEditor && !force) return;
+    if (!_focusNode.hasFocus && !force) return;
+
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final rawOffset = selection.extentOffset >= 0
+        ? selection.extentOffset
+        : selection.baseOffset;
+    if (rawOffset < 0) return;
+
+    final safeOffset = _safeDocumentOffset(rawOffset);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, safeOffset);
+    } catch (_) {
+      // Best-effort persistence; ignore local preference write failures.
+    }
+  }
+
+  void _setEditorSelection(int offset) {
+    _quillController.updateSelection(
+      TextSelection.collapsed(offset: _safeDocumentOffset(offset)),
+      ChangeSource.local,
+    );
+  }
+
+  int _safeDocumentOffset(int offset) {
+    final maxOffset = _quillController.document.length > 0
+        ? _quillController.document.length - 1
+        : 0;
+    return offset.clamp(0, maxOffset).toInt();
   }
 
   void _updateStats() {
@@ -252,10 +359,15 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _caretPersistTimer?.cancel();
+    if (_didUserFocusEditor) {
+      unawaited(_persistCaretOffset(force: true));
+    }
     _matchGlowStopTimer?.cancel();
     _matchGlowController.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
+    _focusNode.removeListener(_onEditorFocusChanged);
     _focusNode.dispose();
     _scrollController.dispose();
     _titleController.dispose();
