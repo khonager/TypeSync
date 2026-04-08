@@ -161,9 +161,20 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
      match /b/{bucket}/o {
        match /users/{userId}/{allPaths=**} {
          allow read, write: if request.auth != null && request.auth.uid == userId;
-       }
-     }
+      }
+    }
    }
+   ```
+
+6. **Configure transactional email with Resend**:
+   - Verify and enable `typesync@khonager.de` as a valid sender in Resend
+   - Store the Resend API key in Firebase Functions secrets before deploying:
+   ```bash
+   firebase functions:secrets:set RESEND_API_KEY
+   ```
+   - Deploy Functions after configuration:
+   ```bash
+   firebase deploy --only functions
    ```
 
 ## Building for Release

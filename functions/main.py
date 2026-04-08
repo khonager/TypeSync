@@ -4,6 +4,7 @@
 
 from firebase_functions import https_fn
 from firebase_functions.options import set_global_options
+from firebase_functions.params import SecretParam
 from firebase_admin import initialize_app, firestore, auth, storage
 import requests
 import os
@@ -21,6 +22,377 @@ from urllib.parse import quote
 set_global_options(max_instances=10)
 
 initialize_app()
+
+RESEND_API_URL = "https://api.resend.com/emails"
+RESEND_FROM_EMAIL = "typesync@khonager.de"
+RESEND_API_KEY = SecretParam("RESEND_API_KEY")
+
+
+def _json_response(
+    payload: dict,
+    status: int = 200,
+    *,
+    cors: bool = False,
+) -> https_fn.Response:
+    headers = {"Content-Type": "application/json"}
+    if cors:
+        headers.update(
+            {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            }
+        )
+    return https_fn.Response(
+        json.dumps(payload),
+        status=status,
+        headers=headers,
+    )
+
+
+def _handle_cors_preflight(req: https_fn.Request) -> https_fn.Response | None:
+    if req.method == "OPTIONS":
+        return _json_response({}, cors=True)
+    return None
+
+
+def _request_json(req: https_fn.Request) -> dict:
+    payload = req.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid JSON body")
+    return payload
+
+
+def _build_action_code_settings(data: dict) -> auth.ActionCodeSettings:
+    url = data.get("url")
+    if not isinstance(url, str) or not url:
+        raise ValueError("Missing action URL")
+
+    kwargs = {
+        "url": url,
+        "handle_code_in_app": bool(data.get("handleCodeInApp", False)),
+    }
+
+    link_domain = data.get("linkDomain")
+    if isinstance(link_domain, str) and link_domain:
+        kwargs["link_domain"] = link_domain
+
+    android_package_name = data.get("androidPackageName")
+    if isinstance(android_package_name, str) and android_package_name:
+        kwargs["android_package_name"] = android_package_name
+        kwargs["android_install_app"] = bool(data.get("androidInstallApp", False))
+
+    android_minimum_version = data.get("androidMinimumVersion")
+    if isinstance(android_minimum_version, str) and android_minimum_version:
+        kwargs["android_minimum_version"] = android_minimum_version
+
+    ios_bundle_id = data.get("iOSBundleId")
+    if isinstance(ios_bundle_id, str) and ios_bundle_id:
+        kwargs["iOS_bundle_id"] = ios_bundle_id
+
+    return auth.ActionCodeSettings(**kwargs)
+
+
+def _resend_headers() -> dict[str, str]:
+    api_key = RESEND_API_KEY.value
+    if not api_key:
+        raise RuntimeError("Missing RESEND_API_KEY configuration")
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def _send_resend_email(
+    *,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
+    response = requests.post(
+        RESEND_API_URL,
+        headers=_resend_headers(),
+        json={
+            "from": RESEND_FROM_EMAIL,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+            "text": text_body,
+        },
+        timeout=20,
+    )
+
+    if response.status_code < 200 or response.status_code >= 300:
+        print(f"Resend send failed: {response.status_code} {response.text}")
+        raise RuntimeError("Email delivery failed")
+
+
+def _password_reset_email_content(email: str, action_link: str) -> tuple[str, str, str]:
+    subject = "Reset your TypeSync password"
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
+      <h2 style="margin-bottom: 16px;">Reset your password</h2>
+      <p style="line-height: 1.6;">We received a request to reset the TypeSync password for {email}.</p>
+      <p style="line-height: 1.6;">Use the button below to choose a new password.</p>
+      <p style="margin: 24px 0;">
+        <a href="{action_link}" style="background: #111827; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; display: inline-block;">
+          Reset password
+        </a>
+      </p>
+      <p style="line-height: 1.6;">If you did not request this, you can safely ignore this email.</p>
+      <p style="font-size: 12px; color: #6b7280; line-height: 1.6;">If the button does not work, open this link manually:<br>{action_link}</p>
+    </div>
+    """.strip()
+    text_body = (
+        f"We received a request to reset the TypeSync password for {email}.\n\n"
+        f"Reset your password here:\n{action_link}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    return subject, html_body, text_body
+
+
+def _magic_link_email_content(action_link: str) -> tuple[str, str, str]:
+    subject = "Your TypeSync sign-in link"
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
+      <h2 style="margin-bottom: 16px;">Sign in to TypeSync</h2>
+      <p style="line-height: 1.6;">Use the secure link below to sign in to your TypeSync account.</p>
+      <p style="margin: 24px 0;">
+        <a href="{action_link}" style="background: #111827; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; display: inline-block;">
+          Sign in
+        </a>
+      </p>
+      <p style="line-height: 1.6;">If you did not request this link, you can safely ignore this email.</p>
+      <p style="font-size: 12px; color: #6b7280; line-height: 1.6;">If the button does not work, open this link manually:<br>{action_link}</p>
+    </div>
+    """.strip()
+    text_body = (
+        "Use this secure link to sign in to TypeSync:\n"
+        f"{action_link}\n\n"
+        "If you did not request this link, you can ignore this email."
+    )
+    return subject, html_body, text_body
+
+
+def _verification_email_content(action_link: str) -> tuple[str, str, str]:
+    subject = "Verify your TypeSync email"
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
+      <h2 style="margin-bottom: 16px;">Verify your email</h2>
+      <p style="line-height: 1.6;">Confirm your email address to finish setting up TypeSync.</p>
+      <p style="margin: 24px 0;">
+        <a href="{action_link}" style="background: #111827; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; display: inline-block;">
+          Verify email
+        </a>
+      </p>
+      <p style="line-height: 1.6;">If you did not create a TypeSync account, you can ignore this email.</p>
+      <p style="font-size: 12px; color: #6b7280; line-height: 1.6;">If the button does not work, open this link manually:<br>{action_link}</p>
+    </div>
+    """.strip()
+    text_body = (
+        "Confirm your TypeSync email address here:\n"
+        f"{action_link}\n\n"
+        "If you did not create a TypeSync account, you can ignore this email."
+    )
+    return subject, html_body, text_body
+
+
+def _send_password_reset_email_impl(data: dict) -> dict:
+    email = (data.get("email") or "").strip()
+    if not email:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Email is required."
+        )
+
+    settings = _build_action_code_settings(data)
+
+    try:
+        action_link = auth.generate_password_reset_link(
+            email,
+            action_code_settings=settings,
+        )
+    except auth.UserNotFoundError:
+        return {"success": True}
+    except auth.InvalidRecipientEmailError:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Invalid email address."
+        )
+    except Exception as exc:
+        print(f"Generate password reset link failed: {exc}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="Failed to create password reset email."
+        )
+
+    subject, html_body, text_body = _password_reset_email_content(email, action_link)
+    _send_resend_email(
+        to_email=email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+    return {"success": True}
+
+
+def _send_magic_link_email_impl(data: dict) -> dict:
+    email = (data.get("email") or "").strip()
+    if not email:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Email is required."
+        )
+
+    settings = _build_action_code_settings(data)
+
+    try:
+        action_link = auth.generate_sign_in_with_email_link(
+            email,
+            action_code_settings=settings,
+        )
+    except auth.InvalidRecipientEmailError:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Invalid email address."
+        )
+    except Exception as exc:
+        print(f"Generate sign-in link failed: {exc}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="Failed to create sign-in email."
+        )
+
+    subject, html_body, text_body = _magic_link_email_content(action_link)
+    _send_resend_email(
+        to_email=email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+    return {"success": True}
+
+
+def _send_verification_email_impl(email: str, data: dict) -> dict:
+    if not email:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Email is required."
+        )
+
+    settings = _build_action_code_settings(data)
+
+    try:
+        action_link = auth.generate_email_verification_link(
+            email,
+            action_code_settings=settings,
+        )
+    except auth.InvalidRecipientEmailError:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Invalid email address."
+        )
+    except Exception as exc:
+        print(f"Generate verification link failed: {exc}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL,
+            message="Failed to create verification email."
+        )
+
+    subject, html_body, text_body = _verification_email_content(action_link)
+    _send_resend_email(
+        to_email=email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+    return {"success": True}
+
+
+@https_fn.on_call(secrets=[RESEND_API_KEY])
+def send_password_reset_email(req: https_fn.CallableRequest) -> dict:
+    return _send_password_reset_email_impl(req.data or {})
+
+
+@https_fn.on_request(secrets=[RESEND_API_KEY])
+def send_password_reset_email_http(req: https_fn.Request) -> https_fn.Response:
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        return _json_response(
+            _send_password_reset_email_impl(_request_json(req)),
+            cors=True,
+        )
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=400, cors=True)
+    except Exception as exc:
+        print(f"Password reset HTTP handler failed: {exc}")
+        return _json_response({"error": "Failed to send password reset email."}, status=500, cors=True)
+
+
+@https_fn.on_call(secrets=[RESEND_API_KEY])
+def send_sign_in_link_email(req: https_fn.CallableRequest) -> dict:
+    return _send_magic_link_email_impl(req.data or {})
+
+
+@https_fn.on_request(secrets=[RESEND_API_KEY])
+def send_sign_in_link_email_http(req: https_fn.Request) -> https_fn.Response:
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        return _json_response(
+            _send_magic_link_email_impl(_request_json(req)),
+            cors=True,
+        )
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=400, cors=True)
+    except Exception as exc:
+        print(f"Magic link HTTP handler failed: {exc}")
+        return _json_response({"error": "Failed to send sign-in email."}, status=500, cors=True)
+
+
+@https_fn.on_call(secrets=[RESEND_API_KEY])
+def send_verification_email(req: https_fn.CallableRequest) -> dict:
+    if not req.auth or not req.auth.token.get("email"):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="Authenticated user email is required."
+        )
+    return _send_verification_email_impl(req.auth.token.get("email"), req.data or {})
+
+
+@https_fn.on_request(secrets=[RESEND_API_KEY])
+def send_verification_email_http(req: https_fn.Request) -> https_fn.Response:
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+        user = auth.get_user(uid)
+        if not user.email:
+            return _json_response({"error": "Authenticated user email is required."}, status=400, cors=True)
+        return _json_response(
+            _send_verification_email_impl(user.email, _request_json(req)),
+            cors=True,
+        )
+    except https_fn.HttpsError as exc:
+        status = 401 if exc.code == https_fn.FunctionsErrorCode.UNAUTHENTICATED else 400
+        return _json_response({"error": exc.message}, status=status, cors=True)
+    except Exception as exc:
+        print(f"Verification email HTTP handler failed: {exc}")
+        return _json_response({"error": "Failed to send verification email."}, status=500, cors=True)
 
 
 def _bearer_token(req: https_fn.Request) -> str | None:

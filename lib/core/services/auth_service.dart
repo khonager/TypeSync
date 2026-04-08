@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,6 +14,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firedart/firedart.dart' as fd;
 import 'package:firedart/auth/user_gateway.dart' as fd;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -32,6 +34,7 @@ class AuthService extends ChangeNotifier {
   static const String _pendingEmailLinkEmailKey = 'pending_email_link_email';
 
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+  final http.Client _httpClient = http.Client();
 
   // Firebase Auth instance (lazy initialization)
   firebase.FirebaseAuth? _auth;
@@ -505,13 +508,7 @@ class AuthService extends ChangeNotifier {
         );
 
         // Send email verification
-        await credential.user!.sendEmailVerification(
-          _buildActionCodeSettings(
-            path: loginPath,
-            handleCodeInApp: false,
-            queryParameters: const {'mode': 'verifyEmail'},
-          ),
-        );
+        await resendVerificationEmail();
       }
 
       _setLoading(false);
@@ -647,22 +644,21 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
-      await _firebaseAuth.sendPasswordResetEmail(
-        email: email.trim(),
-        actionCodeSettings: _buildActionCodeSettings(
-          path: loginPath,
-          handleCodeInApp: false,
-          queryParameters: const {'mode': 'resetPassword'},
-        ),
+      await _postEmailFunction(
+        'send_password_reset_email_http',
+        {
+          'email': email.trim(),
+          ..._buildEmailActionPayload(
+            path: loginPath,
+            handleCodeInApp: false,
+            queryParameters: const {'mode': 'resetPassword'},
+          ),
+        },
       );
       _setLoading(false);
       return true;
-    } on firebase.FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e.code));
-      _setLoading(false);
-      return false;
     } catch (e) {
-      _setError('Failed to send reset email. Please try again.');
+      _setError(_mapEmailFunctionError(e));
       _setLoading(false);
       return false;
     }
@@ -675,26 +671,23 @@ class AuthService extends ChangeNotifier {
 
     try {
       final normalizedEmail = email.trim();
-      final actionCodeSettings = _buildActionCodeSettings(
-        path: finishSignUpPath,
-        handleCodeInApp: true,
-        queryParameters: {'email': normalizedEmail},
-      );
-
       await _savePendingEmailLinkEmail(normalizedEmail);
-      await _firebaseAuth.sendSignInLinkToEmail(
-        email: normalizedEmail,
-        actionCodeSettings: actionCodeSettings,
+      await _postEmailFunction(
+        'send_sign_in_link_email_http',
+        {
+          'email': normalizedEmail,
+          ..._buildEmailActionPayload(
+            path: finishSignUpPath,
+            handleCodeInApp: true,
+            queryParameters: {'email': normalizedEmail},
+          ),
+        },
       );
 
       _setLoading(false);
       return true;
-    } on firebase.FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e.code));
-      _setLoading(false);
-      return false;
     } catch (e) {
-      _setError('Failed to send magic link. Please try again.');
+      _setError(_mapEmailFunctionError(e));
       _setLoading(false);
       return false;
     }
@@ -703,16 +696,24 @@ class AuthService extends ChangeNotifier {
   /// Resend email verification
   Future<bool> resendVerificationEmail() async {
     try {
-      await _firebaseAuth.currentUser?.sendEmailVerification(
-        _buildActionCodeSettings(
+      final idToken = await _currentIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        _setError('You need to be signed in to verify your email.');
+        return false;
+      }
+
+      await _postEmailFunction(
+        'send_verification_email_http',
+        _buildEmailActionPayload(
           path: loginPath,
           handleCodeInApp: false,
           queryParameters: const {'mode': 'verifyEmail'},
         ),
+        idToken: idToken,
       );
       return true;
     } catch (e) {
-      _setError('Failed to send verification email.');
+      _setError(_mapEmailFunctionError(e));
       return false;
     }
   }
@@ -1192,6 +1193,119 @@ class AuthService extends ChangeNotifier {
       androidInstallApp: handleCodeInApp,
       iOSBundleId: DefaultFirebaseOptions.ios.iosBundleId,
     );
+  }
+
+  Map<String, dynamic> _buildEmailActionPayload({
+    required String path,
+    required bool handleCodeInApp,
+    Map<String, String>? queryParameters,
+  }) {
+    final settings = _buildActionCodeSettings(
+      path: path,
+      handleCodeInApp: handleCodeInApp,
+      queryParameters: queryParameters,
+    );
+
+    return {
+      'url': settings.url,
+      'handleCodeInApp': settings.handleCodeInApp,
+      'linkDomain': customAuthDomain,
+      'androidPackageName': settings.androidPackageName,
+      'androidMinimumVersion': settings.androidMinimumVersion,
+      'androidInstallApp': settings.androidInstallApp,
+      'iOSBundleId': settings.iOSBundleId,
+    };
+  }
+
+  Uri _functionUri(String functionName) {
+    return Uri.https(
+      'us-central1-${DefaultFirebaseOptions.currentPlatform.projectId}.cloudfunctions.net',
+      functionName,
+    );
+  }
+
+  Future<void> _postEmailFunction(
+    String functionName,
+    Map<String, dynamic> payload, {
+    String? idToken,
+  }) async {
+    final response = await _httpClient.post(
+      _functionUri(functionName),
+      headers: {
+        'Content-Type': 'application/json',
+        if (idToken != null && idToken.isNotEmpty)
+          'Authorization': 'Bearer $idToken',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(_extractFunctionError(response));
+  }
+
+  String _extractFunctionError(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) {
+        final error = body['error'];
+        if (error is String && error.isNotEmpty) {
+          return error;
+        }
+      }
+    } catch (_) {
+      // Fall back to the raw body when the response is not JSON.
+    }
+
+    if (response.body.isNotEmpty) {
+      return response.body;
+    }
+
+    return 'HTTP ${response.statusCode}';
+  }
+
+  String _mapEmailFunctionError(Object error) {
+    final message = error.toString();
+    final normalized = message.startsWith('Exception: ')
+        ? message.substring('Exception: '.length)
+        : message;
+
+    if (normalized.contains('Invalid email address')) {
+      return 'Invalid email address.';
+    }
+    if (normalized.contains('Authenticated user email is required')) {
+      return 'You need to be signed in to verify your email.';
+    }
+    if (normalized.contains('Failed to send sign-in email')) {
+      return 'Failed to send magic link. Please try again.';
+    }
+    if (normalized.contains('Failed to create sign-in email')) {
+      return 'Failed to send magic link. Please try again.';
+    }
+    if (normalized.contains('Failed to send password reset email')) {
+      return 'Failed to send reset email. Please try again.';
+    }
+    if (normalized.contains('Failed to create password reset email')) {
+      return 'Failed to send reset email. Please try again.';
+    }
+    if (normalized.contains('Failed to send verification email')) {
+      return 'Failed to send verification email.';
+    }
+
+    return normalized;
+  }
+
+  Future<String?> _currentIdToken() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      if (!fd.FirebaseAuth.initialized || !_firedartAuth.isSignedIn) {
+        return null;
+      }
+      return _firedartAuth.tokenProvider.idToken;
+    }
+
+    return _firebaseAuth.currentUser?.getIdToken();
   }
 
   Future<void> _savePendingEmailLinkEmail(String email) async {
