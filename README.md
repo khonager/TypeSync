@@ -256,6 +256,10 @@ flutter analyze
 python3 scripts/generate_changelog.py
 ```
 
+- Generated per-version release bodies for GitHub are written to:
+  - `changelog/generated/releases/<version>.md`
+  - `changelog/generated/releases/<version>.txt`
+
 - Validate generated output is up to date (CI-friendly):
 
 ```bash

@@ -1,0 +1,13 @@
+TypeSync 1.1.13 - Upcoming Tasks + Attachment UX
+Important:
+- Android package identifier migration occurred in this cycle (`com` to `de` namespace adjustments).
+New Features:
+- Added Upcoming tasks widget/module surfaces.
+- Added attachment delete action and improved PDF attachment zoom/loading behavior.
+- Improved bottom bar visual design and rounded treatment.
+Fixes & Improvements:
+- Fixed package mismatch/build config issues.
+- Improved bottom bar screen-size behavior to avoid overlay conflicts.
+- Cleaned workflow secret handling and repository config hygiene.
+Notes:
+- Includes iOS widget setup documentation additions.

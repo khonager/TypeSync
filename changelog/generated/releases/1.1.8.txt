@@ -1,0 +1,5 @@
+TypeSync 1.1.8 - Desktop Interaction Upgrade
+New Features:
+- Added right-click interactions in file areas.
+Fixes & Improvements:
+- Improved drag-and-drop handling and responsiveness.

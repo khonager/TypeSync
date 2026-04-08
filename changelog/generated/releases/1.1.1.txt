@@ -1,0 +1,5 @@
+TypeSync 1.1.1 - Auth and Build Cleanup
+Fixes & Improvements:
+- Fixed Firebase initialization behavior.
+- Improved logout stability.
+- Addressed version/build pipeline issues.

@@ -1,0 +1,5 @@
+TypeSync 1.1.2 - Web Delivery Increment
+New Features:
+- Added web release build pipeline support in CI.
+Fixes & Improvements:
+- Improved Android logout behavior.

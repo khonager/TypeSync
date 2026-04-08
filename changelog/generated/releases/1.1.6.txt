@@ -1,0 +1,5 @@
+TypeSync 1.1.6 - Linux Reliability Patch
+Fixes & Improvements:
+- Fixed Linux folder display issues.
+- Improved Linux build stability.
+- General analyze/test cleanup.

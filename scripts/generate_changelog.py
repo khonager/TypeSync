@@ -15,6 +15,7 @@ SOURCE_YAML = REPO_ROOT / "changelog" / "changelog.yaml"
 OUTPUT_JSON = REPO_ROOT / "assets" / "data" / "changelog.json"
 OUTPUT_LATEST_MD = REPO_ROOT / "changelog" / "generated" / "latest.md"
 OUTPUT_LATEST_TXT = REPO_ROOT / "changelog" / "generated" / "latest.txt"
+OUTPUT_RELEASES_DIR = REPO_ROOT / "changelog" / "generated" / "releases"
 
 
 @dataclass(frozen=True)
@@ -208,8 +209,7 @@ def parse_changelog_yaml(raw: str) -> dict[str, Any]:
     }
 
 
-def _latest_markdown(payload: dict[str, Any]) -> str:
-    release = payload["releases"][0]
+def _release_markdown(release: dict[str, Any]) -> str:
     lines = [
         f"# TypeSync {release['version']}",
         "",
@@ -234,8 +234,7 @@ def _latest_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _latest_text(payload: dict[str, Any]) -> str:
-    release = payload["releases"][0]
+def _release_text(release: dict[str, Any]) -> str:
     lines = [f"TypeSync {release['version']} - {release['title']}"]
     sections = [
         ("Important", release.get("important", [])),
@@ -269,13 +268,31 @@ def generate(*, check: bool) -> int:
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON.write_text(rendered_json, encoding="utf-8")
 
+    releases = parsed["releases"]
+    latest_release = releases[0]
     OUTPUT_LATEST_MD.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_LATEST_MD.write_text(_latest_markdown(parsed), encoding="utf-8")
-    OUTPUT_LATEST_TXT.write_text(_latest_text(parsed), encoding="utf-8")
+    OUTPUT_LATEST_MD.write_text(_release_markdown(latest_release), encoding="utf-8")
+    OUTPUT_LATEST_TXT.write_text(_release_text(latest_release), encoding="utf-8")
+
+    OUTPUT_RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+    for old_file in OUTPUT_RELEASES_DIR.glob("*"):
+        if old_file.is_file():
+            old_file.unlink()
+    for release in releases:
+        version = str(release["version"])
+        (OUTPUT_RELEASES_DIR / f"{version}.md").write_text(
+            _release_markdown(release),
+            encoding="utf-8",
+        )
+        (OUTPUT_RELEASES_DIR / f"{version}.txt").write_text(
+            _release_text(release),
+            encoding="utf-8",
+        )
 
     print(f"Updated {OUTPUT_JSON.relative_to(REPO_ROOT)}")
     print(f"Updated {OUTPUT_LATEST_MD.relative_to(REPO_ROOT)}")
     print(f"Updated {OUTPUT_LATEST_TXT.relative_to(REPO_ROOT)}")
+    print(f"Updated {OUTPUT_RELEASES_DIR.relative_to(REPO_ROOT)}")
     return 0
 
 

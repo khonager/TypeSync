@@ -1,0 +1,8 @@
+TypeSync 1.1.7 - Attachments Expansion
+New Features:
+- Added broader supported attachment file types.
+- Added Linux upload support for cloud-backed attachments.
+- Added PDF cloud upload flow.
+Fixes & Improvements:
+- Improved web PDF upload/view handling.
+- Improved attachment bar sizing and PDF preview resize/reposition behavior.

@@ -523,22 +523,35 @@ jobs:
           mv release/typesync-linux-x64.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
           mv release/typesync-web.tar.gz release/TypeSync-${{ steps.semver.outputs.new_version }}-web.tar.gz
 
+      - name: Build release body from changelog
+        id: release_notes
+        run: |
+          VERSION="${{ steps.semver.outputs.new_version }}"
+          NOTES_FILE="changelog/generated/releases/${VERSION}.md"
+          if [ ! -f "$NOTES_FILE" ]; then
+            echo "::error::Release notes file not found: $NOTES_FILE"
+            echo "::error::Run python3 scripts/generate_changelog.py and add an entry in changelog/changelog.yaml for version ${VERSION}."
+            exit 1
+          fi
+
+          {
+            echo "body<<EOF"
+            cat "$NOTES_FILE"
+            echo
+            echo "## Downloads"
+            echo "- **Android APK**: TypeSync-${VERSION}-android.apk"
+            echo "- **Android App Bundle**: TypeSync-${VERSION}-android.aab"
+            echo "- **Linux**: TypeSync-${VERSION}-linux-x64.tar.gz"
+            echo "- **Web**: TypeSync-${VERSION}-web.tar.gz"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.semver.outputs.tag }}
           name: TypeSync ${{ steps.semver.outputs.new_version }}
-          body: |
-            ## TypeSync ${{ steps.semver.outputs.new_version }}
-
-            ### Downloads
-            - **Android APK**: TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
-            - **Android App Bundle**: TypeSync-${{ steps.semver.outputs.new_version }}-android.aab
-            - **Linux**: TypeSync-${{ steps.semver.outputs.new_version }}-linux-x64.tar.gz
-            - **Web**: TypeSync-${{ steps.semver.outputs.new_version }}-web.tar.gz
-
-            ### Changes
-            See commit history for full changelog.
+          body: ${{ steps.release_notes.outputs.body }}
           files: |
             release/TypeSync-${{ steps.semver.outputs.new_version }}-android.apk
             release/TypeSync-${{ steps.semver.outputs.new_version }}-android.aab

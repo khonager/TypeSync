@@ -1,0 +1,4 @@
+TypeSync 1.0.2 - Dependency Reproducibility
+Fixes & Improvements:
+- Improved dependency lock handling for more reproducible builds.
+- Adjusted lockfile tracking strategy in git.

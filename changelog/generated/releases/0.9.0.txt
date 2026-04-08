@@ -1,0 +1,4 @@
+TypeSync 0.9.0 - Pre-Release Prototype Phase
+Notes:
+- Covers early bootstrap and internal development before the first stable release.
+- Includes initial architecture setup, Firebase integration experiments, and CI/build groundwork.
