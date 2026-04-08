@@ -3,13 +3,11 @@
 /// App settings including theme, sync, and account options.
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_quill/flutter_quill.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -24,6 +22,7 @@ import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/services/anytype_import_service.dart';
+import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/calendar_provider.dart';
@@ -1199,28 +1198,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   String _extractPlainText(String content) {
-    if (content.isEmpty) {
-      return '';
-    }
-
-    final trimmed = content.trimLeft();
-    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-      return content;
-    }
-
-    try {
-      final decoded = jsonDecode(content);
-      if (decoded is List<dynamic>) {
-        return Document.fromJson(decoded).toPlainText();
-      }
-      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
-        return Document.fromJson(decoded['ops'] as List<dynamic>).toPlainText();
-      }
-    } catch (_) {
-      return content;
-    }
-
-    return content;
+    return RichTextPlainTextService.extractPlainText(content);
   }
 
   String _truncatePreview(String value) {

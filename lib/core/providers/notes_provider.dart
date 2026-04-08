@@ -14,6 +14,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
 import '../services/diagnostics_service.dart';
+import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
 import '../utils/search_query.dart';
 
@@ -114,7 +115,7 @@ class NotesProvider extends ChangeNotifier {
     final buffer = StringBuffer()
       ..write(note.title)
       ..write(' ')
-      ..write(_extractSearchableTextFromContent(note.content))
+      ..write(RichTextPlainTextService.extractPlainText(note.content))
       ..write(' ')
       ..write(note.pdfPath ?? '');
 
@@ -221,7 +222,7 @@ class NotesProvider extends ChangeNotifier {
     for (final scope in scopedFilters) {
       switch (scope) {
         case 'text':
-          if (_extractSearchableTextFromContent(note.content)
+          if (RichTextPlainTextService.extractPlainText(note.content)
               .toLowerCase()
               .contains(token)) {
             return true;
@@ -345,56 +346,6 @@ class NotesProvider extends ChangeNotifier {
   String _safeExtension(String value) {
     final normalized = value.split('?').first.split('#').first;
     return p.extension(normalized).toLowerCase();
-  }
-
-  String _extractSearchableTextFromContent(String content) {
-    if (content.isEmpty) {
-      return '';
-    }
-
-    final trimmed = content.trimLeft();
-    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-      return content;
-    }
-
-    try {
-      final decoded = jsonDecode(content);
-      if (decoded is List<dynamic>) {
-        return _extractInsertText(decoded);
-      }
-      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
-        return _extractInsertText(decoded['ops'] as List<dynamic>);
-      }
-    } catch (_) {
-      // Fall back to raw content if this is not valid JSON/quill-delta.
-    }
-
-    return content;
-  }
-
-  String _extractInsertText(List<dynamic> operations) {
-    final buffer = StringBuffer();
-
-    for (final op in operations) {
-      if (op is! Map) continue;
-      final insertValue = op['insert'];
-      if (insertValue is String) {
-        buffer.write(insertValue);
-        continue;
-      }
-
-      if (insertValue is Map) {
-        for (final value in insertValue.values) {
-          if (value is String) {
-            buffer
-              ..write(' ')
-              ..write(value);
-          }
-        }
-      }
-    }
-
-    return buffer.toString();
   }
 
   /// Get notes by tag

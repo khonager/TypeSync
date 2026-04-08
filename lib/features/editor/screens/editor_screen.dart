@@ -27,9 +27,11 @@ import '../../../core/utils/web_download_stub.dart'
     as web_download;
 
 import '../../../core/models/note.dart';
+import '../../../core/models/typesync_kanban_embed.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
+import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
@@ -43,6 +45,7 @@ import '../../../core/models/typesync_table_embed.dart';
 import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
+import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 
 /// Note editor with markdown-like rich text editing
@@ -207,7 +210,9 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _updateStats() {
-    final plainText = _quillController.document.toPlainText();
+    final plainText = RichTextPlainTextService.extractPlainTextFromDelta(
+      _quillController.document.toDelta().toJson(),
+    );
     setState(() {
       _characterCount = plainText.length;
       _lineCount = '\n'.allMatches(plainText).length + 1;
@@ -384,6 +389,7 @@ class _EditorScreenState extends State<EditorScreen>
                       controller: _quillController,
                       onInsertPdf: _insertPdf,
                       onInsertTable: _insertTable,
+                      onInsertKanban: _insertKanban,
                     ),
                     if (_isDragging)
                       Container(
@@ -758,6 +764,7 @@ class _EditorScreenState extends State<EditorScreen>
               configurations: QuillEditorConfigurations(
                 editorKey: _editorKey,
                 embedBuilders: const [
+                  TypeSyncKanbanEmbedBuilder(),
                   TypeSyncTableEmbedBuilder(),
                   MarkdownTableEmbedBuilder(),
                 ],
@@ -1966,6 +1973,25 @@ class _EditorScreenState extends State<EditorScreen>
     _focusNode.requestFocus();
   }
 
+  void _insertKanban() {
+    final selection = _quillController.selection;
+    final baseOffset = selection.baseOffset < 0 ? 0 : selection.baseOffset;
+    final extentOffset =
+        selection.extentOffset < 0 ? baseOffset : selection.extentOffset;
+    final insertOffset = baseOffset <= extentOffset ? baseOffset : extentOffset;
+    final replaceLength = (baseOffset - extentOffset).abs();
+    final board = TypeSyncKanbanData.empty();
+
+    _quillController.replaceText(
+      insertOffset,
+      selection.isValid ? replaceLength : 0,
+      TypeSyncKanbanEmbed.toBlockEmbed(board),
+      TextSelection.collapsed(offset: insertOffset + 1),
+    );
+
+    _focusNode.requestFocus();
+  }
+
   void _showTagDialog() {
     // TODO: Implement tag dialog
   }
@@ -2122,15 +2148,7 @@ class _EditorScreenState extends State<EditorScreen>
         } else {
           // Text note - export as plain text
           extension = '.txt';
-          // Convert Quill Delta to plain text
-          try {
-            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
-            final document = Document.fromJson(jsonData);
-            content = document.toPlainText();
-          } catch (e) {
-            // If not JSON, use content as-is
-            content = _note!.content;
-          }
+          content = RichTextPlainTextService.extractPlainText(_note!.content);
         }
         fileBytes = utf8.encode(content);
       }
