@@ -88,7 +88,7 @@ def _build_action_code_settings(data: dict) -> auth.ActionCodeSettings:
 
     ios_bundle_id = data.get("iOSBundleId")
     if isinstance(ios_bundle_id, str) and ios_bundle_id:
-        kwargs["iOS_bundle_id"] = ios_bundle_id
+        kwargs["ios_bundle_id"] = ios_bundle_id
 
     return auth.ActionCodeSettings(**kwargs)
 
@@ -206,7 +206,13 @@ def _send_password_reset_email_impl(data: dict) -> dict:
             message="Email is required."
         )
 
-    settings = _build_action_code_settings(data)
+    try:
+        settings = _build_action_code_settings(data)
+    except ValueError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message=str(exc)
+        )
 
     try:
         action_link = auth.generate_password_reset_link(
@@ -245,7 +251,13 @@ def _send_magic_link_email_impl(data: dict) -> dict:
             message="Email is required."
         )
 
-    settings = _build_action_code_settings(data)
+    try:
+        settings = _build_action_code_settings(data)
+    except ValueError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message=str(exc)
+        )
 
     try:
         action_link = auth.generate_sign_in_with_email_link(
@@ -281,7 +293,13 @@ def _send_verification_email_impl(email: str, data: dict) -> dict:
             message="Email is required."
         )
 
-    settings = _build_action_code_settings(data)
+    try:
+        settings = _build_action_code_settings(data)
+    except ValueError as exc:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message=str(exc)
+        )
 
     try:
         action_link = auth.generate_email_verification_link(
