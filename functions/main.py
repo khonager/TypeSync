@@ -24,7 +24,7 @@ set_global_options(max_instances=10)
 initialize_app()
 
 RESEND_API_URL = "https://api.resend.com/emails"
-RESEND_FROM_EMAIL = "typesync@khonager.de"
+RESEND_FROM_EMAIL = "TypeSync <typesync@khonager.de>"
 RESEND_API_KEY = SecretParam("RESEND_API_KEY")
 
 
