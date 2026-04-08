@@ -24,7 +24,7 @@ set_global_options(max_instances=10)
 initialize_app()
 
 RESEND_API_URL = "https://api.resend.com/emails"
-RESEND_FROM_EMAIL = "typesync@khonager.de"
+RESEND_FROM_EMAIL = "TypeSync <typesync@khonager.de>"
 RESEND_API_KEY = SecretParam("RESEND_API_KEY")
 
 
@@ -88,7 +88,7 @@ def _build_action_code_settings(data: dict) -> auth.ActionCodeSettings:
 
     ios_bundle_id = data.get("iOSBundleId")
     if isinstance(ios_bundle_id, str) and ios_bundle_id:
-        kwargs["iOS_bundle_id"] = ios_bundle_id
+        kwargs["ios_bundle_id"] = ios_bundle_id
 
     return auth.ActionCodeSettings(**kwargs)
 

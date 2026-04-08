@@ -1,4 +1,5 @@
 {
+  "dart.flutterSdkPath": "/nix/store/cshk8jsr4l71qrc3jybijpbpz9hj4xqq-flutter-wrapped-3.41.2-sdk-links",
   "files.watcherExclude": {
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,

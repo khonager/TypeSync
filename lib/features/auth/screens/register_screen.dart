@@ -49,10 +49,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (success && mounted) {
-      // Show success message and navigate to home
+      final verificationSendFailed = authService.hasError;
+      final message = verificationSendFailed
+          ? 'Account created, but we could not send the verification email yet. You can retry from Profile.'
+          : 'Account created! Please verify your email.';
+
+      if (verificationSendFailed) {
+        authService.clearError();
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created! Please verify your email.'),
+        SnackBar(
+          content: Text(message),
         ),
       );
       AppRouter.navigateAndClearStack(context, AppRouter.home);
