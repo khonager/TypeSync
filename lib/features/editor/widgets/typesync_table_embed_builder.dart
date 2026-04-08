@@ -97,22 +97,21 @@ class _TypeSyncTableEmbedWidget extends StatelessWidget {
   }
 
   Future<void> _editTable(BuildContext context) async {
-    final editedTable = await showDialog<TypeSyncTableData>(
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => _TypeSyncTableEditorDialog(
         initialTable: table,
+        onTableChanged: _persistTable,
       ),
     );
+  }
 
-    if (editedTable == null || !context.mounted) {
-      return;
-    }
-
+  void _persistTable(TypeSyncTableData nextTable) {
     final offset = node.documentOffset;
     controller.replaceText(
       offset,
       1,
-      TypeSyncTableEmbed.toBlockEmbed(editedTable),
+      TypeSyncTableEmbed.toBlockEmbed(nextTable),
       TextSelection.collapsed(offset: offset + 1),
     );
   }
@@ -187,9 +186,11 @@ class _TablePreviewCell extends StatelessWidget {
 
 class _TypeSyncTableEditorDialog extends StatefulWidget {
   final TypeSyncTableData initialTable;
+  final ValueChanged<TypeSyncTableData> onTableChanged;
 
   const _TypeSyncTableEditorDialog({
     required this.initialTable,
+    required this.onTableChanged,
   });
 
   @override
@@ -203,6 +204,7 @@ class _TypeSyncTableEditorDialogState
   late TextEditingController _cellController;
   int _selectedRow = 0;
   int _selectedColumn = 0;
+  bool _isSyncingCellText = false;
 
   @override
   void initState() {
@@ -226,7 +228,16 @@ class _TypeSyncTableEditorDialogState
     final dialogHeight = math.min(mediaQuery.size.height * 0.8, 720.0);
 
     return AlertDialog(
-      title: const Text('Edit table'),
+      title: Row(
+        children: [
+          const Expanded(child: Text('Edit table')),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: dialogWidth,
         height: dialogHeight,
@@ -235,6 +246,14 @@ class _TypeSyncTableEditorDialogState
           children: [
             _buildControls(context),
             const SizedBox(height: 12),
+            Text(
+              'Changes save and sync automatically',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _cellController,
               minLines: 1,
@@ -244,7 +263,12 @@ class _TypeSyncTableEditorDialogState
                     'Cell ${_selectedRow + 1}:${_selectedColumn + 1} content',
                 border: const OutlineInputBorder(),
               ),
-              onChanged: _updateSelectedCell,
+              onChanged: (value) {
+                if (_isSyncingCellText) {
+                  return;
+                }
+                _updateSelectedCell(value);
+              },
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -297,17 +321,14 @@ class _TypeSyncTableEditorDialogState
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, _table),
-          child: const Text('Save'),
-        ),
-      ],
     );
+  }
+
+  void _commitTable(TypeSyncTableData nextTable) {
+    setState(() {
+      _table = nextTable;
+    });
+    widget.onTableChanged(nextTable);
   }
 
   Widget _buildControls(BuildContext context) {
@@ -425,19 +446,17 @@ class _TypeSyncTableEditorDialogState
     setState(() {
       _selectedRow = rowIndex;
       _selectedColumn = columnIndex;
-      _cellController.text = _table.rows[rowIndex][columnIndex];
-      _cellController.selection = TextSelection.collapsed(
-        offset: _cellController.text.length,
-      );
+      _syncSelectedCellText();
     });
   }
 
   void _updateSelectedCell(String value) {
+    if (_table.rows[_selectedRow][_selectedColumn] == value) {
+      return;
+    }
     final rows = _cloneRows();
     rows[_selectedRow][_selectedColumn] = value;
-    setState(() {
-      _table = _table.copyWith(rows: rows);
-    });
+    _commitTable(_table.copyWith(rows: rows));
   }
 
   void _addRow() {
@@ -446,11 +465,12 @@ class _TypeSyncTableEditorDialogState
       _selectedRow + 1,
       List<String>.filled(_table.columnCount, ''),
     );
+    final nextTable = _table.copyWith(rows: rows);
     setState(() {
       _selectedRow += 1;
-      _table = _table.copyWith(rows: rows);
-      _cellController.text = '';
+      _syncCellController('');
     });
+    _commitTable(nextTable);
   }
 
   void _addColumn() {
@@ -460,21 +480,23 @@ class _TypeSyncTableEditorDialogState
     }
     final widths = List<double>.from(_table.columnWidths)
       ..insert(_selectedColumn + 1, 180);
+    final nextTable = _table.copyWith(rows: rows, columnWidths: widths);
     setState(() {
       _selectedColumn += 1;
-      _table = _table.copyWith(rows: rows, columnWidths: widths);
-      _cellController.text = '';
+      _syncCellController('');
     });
+    _commitTable(nextTable);
   }
 
   void _deleteRow() {
     final rows = _cloneRows()..removeAt(_selectedRow);
     final nextRow = _selectedRow.clamp(0, rows.length - 1);
+    final nextTable = _table.copyWith(rows: rows);
     setState(() {
       _selectedRow = nextRow;
-      _table = _table.copyWith(rows: rows);
-      _syncSelectedCellText();
+      _syncCellController(rows[nextRow][_selectedColumn]);
     });
+    _commitTable(nextTable);
   }
 
   void _deleteColumn() {
@@ -485,11 +507,12 @@ class _TypeSyncTableEditorDialogState
     final widths = List<double>.from(_table.columnWidths)
       ..removeAt(_selectedColumn);
     final nextColumn = _selectedColumn.clamp(0, widths.length - 1);
+    final nextTable = _table.copyWith(rows: rows, columnWidths: widths);
     setState(() {
       _selectedColumn = nextColumn;
-      _table = _table.copyWith(rows: rows, columnWidths: widths);
-      _syncSelectedCellText();
+      _syncCellController(rows[_selectedRow][nextColumn]);
     });
+    _commitTable(nextTable);
   }
 
   void _moveRow(int delta) {
@@ -500,11 +523,12 @@ class _TypeSyncTableEditorDialogState
     final rows = _cloneRows();
     final row = rows.removeAt(_selectedRow);
     rows.insert(target, row);
+    final nextTable = _table.copyWith(rows: rows);
     setState(() {
       _selectedRow = target;
-      _table = _table.copyWith(rows: rows);
-      _syncSelectedCellText();
+      _syncCellController(rows[target][_selectedColumn]);
     });
+    _commitTable(nextTable);
   }
 
   void _moveColumn(int delta) {
@@ -520,20 +544,19 @@ class _TypeSyncTableEditorDialogState
     final widths = List<double>.from(_table.columnWidths);
     final width = widths.removeAt(_selectedColumn);
     widths.insert(target, width);
+    final nextTable = _table.copyWith(rows: rows, columnWidths: widths);
     setState(() {
       _selectedColumn = target;
-      _table = _table.copyWith(rows: rows, columnWidths: widths);
-      _syncSelectedCellText();
+      _syncCellController(rows[_selectedRow][target]);
     });
+    _commitTable(nextTable);
   }
 
   void _resizeColumn(double delta) {
     final widths = List<double>.from(_table.columnWidths);
     widths[_selectedColumn] =
         (widths[_selectedColumn] + delta).clamp(96, 420).toDouble();
-    setState(() {
-      _table = _table.copyWith(columnWidths: widths);
-    });
+    _commitTable(_table.copyWith(columnWidths: widths));
   }
 
   List<List<String>> _cloneRows() {
@@ -541,9 +564,15 @@ class _TypeSyncTableEditorDialogState
   }
 
   void _syncSelectedCellText() {
-    _cellController.text = _table.rows[_selectedRow][_selectedColumn];
+    _syncCellController(_table.rows[_selectedRow][_selectedColumn]);
+  }
+
+  void _syncCellController(String value) {
+    _isSyncingCellText = true;
+    _cellController.text = value;
     _cellController.selection = TextSelection.collapsed(
       offset: _cellController.text.length,
     );
+    _isSyncingCellText = false;
   }
 }
