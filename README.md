@@ -243,6 +243,20 @@ dart format lib test
 flutter analyze
 ```
 
+### Changelog Workflow
+- Canonical source: `changelog/changelog.yaml`
+- Generate app and release artifacts:
+
+```bash
+python3 scripts/generate_changelog.py
+```
+
+- Validate generated output is up to date (CI-friendly):
+
+```bash
+python3 scripts/generate_changelog.py --check
+```
+
 ## Configuration Files
 
 | File | Purpose |

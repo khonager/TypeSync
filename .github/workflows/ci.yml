@@ -30,6 +30,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify changelog artifacts
+        run: python3 scripts/generate_changelog.py --check
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:

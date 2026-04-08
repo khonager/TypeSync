@@ -1,0 +1,10 @@
+# TypeSync 1.1.0
+
+Released: 2026-04-08
+
+Kanban + Compatibility
+
+- Added interactive TypeSync Kanban embeds for rich text notes.
+- Notes now track the minimum supported app version for feature compatibility.
+- Older app versions now show an explicit upgrade message for unsupported notes.
+- Editor now restores and autofocuses your previous caret position per file.

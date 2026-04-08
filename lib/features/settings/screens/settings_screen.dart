@@ -14,10 +14,12 @@ import 'package:provider/provider.dart';
 
 import '../../../core/models/folder.dart';
 import '../../../core/models/note.dart';
+import '../../../core/models/app_changelog.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/changelog_service.dart';
 import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/diagnostics_service.dart';
@@ -30,6 +32,7 @@ import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/version_compatibility.dart';
 
 /// Settings screen with app preferences
 class SettingsScreen extends StatelessWidget {
@@ -237,10 +240,18 @@ class SettingsScreen extends StatelessWidget {
           // About Section
           const _SectionHeader(title: 'About'),
 
-          const _SettingsTile(
+          _SettingsTile(
             icon: Icons.info_outline,
             title: 'Version',
-            subtitle: '1.0.0',
+            subtitle: kCurrentAppVersion,
+            onTap: () => _showChangelog(context),
+          ),
+
+          _SettingsTile(
+            icon: Icons.new_releases_outlined,
+            title: 'Changelog',
+            subtitle: 'See what changed in recent releases',
+            onTap: () => _showChangelog(context),
           ),
 
           _SettingsTile(
@@ -250,7 +261,7 @@ class SettingsScreen extends StatelessWidget {
               showLicensePage(
                 context: context,
                 applicationName: 'TypeSync',
-                applicationVersion: '1.0.0',
+                applicationVersion: kCurrentAppVersion,
               );
             },
           ),
@@ -268,6 +279,66 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 32),
         ],
       ),
+    );
+  }
+
+  Future<void> _showChangelog(BuildContext context) async {
+    const changelogService = ChangelogService();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.9,
+            child: FutureBuilder<AppChangelog>(
+              future: changelogService.load(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final changelog =
+                    snapshot.data ?? AppChangelog.fallback(kCurrentAppVersion);
+                final releases = changelog.releases;
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Changelog',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                        itemCount: releases.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          return _ReleaseNotesCard(release: releases[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1511,6 +1582,76 @@ class _SectionHeader extends StatelessWidget {
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,
             ),
+      ),
+    );
+  }
+}
+
+class _ReleaseNotesCard extends StatelessWidget {
+  final ChangelogRelease release;
+
+  const _ReleaseNotesCard({required this.release});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    release.version.isNotEmpty
+                        ? 'v${release.version}'
+                        : 'Unknown version',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                if (release.date.isNotEmpty)
+                  Text(
+                    release.date,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  ),
+              ],
+            ),
+            if (release.title.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                release.title.trim(),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+            if (release.changes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              for (final change in release.changes) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Icon(Icons.circle, size: 7),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        change,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+            ],
+          ],
+        ),
       ),
     );
   }
