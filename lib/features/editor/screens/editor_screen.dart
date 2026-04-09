@@ -76,6 +76,8 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
+  static const String _toolbarAnchorPreferenceKey =
+      'typesync_editor_toolbar_anchor';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -119,6 +121,7 @@ class _EditorScreenState extends State<EditorScreen>
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
   bool _attachmentsExpanded = false;
+  EditorToolbarAnchor _toolbarAnchor = EditorToolbarAnchor.bottom;
   late final AnimationController _matchGlowController;
   Timer? _matchGlowStopTimer;
   Rect? _matchGlowRect;
@@ -209,6 +212,11 @@ class _EditorScreenState extends State<EditorScreen>
       if (restoredCaretOffset != null) {
         _setEditorSelection(restoredCaretOffset);
       }
+    }
+
+    final restoredToolbarAnchor = await _loadToolbarAnchor();
+    if (restoredToolbarAnchor != null) {
+      _toolbarAnchor = restoredToolbarAnchor;
     }
 
     // Listen for content changes
@@ -303,6 +311,40 @@ class _EditorScreenState extends State<EditorScreen>
     } catch (_) {
       // Best-effort persistence; ignore local preference write failures.
     }
+  }
+
+  Future<EditorToolbarAnchor?> _loadToolbarAnchor() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawValue = prefs.getString(_toolbarAnchorPreferenceKey);
+      return switch (rawValue) {
+        'top' => EditorToolbarAnchor.top,
+        'bottom' => EditorToolbarAnchor.bottom,
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistToolbarAnchor(EditorToolbarAnchor anchor) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _toolbarAnchorPreferenceKey,
+        anchor == EditorToolbarAnchor.top ? 'top' : 'bottom',
+      );
+    } catch (_) {
+      // Best-effort persistence; ignore local preference write failures.
+    }
+  }
+
+  void _setToolbarAnchor(EditorToolbarAnchor anchor) {
+    if (_toolbarAnchor == anchor) return;
+    setState(() {
+      _toolbarAnchor = anchor;
+    });
+    unawaited(_persistToolbarAnchor(anchor));
   }
 
   void _setEditorSelection(int offset) {
@@ -542,72 +584,81 @@ class _EditorScreenState extends State<EditorScreen>
                 ]
               : [
                   if (_note?.hasConflict == true) _buildConflictBanner(),
-                  Expanded(
-                    child: DropTarget(
-                      onDragEntered: (details) {
-                        setState(() {
-                          _isDragging = true;
-                        });
-                      },
-                      onDragExited: (details) {
-                        setState(() {
-                          _isDragging = false;
-                        });
-                      },
-                      onDragDone: (details) {
-                        _handleDroppedFiles(details.files);
-                        setState(() {
-                          _isDragging = false;
-                        });
-                      },
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          _buildEditorWithAttachments(bgColor),
-                          EditorToolbar(
-                            controller: _quillController,
-                            onInsertPdf: _insertPdf,
-                            onInsertTable: _insertTable,
-                            onInsertKanban: _insertKanban,
-                          ),
-                          if (_isDragging)
-                            Container(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: 0.2),
-                              alignment: Alignment.center,
-                              child: Container(
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.upload_file,
-                                      size: 48,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'Drop files to attach',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  if (_toolbarAnchor == EditorToolbarAnchor.top)
+                    _buildToolbar(),
+                  _buildEditorWorkspace(bgColor),
+                  if (_toolbarAnchor == EditorToolbarAnchor.bottom)
+                    _buildToolbar(),
                 ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return EditorToolbar(
+      controller: _quillController,
+      onInsertPdf: _insertPdf,
+      onInsertTable: _insertTable,
+      onInsertKanban: _insertKanban,
+      anchor: _toolbarAnchor,
+      onAnchorChanged: _setToolbarAnchor,
+    );
+  }
+
+  Widget _buildEditorWorkspace(Color? bgColor) {
+    return Expanded(
+      child: DropTarget(
+        onDragEntered: (details) {
+          setState(() {
+            _isDragging = true;
+          });
+        },
+        onDragExited: (details) {
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        onDragDone: (details) {
+          _handleDroppedFiles(details.files);
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _buildEditorWithAttachments(bgColor),
+            if (_isDragging)
+              Container(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.2),
+                alignment: Alignment.center,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.upload_file,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Drop files to attach',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
