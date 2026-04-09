@@ -4,12 +4,32 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/calendar_event.dart';
+
+enum CalendarViewMode {
+  month,
+  twoWeeks,
+  week,
+  year,
+}
+
+class _YearWeekItem {
+  final int weekNumber;
+  final DateTime start;
+  final DateTime end;
+
+  const _YearWeekItem({
+    required this.weekNumber,
+    required this.start,
+    required this.end,
+  });
+}
 
 /// Calendar screen for test reminders and events
 class CalendarScreen extends StatefulWidget {
@@ -20,13 +40,25 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  static final DateTime _firstCalendarDay = DateTime(2020, 1, 1);
+  static final DateTime _lastCalendarDay = DateTime(2035, 12, 31);
+
+  final DateFormat _monthHeaderFormat = DateFormat.yMMMM();
+  final DateFormat _dateLabelFormat = DateFormat('EEE, d MMM y');
+
+  CalendarViewMode _viewMode = CalendarViewMode.month;
   CalendarFormat _calendarFormat = CalendarFormat.month;
-  DateTime _focusedDay = DateTime.now();
-  DateTime? _selectedDay;
+  late DateTime _focusedDay;
+  late DateTime _selectedDay;
+  late DateTime _selectedWeekStart;
 
   @override
   void initState() {
     super.initState();
+    final now = _dateOnly(DateTime.now());
+    _focusedDay = now;
+    _selectedDay = now;
+    _selectedWeekStart = _startOfIsoWeek(now);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
     });
@@ -53,76 +85,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
           IconButton(
             icon: const Icon(Icons.today),
             onPressed: () {
+              final now = _dateOnly(DateTime.now());
               setState(() {
-                _focusedDay = DateTime.now();
-                _selectedDay = DateTime.now();
+                _focusedDay = now;
+                _selectedDay = now;
+                _selectedWeekStart = _startOfIsoWeek(now);
               });
             },
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Calendar widget
-          TableCalendar(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            calendarFormat: _calendarFormat,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            onDaySelected: (selectedDay, focusedDay) {
-              setState(() {
-                _selectedDay = selectedDay;
-                _focusedDay = focusedDay;
-              });
-            },
-            onFormatChanged: (format) {
-              setState(() {
-                _calendarFormat = format;
-              });
-            },
-            onPageChanged: (focusedDay) {
-              _focusedDay = focusedDay;
-            },
-            calendarStyle: CalendarStyle(
-              todayDecoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              selectedDecoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-              weekendTextStyle: TextStyle(
-                color:
-                    Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
-              ),
-            ),
-            headerStyle: HeaderStyle(
-              formatButtonVisible: true,
-              formatButtonDecoration: BoxDecoration(
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
+      body: Consumer<CalendarProvider>(
+        builder: (context, calendarProvider, _) {
+          final eventDayKeys = calendarProvider.events
+              .map((event) => _dateKey(event.startTime))
+              .toSet();
 
-          const Divider(),
-
-          // Events for selected day
-          Expanded(
-            child: _selectedDay != null
-                ? _buildEventsList()
-                : const Center(
-                    child: Text('Select a day to view events'),
-                  ),
-          ),
-        ],
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              _buildViewModeSelector(),
+              const SizedBox(height: 8),
+              if (_viewMode == CalendarViewMode.year)
+                _buildYearCalendar(calendarProvider)
+              else
+                _buildStandardCalendar(eventDayKeys),
+              const Divider(height: 1),
+              Expanded(
+                child: _buildVisibleRangeEventsList(calendarProvider),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addEvent,
@@ -131,34 +125,337 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildEventsList() {
-    final calendarProvider = context.watch<CalendarProvider>();
-    final events = calendarProvider.getEventsForDate(_selectedDay!);
+  Widget _buildViewModeSelector() {
+    final isSelected = [
+      _viewMode == CalendarViewMode.month,
+      _viewMode == CalendarViewMode.twoWeeks,
+      _viewMode == CalendarViewMode.week,
+      _viewMode == CalendarViewMode.year,
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ToggleButtons(
+        isSelected: isSelected,
+        borderRadius: BorderRadius.circular(10),
+        onPressed: (index) {
+          final selectedMode = switch (index) {
+            0 => CalendarViewMode.month,
+            1 => CalendarViewMode.twoWeeks,
+            2 => CalendarViewMode.week,
+            3 => CalendarViewMode.year,
+            _ => CalendarViewMode.month,
+          };
+          setState(() {
+            _viewMode = selectedMode;
+            if (selectedMode != CalendarViewMode.year) {
+              _calendarFormat = switch (selectedMode) {
+                CalendarViewMode.month => CalendarFormat.month,
+                CalendarViewMode.twoWeeks => CalendarFormat.twoWeeks,
+                CalendarViewMode.week => CalendarFormat.week,
+                CalendarViewMode.year => CalendarFormat.month,
+              };
+            } else {
+              _selectedWeekStart = _startOfIsoWeek(_selectedDay);
+              _focusedDay = _selectedWeekStart;
+            }
+          });
+        },
+        children: const [
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Month'),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('2 Weeks'),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Week'),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Year (KW)'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStandardCalendar(Set<int> eventDayKeys) {
+    return TableCalendar(
+      firstDay: _firstCalendarDay,
+      lastDay: _lastCalendarDay,
+      focusedDay: _focusedDay,
+      calendarFormat: _calendarFormat,
+      startingDayOfWeek: StartingDayOfWeek.monday,
+      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+      onDaySelected: (selectedDay, focusedDay) {
+        setState(() {
+          _selectedDay = _dateOnly(selectedDay);
+          _focusedDay = _dateOnly(focusedDay);
+          _selectedWeekStart = _startOfIsoWeek(_selectedDay);
+        });
+      },
+      onPageChanged: (focusedDay) {
+        setState(() {
+          _focusedDay = _dateOnly(focusedDay);
+        });
+      },
+      headerStyle: const HeaderStyle(
+        formatButtonVisible: false,
+        titleCentered: true,
+      ),
+      calendarBuilders: CalendarBuilders(
+        defaultBuilder: (context, day, _) => _buildDayCell(
+          day,
+          hasEvents: eventDayKeys.contains(_dateKey(day)),
+        ),
+        outsideBuilder: (context, day, _) => _buildDayCell(
+          day,
+          hasEvents: eventDayKeys.contains(_dateKey(day)),
+          isOutside: true,
+        ),
+        todayBuilder: (context, day, _) => _buildDayCell(
+          day,
+          hasEvents: eventDayKeys.contains(_dateKey(day)),
+          isToday: true,
+        ),
+        selectedBuilder: (context, day, _) => _buildDayCell(
+          day,
+          hasEvents: eventDayKeys.contains(_dateKey(day)),
+          isSelected: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayCell(
+    DateTime day, {
+    required bool hasEvents,
+    bool isSelected = false,
+    bool isToday = false,
+    bool isOutside = false,
+  }) {
+    final theme = Theme.of(context);
+    final textColor = isSelected
+        ? theme.colorScheme.onPrimary
+        : isOutside
+            ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+            : null;
+
+    final BoxDecoration? decoration;
+    if (isSelected) {
+      decoration = BoxDecoration(
+        color: theme.colorScheme.primary,
+        shape: BoxShape.circle,
+        border: hasEvents
+            ? Border.all(color: theme.colorScheme.onPrimary, width: 1.5)
+            : null,
+      );
+    } else if (isToday) {
+      decoration = BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.25),
+        shape: BoxShape.circle,
+        border: hasEvents
+            ? Border.all(color: theme.colorScheme.primary, width: 1.4)
+            : null,
+      );
+    } else if (hasEvents) {
+      decoration = BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: theme.colorScheme.primary, width: 1.3),
+      );
+    } else {
+      decoration = null;
+    }
+
+    return Center(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 34,
+        height: 34,
+        decoration: decoration,
+        alignment: Alignment.center,
+        child: Text(
+          '${day.day}',
+          style: TextStyle(color: textColor),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYearCalendar(CalendarProvider calendarProvider) {
+    final year = _focusedDay.year;
+    final weeks = _buildWeeksForYear(year);
+    final selectedKey = _dateKey(_selectedWeekStart);
+
+    return SizedBox(
+      height: 320,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _focusedDay = DateTime(_focusedDay.year - 1, 1, 1);
+                      _selectedWeekStart = _startOfIsoWeek(_focusedDay);
+                      _selectedDay = _selectedWeekStart;
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Expanded(
+                  child: Text(
+                    '$year',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _focusedDay = DateTime(_focusedDay.year + 1, 1, 1);
+                      _selectedWeekStart = _startOfIsoWeek(_focusedDay);
+                      _selectedDay = _selectedWeekStart;
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              itemCount: weeks.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 2.2,
+              ),
+              itemBuilder: (context, index) {
+                final week = weeks[index];
+                final weekKey = _dateKey(week.start);
+                final isSelected = weekKey == selectedKey;
+                final eventCount = _eventsInRange(
+                  calendarProvider.events,
+                  start: week.start,
+                  end: week.end,
+                ).length;
+
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    setState(() {
+                      _selectedWeekStart = week.start;
+                      _focusedDay = week.start;
+                      _selectedDay = week.start;
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'KW ${week.weekNumber}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : null,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                              ),
+                        ),
+                        if (eventCount > 0)
+                          Text(
+                            '$eventCount event${eventCount == 1 ? '' : 's'}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: isSelected
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVisibleRangeEventsList(CalendarProvider calendarProvider) {
+    final range = _visibleRange();
+    final events = _eventsInRange(
+      calendarProvider.events,
+      start: range.start,
+      end: range.end,
+    );
+    final header = _eventsHeaderForRange(range.start, range.end);
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Events for ${_selectedDay!.day}/${_selectedDay!.month}/${_selectedDay!.year}',
+          header,
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 16),
         if (events.isEmpty)
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.event_available,
-                  size: 48,
-                  color: Colors.grey.withValues(alpha: 0.5),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'No events scheduled',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
+          SizedBox(
+            height: 220,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.event_available,
+                    size: 48,
+                    color: Colors.grey.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'No events in this range',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
           )
         else
@@ -179,13 +476,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (event.subject != null)
+                    if (event.subject != null &&
+                        event.subject!.trim().isNotEmpty)
                       Text('Subject: ${event.subject}'),
                     Text(
-                      '${event.startTime.hour.toString().padLeft(2, '0')}:${event.startTime.minute.toString().padLeft(2, '0')}',
+                      _eventDateTimeLabel(event),
                     ),
                     if (event.description != null &&
-                        event.description!.isNotEmpty)
+                        event.description!.trim().isNotEmpty)
                       Text(event.description!),
                   ],
                 ),
@@ -202,6 +500,114 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
       ],
     );
+  }
+
+  String _eventDateTimeLabel(CalendarEvent event) {
+    final date = _dateLabelFormat.format(event.startTime);
+    if (_isAllDay(event.startTime)) {
+      return '$date • All day';
+    }
+    return '$date • ${DateFormat.Hm().format(event.startTime)}';
+  }
+
+  String _eventsHeaderForRange(DateTime start, DateTime end) {
+    if (_viewMode == CalendarViewMode.month) {
+      return 'Events in ${_monthHeaderFormat.format(_focusedDay)}';
+    }
+    if (_viewMode == CalendarViewMode.year) {
+      final week = _isoWeekNumber(start);
+      return 'Events in KW $week (${DateFormat('d MMM').format(start)} - ${DateFormat('d MMM').format(end)})';
+    }
+    if (_viewMode == CalendarViewMode.week) {
+      return 'Events in Week (${DateFormat('d MMM').format(start)} - ${DateFormat('d MMM').format(end)})';
+    }
+    return 'Events in 2 Weeks (${DateFormat('d MMM').format(start)} - ${DateFormat('d MMM').format(end)})';
+  }
+
+  DateTimeRange _visibleRange() {
+    if (_viewMode == CalendarViewMode.year) {
+      final start = _selectedWeekStart;
+      return DateTimeRange(
+        start: start,
+        end: start.add(const Duration(days: 6)),
+      );
+    }
+
+    if (_viewMode == CalendarViewMode.month) {
+      final start = DateTime(_focusedDay.year, _focusedDay.month, 1);
+      final end = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
+      return DateTimeRange(start: start, end: end);
+    }
+
+    final start = _startOfIsoWeek(_focusedDay);
+    final end = _viewMode == CalendarViewMode.twoWeeks
+        ? start.add(const Duration(days: 13))
+        : start.add(const Duration(days: 6));
+    return DateTimeRange(start: start, end: end);
+  }
+
+  List<CalendarEvent> _eventsInRange(
+    List<CalendarEvent> source, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    return source.where((event) {
+      final eventDate = _dateOnly(event.startTime);
+      return !eventDate.isBefore(_dateOnly(start)) &&
+          !eventDate.isAfter(_dateOnly(end));
+    }).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+  }
+
+  List<_YearWeekItem> _buildWeeksForYear(int year) {
+    final totalWeeks = _isoWeekNumber(DateTime(year, 12, 28));
+    final firstWeekStart = _startOfIsoWeek(DateTime(year, 1, 4));
+
+    return List<_YearWeekItem>.generate(totalWeeks, (index) {
+      final start = firstWeekStart.add(Duration(days: index * 7));
+      final end = start.add(const Duration(days: 6));
+      return _YearWeekItem(
+        weekNumber: index + 1,
+        start: _dateOnly(start),
+        end: _dateOnly(end),
+      );
+    });
+  }
+
+  DateTime _defaultDateForNewEvent() {
+    if (_viewMode == CalendarViewMode.year) {
+      return _selectedWeekStart;
+    }
+    return _selectedDay;
+  }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  int _dateKey(DateTime value) {
+    return value.year * 10000 + value.month * 100 + value.day;
+  }
+
+  bool _isAllDay(DateTime value) {
+    return value.hour == 0 &&
+        value.minute == 0 &&
+        value.second == 0 &&
+        value.millisecond == 0 &&
+        value.microsecond == 0;
+  }
+
+  DateTime _startOfIsoWeek(DateTime value) {
+    final date = _dateOnly(value);
+    return date.subtract(Duration(days: date.weekday - DateTime.monday));
+  }
+
+  int _isoWeekNumber(DateTime value) {
+    final date = _dateOnly(value);
+    final thursday = date.add(Duration(days: DateTime.thursday - date.weekday));
+    final firstThursday = DateTime(thursday.year, 1, 4);
+    final firstWeekStart = _startOfIsoWeek(firstThursday);
+    return (thursday.difference(firstWeekStart).inDays ~/ 7) + 1;
   }
 
   IconData _getEventTypeIcon(EventType type) {
@@ -226,7 +632,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final subjectController = TextEditingController();
     final descriptionController = TextEditingController();
     EventType selectedType = EventType.reminder;
-    DateTime? selectedDate;
+    DateTime selectedDate = _defaultDateForNewEvent();
     TimeOfDay? selectedTime;
 
     showModalBottomSheet(
@@ -320,10 +726,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
-                              initialDate: _selectedDay ?? DateTime.now(),
-                              firstDate: DateTime.now(),
-                              lastDate:
-                                  DateTime.now().add(const Duration(days: 365)),
+                              initialDate: selectedDate,
+                              firstDate: _firstCalendarDay,
+                              lastDate: _lastCalendarDay,
                             );
                             if (date != null) {
                               setModalState(() {
@@ -340,9 +745,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 const Icon(Icons.calendar_today, size: 16),
                                 const SizedBox(width: 8),
                                 Text(
-                                  selectedDate != null
-                                      ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}'
-                                      : 'Select',
+                                  '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
                                   style: TextStyle(
                                     color: Theme.of(context).hintColor,
                                   ),
@@ -368,7 +771,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           },
                           child: InputDecorator(
                             decoration: const InputDecoration(
-                              labelText: 'Time',
+                              labelText: 'Time (optional)',
                             ),
                             child: Row(
                               children: [
@@ -377,11 +780,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 Text(
                                   selectedTime != null
                                       ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
-                                      : 'Select',
+                                      : 'No time (all day)',
                                   style: TextStyle(
                                     color: Theme.of(context).hintColor,
                                   ),
                                 ),
+                                if (selectedTime != null) ...[
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () {
+                                      setModalState(() {
+                                        selectedTime = null;
+                                      });
+                                    },
+                                    child: const Icon(
+                                      Icons.clear,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -410,25 +827,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         return;
                       }
 
-                      if (selectedDate == null || selectedTime == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please select date and time'),
-                          ),
-                        );
-                        return;
-                      }
-
                       final authService = context.read<AuthService>();
                       final userId = authService.userId;
                       if (userId == null) return;
 
                       final startTime = DateTime(
-                        selectedDate!.year,
-                        selectedDate!.month,
-                        selectedDate!.day,
-                        selectedTime!.hour,
-                        selectedTime!.minute,
+                        selectedDate.year,
+                        selectedDate.month,
+                        selectedDate.day,
+                        selectedTime?.hour ?? 0,
+                        selectedTime?.minute ?? 0,
                       );
 
                       await context.read<CalendarProvider>().createEvent(
