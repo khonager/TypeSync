@@ -69,7 +69,6 @@
             (with pkgs; [
               androidSdk
               flutter
-              dart
               jdk17
 
               # Common libraries needed by unpatched binaries (like aapt2)
@@ -153,6 +152,21 @@
               echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
             fi
 
+            # Make Flutter SDK path stable for IDEs across Nix store path changes.
+            ln -sfn "${pkgs.flutter}" .nix-flutter-sdk
+
+            # If a different Flutter SDK previously generated .dart_tool metadata,
+            # hot restart can fail with framework/engine API mismatches.
+            if [ -f ".dart_tool/package_config.json" ]; then
+              existing_flutter_root="$(sed -n 's/.*"flutterRoot": "\(.*\)",/\1/p' .dart_tool/package_config.json | head -n 1)"
+              expected_flutter_root="file://${pkgs.flutter}"
+              if [ -n "$existing_flutter_root" ] && [ "$existing_flutter_root" != "$expected_flutter_root" ]; then
+                echo "Detected Flutter SDK switch; regenerating .dart_tool metadata for ${pkgs.flutter}"
+                rm -f .dart_tool/package_config.json .dart_tool/package_config_subset .dart_tool/version
+                flutter pub get >/dev/null || true
+              fi
+            fi
+
             echo "╔═══════════════════════════════════════════════════════════╗"
             echo "║           TypeSync Development Environment                ║"
             echo "╠═══════════════════════════════════════════════════════════╣"
@@ -187,7 +201,6 @@
           buildInputs = with pkgs; [
             androidSdk
             flutter
-            dart
             jdk17
             cocoapods # Required for iOS development on macOS
 
@@ -219,6 +232,21 @@
             if [ -d "android" ]; then
               echo "sdk.dir=${androidSdk}/share/android-sdk" > android/local.properties
               echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
+            fi
+
+            # Make Flutter SDK path stable for IDEs across Nix store path changes.
+            ln -sfn "${pkgs.flutter}" .nix-flutter-sdk
+
+            # Repair stale .dart_tool metadata if this workspace was opened with a
+            # different Flutter SDK earlier.
+            if [ -f ".dart_tool/package_config.json" ]; then
+              existing_flutter_root="$(sed -n 's/.*"flutterRoot": "\(.*\)",/\1/p' .dart_tool/package_config.json | head -n 1)"
+              expected_flutter_root="file://${pkgs.flutter}"
+              if [ -n "$existing_flutter_root" ] && [ "$existing_flutter_root" != "$expected_flutter_root" ]; then
+                echo "Detected Flutter SDK switch; regenerating .dart_tool metadata for ${pkgs.flutter}"
+                rm -f .dart_tool/package_config.json .dart_tool/package_config_subset .dart_tool/version
+                flutter pub get >/dev/null || true
+              fi
             fi
 
             echo "TypeSync development environment ready!"

@@ -12,6 +12,7 @@ enum UpcomingItemKind {
 }
 
 class UpcomingItemViewData {
+  final String sourceId;
   final UpcomingItemKind kind;
   final String title;
   final DateTime dateTime;
@@ -21,6 +22,7 @@ class UpcomingItemViewData {
   final bool isOverdue;
 
   const UpcomingItemViewData({
+    required this.sourceId,
     required this.kind,
     required this.title,
     required this.dateTime,
@@ -32,6 +34,7 @@ class UpcomingItemViewData {
 
   factory UpcomingItemViewData.fromCalendarEvent(CalendarEvent event) {
     return UpcomingItemViewData(
+      sourceId: event.id,
       kind: UpcomingItemKind.calendar,
       title: event.title,
       dateTime: event.startTime,
@@ -45,6 +48,7 @@ class UpcomingItemViewData {
   factory UpcomingItemViewData.fromHomework(Homework homework) {
     final dueDate = homework.dueDate!;
     return UpcomingItemViewData(
+      sourceId: homework.id,
       kind: UpcomingItemKind.homework,
       title: homework.title,
       dateTime: dueDate,
@@ -97,6 +101,8 @@ class UpcomingItemViewData {
         ? const Color(0xFFE39A34)
         : theme.colorScheme.primary;
   }
+
+  bool get isCompletable => kind == UpcomingItemKind.homework;
 
   static IconData _calendarIcon(EventType type) {
     switch (type) {

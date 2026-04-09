@@ -1,12 +1,18 @@
 /// Editor Toolbar Widget
 ///
-/// Floating draggable toolbar with formatting options.
+/// Floating draggable toolbar with magnetic edge anchoring.
 library;
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../core/utils/color_utils.dart';
+
+enum EditorToolbarPlacement { floating, top, bottom, left, right }
+
+enum _ToolbarAnchorEdge { floating, top, bottom, left, right }
 
 /// Rich text editing toolbar
 ///
@@ -21,12 +27,20 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
+  final EditorToolbarPlacement placement;
+  final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
+  final Offset initialPosition;
+  final ValueChanged<Offset> onPositionChanged;
 
   const EditorToolbar({
     required this.controller,
     required this.onInsertPdf,
     required this.onInsertTable,
     required this.onInsertKanban,
+    required this.placement,
+    required this.onPlacementChanged,
+    required this.initialPosition,
+    required this.onPositionChanged,
     super.key,
   });
 
@@ -35,155 +49,467 @@ class EditorToolbar extends StatefulWidget {
 }
 
 class _EditorToolbarState extends State<EditorToolbar> {
-  Offset _position = const Offset(16, 100); // Bottom left by default
+  static const double _collapsedSize = 50;
+  static const double _edgePadding = 8;
+  static const double _snapDistance = 42;
+  static const double _panelPadding = 8;
+  static const double _horizontalPanelHeight = 56;
+  static const double _horizontalPanelWidth = 340;
+  static const double _verticalPanelWidth = 56;
+  static const double _floatingPanelWidth = 260;
+  static const double _floatingPanelMaxHeight = 260;
+
+  Offset _position = const Offset(16, 100);
+  _ToolbarAnchorEdge _anchor = _ToolbarAnchorEdge.floating;
   bool _isExpanded = false;
-  final GlobalKey _toolbarKey = GlobalKey();
-  double? _measuredHeight;
+  bool _isDragging = false;
+  bool _sideSnapToBottom = true;
 
-  void _toggleExpanded() {
-    setState(() {
-      _isExpanded = !_isExpanded;
-      _measuredHeight = null; // Reset to remeasure
-    });
+  bool get _isSideAnchor =>
+      _anchor == _ToolbarAnchorEdge.left || _anchor == _ToolbarAnchorEdge.right;
+
+  _ToolbarAnchorEdge _edgeFromPlacement(EditorToolbarPlacement placement) {
+    return switch (placement) {
+      EditorToolbarPlacement.floating => _ToolbarAnchorEdge.floating,
+      EditorToolbarPlacement.top => _ToolbarAnchorEdge.top,
+      EditorToolbarPlacement.bottom => _ToolbarAnchorEdge.bottom,
+      EditorToolbarPlacement.left => _ToolbarAnchorEdge.left,
+      EditorToolbarPlacement.right => _ToolbarAnchorEdge.right,
+    };
   }
 
-  double _getToolbarHeight() {
-    // Use measured height if available, otherwise use conservative estimate
-    if (_measuredHeight != null) {
-      return _measuredHeight!;
+  EditorToolbarPlacement _placementFromEdge(_ToolbarAnchorEdge edge) {
+    return switch (edge) {
+      _ToolbarAnchorEdge.floating => EditorToolbarPlacement.floating,
+      _ToolbarAnchorEdge.top => EditorToolbarPlacement.top,
+      _ToolbarAnchorEdge.bottom => EditorToolbarPlacement.bottom,
+      _ToolbarAnchorEdge.left => EditorToolbarPlacement.left,
+      _ToolbarAnchorEdge.right => EditorToolbarPlacement.right,
+    };
+  }
+
+  void _notifyPlacementChanged(_ToolbarAnchorEdge edge) {
+    final placement = _placementFromEdge(edge);
+    if (widget.placement == placement) return;
+    widget.onPlacementChanged(placement);
+  }
+
+  void _notifyPositionChanged(Offset position) {
+    widget.onPositionChanged(position);
+  }
+
+  void _setAnchor(_ToolbarAnchorEdge edge, {bool notify = true}) {
+    _anchor = edge;
+    if (notify) {
+      _notifyPlacementChanged(edge);
     }
-    // Conservative estimates - use small value for expanded to ensure it can reach top
-    // Even if actual toolbar is taller, this allows it to go to top (may extend slightly above)
-    return _isExpanded ? 100.0 : 50.0;
   }
 
-  void _measureToolbar() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _toolbarKey.currentContext != null) {
-        final renderBox =
-            _toolbarKey.currentContext!.findRenderObject() as RenderBox?;
-        if (renderBox != null && renderBox.hasSize) {
-          final height = renderBox.size.height;
-          if (_measuredHeight != height) {
-            setState(() {
-              _measuredHeight = height;
-            });
-          }
-        }
-      }
-    });
+  void _setPosition(Offset position, {bool notify = true}) {
+    _position = position;
+    if (notify) {
+      _notifyPositionChanged(position);
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    // Listen for keyboard shortcuts
-    widget.controller.addListener(_handleKeyboardShortcuts);
+    _anchor = _edgeFromPlacement(widget.placement);
+    _position = widget.initialPosition;
+    widget.controller.addListener(_handleControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditorToolbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.placement != widget.placement) {
+      _setAnchor(_edgeFromPlacement(widget.placement), notify: false);
+    }
+    if (!_isDragging && oldWidget.initialPosition != widget.initialPosition) {
+      _setPosition(widget.initialPosition, notify: false);
+    }
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_handleKeyboardShortcuts);
+    widget.controller.removeListener(_handleControllerChanged);
     super.dispose();
   }
 
-  void _handleKeyboardShortcuts() {
-    // Handle <> shortcut for code blocks
-    // This is a simplified version - in production you'd use RawKeyboardListener
+  void _handleControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+    });
+  }
+
+  void _onPanStart() {
+    if (_isExpanded) return;
+    setState(() {
+      _isDragging = true;
+    });
+  }
+
+  void _onPanUpdate(DragUpdateDetails details, Size areaSize) {
+    if (_isExpanded) return;
+
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final maxCollapsedY = _maxCollapsedY(areaSize.height);
+
+    final nextX = (_position.dx + details.delta.dx).clamp(
+      _edgePadding,
+      maxCollapsedX,
+    );
+    final nextY = (_position.dy + details.delta.dy).clamp(
+      _edgePadding,
+      maxCollapsedY,
+    );
+
+    setState(() {
+      _setPosition(Offset(nextX.toDouble(), nextY.toDouble()));
+    });
+  }
+
+  void _onPanEnd(Size areaSize) {
+    if (_isExpanded) return;
+
+    setState(() {
+      _isDragging = false;
+      _snapToNearestEdge(areaSize);
+    });
+  }
+
+  void _undockFromDock() {
+    setState(() {
+      _setAnchor(_ToolbarAnchorEdge.floating);
+      _isExpanded = false;
+      _isDragging = false;
+    });
+  }
+
+  double _maxCollapsedX(double areaWidth) {
+    return math.max(_edgePadding, areaWidth - _collapsedSize - _edgePadding);
+  }
+
+  double _maxCollapsedY(double areaHeight) {
+    return math.max(_edgePadding, areaHeight - _collapsedSize - _edgePadding);
+  }
+
+  void _snapToNearestEdge(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final maxCollapsedY = _maxCollapsedY(areaSize.height);
+
+    final clamped = Offset(
+      _position.dx.clamp(_edgePadding, maxCollapsedX).toDouble(),
+      _position.dy.clamp(_edgePadding, maxCollapsedY).toDouble(),
+    );
+
+    final leftDistance = clamped.dx - _edgePadding;
+    final rightDistance = maxCollapsedX - clamped.dx;
+    final topDistance = clamped.dy - _edgePadding;
+    final bottomDistance = maxCollapsedY - clamped.dy;
+    final minDistance = math.min(
+      math.min(leftDistance, rightDistance),
+      math.min(topDistance, bottomDistance),
+    );
+
+    if (minDistance > _snapDistance) {
+      _setAnchor(_ToolbarAnchorEdge.floating);
+      _setPosition(clamped);
+      return;
+    }
+
+    if (minDistance == topDistance) {
+      _setAnchor(_ToolbarAnchorEdge.top);
+      _setPosition(Offset(clamped.dx, _edgePadding));
+      return;
+    }
+
+    if (minDistance == bottomDistance) {
+      _setAnchor(_ToolbarAnchorEdge.bottom);
+      _setPosition(Offset(clamped.dx, maxCollapsedY));
+      return;
+    }
+
+    _sideSnapToBottom =
+        clamped.dy + (_collapsedSize / 2) >= areaSize.height / 2;
+    final sideY = _sideSnapToBottom ? maxCollapsedY : _edgePadding;
+
+    if (minDistance == leftDistance) {
+      _setAnchor(_ToolbarAnchorEdge.left);
+      _setPosition(Offset(_edgePadding, sideY));
+      return;
+    }
+
+    _setAnchor(_ToolbarAnchorEdge.right);
+    _setPosition(Offset(maxCollapsedX, sideY));
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final appBarHeight = AppBar().preferredSize.height;
-    final statusBarHeight = MediaQuery.of(context).padding.top;
-    final totalAppBarHeight = appBarHeight + statusBarHeight;
+    if (_anchor == _ToolbarAnchorEdge.top ||
+        _anchor == _ToolbarAnchorEdge.bottom) {
+      return _buildDockedHorizontal();
+    }
 
-    // Get toolbar size to calculate proper bounds
-    final toolbarWidth = _isExpanded ? 250.0 : 50.0;
-    // Get actual or estimated toolbar height
-    final toolbarHeight = _getToolbarHeight();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final areaSize = constraints.biggest;
+        if (!areaSize.isFinite || areaSize.width <= 0 || areaSize.height <= 0) {
+          return const SizedBox.shrink();
+        }
 
-    // The Stack is in the body, which is below the app bar
-    // Body height = screenHeight - totalAppBarHeight
-    final bodyHeight = screenSize.height - totalAppBarHeight;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (_isExpanded)
+              if (_isSideAnchor)
+                _buildExpandedVertical(areaSize)
+              else if (_anchor == _ToolbarAnchorEdge.floating)
+                _buildExpandedFloating(areaSize)
+              else
+                _buildExpandedHorizontal(areaSize)
+            else
+              _buildCollapsedPen(areaSize),
+          ],
+        );
+      },
+    );
+  }
 
-    // Ensure position is within bounds - allow movement to edges but not through app bar
-    final left = _position.dx.clamp(0.0, screenSize.width - toolbarWidth);
-    // Bottom constraint:
-    // - maxBottom: when toolbar top edge is at the top of body (right below app bar)
-    //   bottom = bodyHeight - toolbarHeight (toolbar top at top of body)
-    // - minBottom: 0 (toolbar at bottom of body)
-    final maxBottom = bodyHeight - toolbarHeight;
-    const minBottom = 0.0;
-    // Ensure maxBottom is valid (at least 0)
-    final clampedMaxBottom = maxBottom > minBottom ? maxBottom : minBottom;
-    final bottom = _position.dy.clamp(minBottom, clampedMaxBottom);
+  Widget _buildCollapsedPen(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final maxCollapsedY = _maxCollapsedY(areaSize.height);
+
+    final freeX = _position.dx.clamp(_edgePadding, maxCollapsedX).toDouble();
+    final freeY = _position.dy.clamp(_edgePadding, maxCollapsedY).toDouble();
+
+    final snappedX = switch (_anchor) {
+      _ToolbarAnchorEdge.floating => freeX,
+      _ToolbarAnchorEdge.left => _edgePadding,
+      _ToolbarAnchorEdge.right => maxCollapsedX,
+      _ToolbarAnchorEdge.top || _ToolbarAnchorEdge.bottom => freeX,
+    };
+    final snappedY = switch (_anchor) {
+      _ToolbarAnchorEdge.floating => freeY,
+      _ToolbarAnchorEdge.top => _edgePadding,
+      _ToolbarAnchorEdge.bottom => maxCollapsedY,
+      _ToolbarAnchorEdge.left ||
+      _ToolbarAnchorEdge.right =>
+        _sideSnapToBottom ? maxCollapsedY : _edgePadding,
+    };
+
+    final displayX = _isDragging ? freeX : snappedX;
+    final displayY = _isDragging ? freeY : snappedY;
 
     return Positioned(
-      left: left,
-      bottom: bottom,
-      child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(24),
-        color: Colors.transparent,
-        child: GestureDetector(
-          onPanUpdate: (details) {
-            setState(() {
-              final currentWidth = _isExpanded ? 250.0 : 50.0;
-              final currentHeight = _getToolbarHeight();
-              final appBarHeight = AppBar().preferredSize.height;
-              final statusBarHeight = MediaQuery.of(context).padding.top;
-              final bodyHeight =
-                  screenSize.height - appBarHeight - statusBarHeight;
-
-              // Allow toolbar to go all the way to top (toolbar top at top of body)
-              // maxBottom: when toolbar top edge is at top of body
-              // bottom = bodyHeight - currentHeight
-              final maxBottom = bodyHeight - currentHeight;
-              const minBottom = 0.0; // Can go all the way to bottom
-              final clampedMaxBottom =
-                  maxBottom > minBottom ? maxBottom : minBottom;
-
-              final newDx = (_position.dx + details.delta.dx)
-                  .clamp(0.0, screenSize.width - currentWidth);
-              final newDy = (_position.dy - details.delta.dy)
-                  .clamp(minBottom, clampedMaxBottom);
-              _position = Offset(newDx, newDy);
-            });
-          },
-          child: Container(
-            key: _toolbarKey,
-            constraints: BoxConstraints(
-              maxWidth: toolbarWidth,
-              minWidth: 50,
+      left: displayX,
+      top: displayY,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (_) => _onPanStart(),
+        onPanUpdate: (details) => _onPanUpdate(details, areaSize),
+        onPanEnd: (_) => _onPanEnd(areaSize),
+        child: Material(
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
+          elevation: 8,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _toggleExpanded,
+            child: const SizedBox(
+              width: _collapsedSize,
+              height: _collapsedSize,
+              child: Icon(Icons.edit, size: 20),
             ),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDockedHorizontal() {
+    final isBottom = _anchor == _ToolbarAnchorEdge.bottom;
+    final scrollItems = _buildToolbarItems(Axis.horizontal);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        12,
+        isBottom ? 8 : 12,
+        12,
+        isBottom ? 12 : 8,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          height: _horizontalPanelHeight,
+          decoration: _panelDecoration(context),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Row(
+              children: [
+                _ToolbarButton(
+                  icon: Icons.open_with,
+                  tooltip: 'Undock',
+                  onTap: _undockFromDock,
+                ),
+                const _ToolbarDivider(axis: Axis.horizontal),
+                ...scrollItems.skip(2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedHorizontal(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final panelWidth = math.min(
+      _horizontalPanelWidth,
+      math.max(_collapsedSize, areaSize.width - (_edgePadding * 2)),
+    );
+    final maxLeft =
+        math.max(_edgePadding, areaSize.width - panelWidth - _edgePadding);
+
+    final freeX = _position.dx.clamp(_edgePadding, maxCollapsedX).toDouble();
+    final panelLeft = freeX.clamp(_edgePadding, maxLeft).toDouble();
+    final panelTop = _anchor == _ToolbarAnchorEdge.top
+        ? _edgePadding
+        : math.max(
+            _edgePadding,
+            areaSize.height - _horizontalPanelHeight - _edgePadding,
+          );
+
+    return Positioned(
+      left: panelLeft,
+      top: panelTop,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: panelWidth,
+          height: _horizontalPanelHeight,
+          decoration: _panelDecoration(context),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Row(
+              children: _buildToolbarItems(Axis.horizontal),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedFloating(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final maxCollapsedY = _maxCollapsedY(areaSize.height);
+    final freeX = _position.dx.clamp(_edgePadding, maxCollapsedX).toDouble();
+    final freeY = _position.dy.clamp(_edgePadding, maxCollapsedY).toDouble();
+
+    final panelWidth = math
+        .min(
+          _floatingPanelWidth,
+          math.max(180, areaSize.width - (_edgePadding * 2)),
+        )
+        .toDouble();
+    final maxLeft =
+        math.max(_edgePadding, areaSize.width - panelWidth - _edgePadding);
+    final panelLeft = freeX.clamp(_edgePadding, maxLeft).toDouble();
+
+    final panelMaxHeight = math
+        .min(
+          _floatingPanelMaxHeight,
+          math.max(120.0, areaSize.height - (_edgePadding * 2)),
+        )
+        .toDouble();
+    final maxTop =
+        math.max(_edgePadding, areaSize.height - panelMaxHeight - _edgePadding);
+    final panelTop = freeY.clamp(_edgePadding, maxTop).toDouble();
+
+    return Positioned(
+      left: panelLeft,
+      top: panelTop,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: panelWidth,
+          constraints: BoxConstraints(maxHeight: panelMaxHeight),
+          decoration: _panelDecoration(context),
+          child: Padding(
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Format',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                    _ToolbarButton(
+                      icon: Icons.close,
+                      tooltip: 'Collapse',
+                      onTap: _toggleExpanded,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: _buildFloatingToolbarItems(),
+                    ),
+                  ),
                 ),
               ],
             ),
-            child: Builder(
-              builder: (context) {
-                // Measure toolbar after build
-                _measureToolbar();
-                return _isExpanded
-                    ? _buildExpandedToolbar()
-                    : _buildCollapsedToolbar();
-              },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedVertical(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final panelLeft =
+        _anchor == _ToolbarAnchorEdge.left ? _edgePadding : maxCollapsedX;
+    final maxPanelHeight = math.max(
+      120.0,
+      areaSize.height - (_edgePadding * 2),
+    );
+
+    return Positioned(
+      left: panelLeft,
+      top: _sideSnapToBottom ? null : _edgePadding,
+      bottom: _sideSnapToBottom ? _edgePadding : null,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: _verticalPanelWidth,
+          constraints: BoxConstraints(maxHeight: maxPanelHeight),
+          decoration: _panelDecoration(context),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _buildToolbarItems(Axis.vertical),
             ),
           ),
         ),
@@ -191,130 +517,200 @@ class _EditorToolbarState extends State<EditorToolbar> {
     );
   }
 
-  Widget _buildCollapsedToolbar() {
-    return InkWell(
-      onTap: _toggleExpanded,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        child: Icon(
-          Icons.edit,
-          size: 20,
-          color: Theme.of(context).iconTheme.color,
+  BoxDecoration _panelDecoration(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return BoxDecoration(
+      color: colors.surface.withValues(alpha: 0.97),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.14),
+          blurRadius: 18,
+          offset: const Offset(0, 6),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildExpandedToolbar() {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 250),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with close button
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'Format',
-                  style: Theme.of(context).textTheme.labelSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: _toggleExpanded,
-              ),
-            ],
-          ),
-          const Divider(height: 8),
-          // Formatting buttons
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              _ToolbarButton(
-                icon: Icons.format_bold,
-                isActive: _hasFormat(Attribute.bold),
-                onTap: () => widget.controller.formatSelection(Attribute.bold),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_italic,
-                isActive: _hasFormat(Attribute.italic),
-                onTap: () =>
-                    widget.controller.formatSelection(Attribute.italic),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_underlined,
-                isActive: _hasFormat(Attribute.underline),
-                onTap: () =>
-                    widget.controller.formatSelection(Attribute.underline),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_color_text,
-                onTap: () => _showColorPicker(),
-              ),
-              _ToolbarButton(
-                icon: Icons.border_color,
-                onTap: () => _showMarkerColorPicker(),
-              ),
-              _ToolbarButton(
-                icon: Icons.table_chart_outlined,
-                onTap: widget.onInsertTable,
-              ),
-              _ToolbarButton(
-                icon: Icons.view_kanban_outlined,
-                onTap: widget.onInsertKanban,
-              ),
-              _ToolbarButton(
-                icon: Icons.format_align_left,
-                onTap: () => _setAlignment(TextAlign.left),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_align_center,
-                onTap: () => _setAlignment(TextAlign.center),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_align_right,
-                onTap: () => _setAlignment(TextAlign.right),
-              ),
-              _ToolbarButton(
-                icon: Icons.check_box,
-                isActive: _hasFormat(Attribute.checked),
-                onTap: () =>
-                    widget.controller.formatSelection(Attribute.checked),
-              ),
-              _ToolbarButton(
-                icon: Icons.format_list_numbered,
-                isActive: _hasFormat(Attribute.ol),
-                onTap: () => widget.controller.formatSelection(Attribute.ol),
-              ),
-              _ToolbarButton(
-                icon: Icons.code,
-                isActive: _hasFormat(Attribute.codeBlock),
-                onTap: () => _toggleCodeBlock(),
-              ),
-            ],
-          ),
-        ],
+  List<Widget> _buildToolbarItems(Axis axis) {
+    final divider = _ToolbarDivider(axis: axis);
+
+    return [
+      _ToolbarButton(
+        icon: Icons.close,
+        tooltip: 'Collapse',
+        onTap: _toggleExpanded,
       ),
-    );
+      divider,
+      _ToolbarButton(
+        icon: Icons.format_bold,
+        tooltip: 'Bold',
+        isActive: _hasFormat(Attribute.bold),
+        onTap: () => widget.controller.formatSelection(Attribute.bold),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_italic,
+        tooltip: 'Italic',
+        isActive: _hasFormat(Attribute.italic),
+        onTap: () => widget.controller.formatSelection(Attribute.italic),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_underlined,
+        tooltip: 'Underline',
+        isActive: _hasFormat(Attribute.underline),
+        onTap: () => widget.controller.formatSelection(Attribute.underline),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_color_text,
+        tooltip: 'Text color',
+        onTap: _showColorPicker,
+      ),
+      _ToolbarButton(
+        icon: Icons.border_color,
+        tooltip: 'Highlight',
+        onTap: _showMarkerColorPicker,
+      ),
+      divider,
+      _ToolbarButton(
+        icon: Icons.picture_as_pdf_outlined,
+        tooltip: 'Insert PDF',
+        onTap: widget.onInsertPdf,
+      ),
+      _ToolbarButton(
+        icon: Icons.table_chart_outlined,
+        tooltip: 'Insert table',
+        onTap: widget.onInsertTable,
+      ),
+      _ToolbarButton(
+        icon: Icons.view_kanban_outlined,
+        tooltip: 'Insert kanban',
+        onTap: widget.onInsertKanban,
+      ),
+      divider,
+      _ToolbarButton(
+        icon: Icons.format_align_left,
+        tooltip: 'Align left',
+        onTap: () => _setAlignment(TextAlign.left),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_center,
+        tooltip: 'Align center',
+        onTap: () => _setAlignment(TextAlign.center),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_right,
+        tooltip: 'Align right',
+        onTap: () => _setAlignment(TextAlign.right),
+      ),
+      divider,
+      _ToolbarButton(
+        icon: Icons.check_box,
+        tooltip: 'Checklist',
+        isActive: _hasFormat(Attribute.checked),
+        onTap: () => widget.controller.formatSelection(Attribute.checked),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_list_numbered,
+        tooltip: 'Numbered list',
+        isActive: _hasFormat(Attribute.ol),
+        onTap: () => widget.controller.formatSelection(Attribute.ol),
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Code block',
+        isActive: _hasFormat(Attribute.codeBlock),
+        onTap: _toggleCodeBlock,
+      ),
+    ];
+  }
+
+  List<Widget> _buildFloatingToolbarItems() {
+    return [
+      _ToolbarButton(
+        icon: Icons.format_bold,
+        tooltip: 'Bold',
+        isActive: _hasFormat(Attribute.bold),
+        onTap: () => widget.controller.formatSelection(Attribute.bold),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_italic,
+        tooltip: 'Italic',
+        isActive: _hasFormat(Attribute.italic),
+        onTap: () => widget.controller.formatSelection(Attribute.italic),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_underlined,
+        tooltip: 'Underline',
+        isActive: _hasFormat(Attribute.underline),
+        onTap: () => widget.controller.formatSelection(Attribute.underline),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_color_text,
+        tooltip: 'Text color',
+        onTap: _showColorPicker,
+      ),
+      _ToolbarButton(
+        icon: Icons.border_color,
+        tooltip: 'Highlight',
+        onTap: _showMarkerColorPicker,
+      ),
+      _ToolbarButton(
+        icon: Icons.picture_as_pdf_outlined,
+        tooltip: 'Insert PDF',
+        onTap: widget.onInsertPdf,
+      ),
+      _ToolbarButton(
+        icon: Icons.table_chart_outlined,
+        tooltip: 'Insert table',
+        onTap: widget.onInsertTable,
+      ),
+      _ToolbarButton(
+        icon: Icons.view_kanban_outlined,
+        tooltip: 'Insert kanban',
+        onTap: widget.onInsertKanban,
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_left,
+        tooltip: 'Align left',
+        onTap: () => _setAlignment(TextAlign.left),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_center,
+        tooltip: 'Align center',
+        onTap: () => _setAlignment(TextAlign.center),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_right,
+        tooltip: 'Align right',
+        onTap: () => _setAlignment(TextAlign.right),
+      ),
+      _ToolbarButton(
+        icon: Icons.check_box,
+        tooltip: 'Checklist',
+        isActive: _hasFormat(Attribute.checked),
+        onTap: () => widget.controller.formatSelection(Attribute.checked),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_list_numbered,
+        tooltip: 'Numbered list',
+        isActive: _hasFormat(Attribute.ol),
+        onTap: () => widget.controller.formatSelection(Attribute.ol),
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Code block',
+        isActive: _hasFormat(Attribute.codeBlock),
+        onTap: _toggleCodeBlock,
+      ),
+    ];
   }
 
   bool _hasFormat(Attribute<dynamic> attribute) {
     try {
       final format = widget.controller.getSelectionStyle();
       return format.containsKey(attribute.key);
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
@@ -322,25 +718,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _toggleCodeBlock() {
     final selection = widget.controller.selection;
     if (selection.isCollapsed) {
-      // Insert code block at cursor position
       widget.controller.document.insert(selection.start, '\n');
       widget.controller.formatSelection(Attribute.codeBlock);
-    } else {
-      // Wrap selected text in code block
-      widget.controller.formatSelection(Attribute.codeBlock);
+      return;
     }
+    widget.controller.formatSelection(Attribute.codeBlock);
   }
 
   void _setAlignment(TextAlign align) {
-    // Note: Quill doesn't directly support alignment, this is a placeholder
-    // You may need to use custom attributes or blocks
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Alignment: $align')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Alignment: $align')));
   }
 
   void _showColorPicker() {
-    // Check current text color
     final currentStyle = widget.controller.getSelectionStyle();
     final colorAttr = currentStyle.attributes[Attribute.color.key];
     final currentColor = colorAttr?.value as String?;
@@ -379,7 +770,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   void _showMarkerColorPicker() {
-    // Check current background color
     final currentStyle = widget.controller.getSelectionStyle();
     final bgAttr = currentStyle.attributes[Attribute.background.key];
     final currentBgColor = bgAttr?.value as String?;
@@ -420,89 +810,114 @@ class _EditorToolbarState extends State<EditorToolbar> {
   void _setTextColor(String? colorHex, BuildContext dialogContext) {
     Navigator.pop(dialogContext);
     if (colorHex == null) {
-      // Remove color attribute by formatting with the attribute without a value
       final selection = widget.controller.selection;
       if (selection.isValid && !selection.isCollapsed) {
-        // For selected text, format to remove the attribute
         widget.controller.document.format(
           selection.start,
           selection.end - selection.start,
           Attribute.color,
         );
       } else if (selection.isValid) {
-        // For collapsed selection, just format at cursor
-        widget.controller.document.format(
-          selection.start,
-          0,
-          Attribute.color,
-        );
+        widget.controller.document.format(selection.start, 0, Attribute.color);
       }
-    } else {
-      // ColorAttribute constructor takes a String value (hex color)
-      widget.controller.formatSelection(ColorAttribute(colorHex));
+      return;
     }
+    widget.controller.formatSelection(ColorAttribute(colorHex));
   }
 
   void _setMarkerColor(String? colorHex, BuildContext dialogContext) {
     Navigator.pop(dialogContext);
     if (colorHex == null) {
-      // Remove background attribute by formatting with the attribute without a value
       final selection = widget.controller.selection;
       if (selection.isValid && !selection.isCollapsed) {
-        // For selected text, format to remove the attribute
         widget.controller.document.format(
           selection.start,
           selection.end - selection.start,
           Attribute.background,
         );
       } else if (selection.isValid) {
-        // For collapsed selection, just format at cursor
         widget.controller.document.format(
           selection.start,
           0,
           Attribute.background,
         );
       }
-    } else {
-      // BackgroundAttribute constructor takes a String value (hex color)
-      widget.controller.formatSelection(BackgroundAttribute(colorHex));
+      return;
     }
+    widget.controller.formatSelection(BackgroundAttribute(colorHex));
   }
 }
 
-/// Individual toolbar button
 class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isActive;
+  final String tooltip;
 
   const _ToolbarButton({
     required this.icon,
     required this.onTap,
+    required this.tooltip,
     this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: isActive
-          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isActive
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).iconTheme.color,
+    final colors = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(2),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: isActive
+              ? colors.primary.withValues(alpha: 0.14)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(
+                icon,
+                size: 20,
+                color: isActive
+                    ? colors.primary
+                    : Theme.of(context).iconTheme.color,
+              ),
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  final Axis axis;
+
+  const _ToolbarDivider({required this.axis});
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.65);
+    if (axis == Axis.vertical) {
+      return Container(
+        width: 28,
+        height: 1,
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        color: color,
+      );
+    }
+
+    return Container(
+      width: 1,
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: color,
     );
   }
 }
@@ -523,41 +938,29 @@ class _ColorOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final borderColor = isSelected
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).dividerColor;
+
+    return InkWell(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey,
-                width: isSelected ? 3 : 1,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
+        ),
+        alignment: Alignment.center,
+        child: label == null
+            ? null
+            : Text(
+                label!,
+                style: Theme.of(context).textTheme.labelSmall,
+                textAlign: TextAlign.center,
               ),
-            ),
-            child: color == Colors.transparent
-                ? const Icon(Icons.clear, size: 20)
-                : null,
-          ),
-          if (label != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              label!,
-              style: TextStyle(
-                fontSize: 10,
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

@@ -76,6 +76,12 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
+  static const String _toolbarPlacementPreferenceKey =
+      'typesync_editor_toolbar_placement_v1';
+  static const String _toolbarOffsetXPreferenceKey =
+      'typesync_editor_offset_x_v1';
+  static const String _toolbarOffsetYPreferenceKey =
+      'typesync_editor_offset_y_v1';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -100,6 +106,7 @@ class _EditorScreenState extends State<EditorScreen>
   // Auto-save timer
   Timer? _saveTimer;
   Timer? _caretPersistTimer;
+  Timer? _toolbarPersistTimer;
   bool _didUserFocusEditor = false;
 
   // Stats
@@ -119,6 +126,8 @@ class _EditorScreenState extends State<EditorScreen>
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
   bool _attachmentsExpanded = false;
+  EditorToolbarPlacement _toolbarPlacement = EditorToolbarPlacement.floating;
+  Offset _toolbarPosition = const Offset(16, 100);
   late final AnimationController _matchGlowController;
   Timer? _matchGlowStopTimer;
   Rect? _matchGlowRect;
@@ -211,6 +220,8 @@ class _EditorScreenState extends State<EditorScreen>
       }
     }
 
+    await _loadToolbarPreferences();
+
     // Listen for content changes
     _quillController.addListener(_onContentChanged);
 
@@ -302,6 +313,57 @@ class _EditorScreenState extends State<EditorScreen>
       await prefs.setInt(key, safeOffset);
     } catch (_) {
       // Best-effort persistence; ignore local preference write failures.
+    }
+  }
+
+  Future<void> _loadToolbarPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final placementRaw = prefs.getString(_toolbarPlacementPreferenceKey);
+      if (placementRaw != null) {
+        _toolbarPlacement = switch (placementRaw) {
+          'top' => EditorToolbarPlacement.top,
+          'bottom' => EditorToolbarPlacement.bottom,
+          'left' => EditorToolbarPlacement.left,
+          'right' => EditorToolbarPlacement.right,
+          _ => EditorToolbarPlacement.floating,
+        };
+      }
+
+      final offsetX = prefs.getDouble(_toolbarOffsetXPreferenceKey);
+      final offsetY = prefs.getDouble(_toolbarOffsetYPreferenceKey);
+      if (offsetX != null && offsetY != null) {
+        _toolbarPosition = Offset(offsetX, offsetY);
+      }
+    } catch (_) {
+      // Best-effort preference loading.
+    }
+  }
+
+  void _scheduleToolbarPreferencesPersist() {
+    _toolbarPersistTimer?.cancel();
+    _toolbarPersistTimer = Timer(const Duration(milliseconds: 200), () {
+      unawaited(_persistToolbarPreferences());
+    });
+  }
+
+  Future<void> _persistToolbarPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final placementRaw = switch (_toolbarPlacement) {
+        EditorToolbarPlacement.top => 'top',
+        EditorToolbarPlacement.bottom => 'bottom',
+        EditorToolbarPlacement.left => 'left',
+        EditorToolbarPlacement.right => 'right',
+        EditorToolbarPlacement.floating => 'floating',
+      };
+
+      await prefs.setString(_toolbarPlacementPreferenceKey, placementRaw);
+      await prefs.setDouble(_toolbarOffsetXPreferenceKey, _toolbarPosition.dx);
+      await prefs.setDouble(_toolbarOffsetYPreferenceKey, _toolbarPosition.dy);
+    } catch (_) {
+      // Best-effort preference persistence.
     }
   }
 
@@ -411,9 +473,11 @@ class _EditorScreenState extends State<EditorScreen>
   void dispose() {
     _saveTimer?.cancel();
     _caretPersistTimer?.cancel();
+    _toolbarPersistTimer?.cancel();
     if (_didUserFocusEditor) {
       unawaited(_persistCaretOffset(force: true));
     }
+    unawaited(_persistToolbarPreferences());
     _matchGlowStopTimer?.cancel();
     _matchGlowController.dispose();
     _quillController.removeListener(_onContentChanged);
@@ -428,6 +492,24 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   Widget build(BuildContext context) {
     return _buildEditor(context);
+  }
+
+  bool get _isToolbarDockedInColumn =>
+      _toolbarPlacement == EditorToolbarPlacement.top ||
+      _toolbarPlacement == EditorToolbarPlacement.bottom;
+
+  void _setToolbarPlacement(EditorToolbarPlacement placement) {
+    if (_toolbarPlacement == placement) return;
+    setState(() {
+      _toolbarPlacement = placement;
+    });
+    _scheduleToolbarPreferencesPersist();
+  }
+
+  void _setToolbarPosition(Offset position) {
+    if ((_toolbarPosition - position).distance < 0.5) return;
+    _toolbarPosition = position;
+    _scheduleToolbarPreferencesPersist();
   }
 
   Widget _buildEditor(BuildContext context) {
@@ -542,72 +624,85 @@ class _EditorScreenState extends State<EditorScreen>
                 ]
               : [
                   if (_note?.hasConflict == true) _buildConflictBanner(),
-                  Expanded(
-                    child: DropTarget(
-                      onDragEntered: (details) {
-                        setState(() {
-                          _isDragging = true;
-                        });
-                      },
-                      onDragExited: (details) {
-                        setState(() {
-                          _isDragging = false;
-                        });
-                      },
-                      onDragDone: (details) {
-                        _handleDroppedFiles(details.files);
-                        setState(() {
-                          _isDragging = false;
-                        });
-                      },
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          _buildEditorWithAttachments(bgColor),
-                          EditorToolbar(
-                            controller: _quillController,
-                            onInsertPdf: _insertPdf,
-                            onInsertTable: _insertTable,
-                            onInsertKanban: _insertKanban,
-                          ),
-                          if (_isDragging)
-                            Container(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: 0.2),
-                              alignment: Alignment.center,
-                              child: Container(
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.upload_file,
-                                      size: 48,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'Drop files to attach',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  if (_toolbarPlacement == EditorToolbarPlacement.top)
+                    _buildToolbar(),
+                  _buildEditorWorkspace(bgColor),
+                  if (_toolbarPlacement == EditorToolbarPlacement.bottom)
+                    _buildToolbar(),
                 ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return EditorToolbar(
+      controller: _quillController,
+      onInsertPdf: _insertPdf,
+      onInsertTable: _insertTable,
+      onInsertKanban: _insertKanban,
+      placement: _toolbarPlacement,
+      onPlacementChanged: _setToolbarPlacement,
+      initialPosition: _toolbarPosition,
+      onPositionChanged: _setToolbarPosition,
+    );
+  }
+
+  Widget _buildEditorWorkspace(Color? bgColor) {
+    return Expanded(
+      child: DropTarget(
+        onDragEntered: (details) {
+          setState(() {
+            _isDragging = true;
+          });
+        },
+        onDragExited: (details) {
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        onDragDone: (details) {
+          _handleDroppedFiles(details.files);
+          setState(() {
+            _isDragging = false;
+          });
+        },
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _buildEditorWithAttachments(bgColor),
+            if (!_isToolbarDockedInColumn)
+              Positioned.fill(child: _buildToolbar()),
+            if (_isDragging)
+              Container(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.2),
+                alignment: Alignment.center,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.upload_file,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Drop files to attach',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

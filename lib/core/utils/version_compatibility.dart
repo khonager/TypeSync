@@ -4,10 +4,20 @@ library;
 /// Current app version used for note compatibility checks.
 ///
 /// Override with `--dart-define=TYPESYNC_APP_VERSION=x.y.z` in CI/release
-/// pipelines. The default should match `pubspec.yaml`.
+/// pipelines. By default, Flutter injects `FLUTTER_BUILD_NAME` from
+/// `pubspec.yaml` so local/dev builds show the same version as packaged apps.
 const String kCurrentAppVersion = String.fromEnvironment(
   'TYPESYNC_APP_VERSION',
-  defaultValue: '1.1.0',
+  defaultValue: String.fromEnvironment(
+    'FLUTTER_BUILD_NAME',
+    defaultValue: '1.1.16',
+  ),
+);
+
+/// Current app build number (e.g. Android versionCode / iOS build).
+const String kCurrentBuildNumber = String.fromEnvironment(
+  'FLUTTER_BUILD_NUMBER',
+  defaultValue: '16',
 );
 
 /// Utilities for semantic version comparisons.

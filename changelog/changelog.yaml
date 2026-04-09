@@ -1,5 +1,26 @@
 schema_version: 2
 releases:
+  - version: 1.1.16
+    date: 2026-04-09
+    title: Calendar Overhaul + Faster Add Flows
+    important:
+      - Calendar interaction was redesigned across Month, Week, 2 Weeks, and Year (KW) modes with smoother transitions and clearer selection behavior.
+    new_features:
+      - Added Year (KW) calendar mode with all 52/53 weeks visible at once and week-level event indicators.
+      - Added event indicators on day cells and a persistent range-based event list below the calendar for every view mode.
+      - Added optional event time (all-day support) and context-aware date preselection from the currently selected day or KW.
+      - Added quick access calendar icon to the Files app bar near Settings.
+      - Added one-tap "Add" flow from Files: Calendar/Homework now open directly into their add composer sheets.
+      - Added per-device toolbar placement persistence so floating toolbar position can differ on phone, tablet, and desktop.
+    fixes_improvements:
+      - Fixed calendar day selection to toggle cleanly (tap again or tap empty space to deselect and clear the day filter).
+      - Fixed Year (KW) layout overflow and removed internal KW grid scrolling.
+      - Improved KW transition behavior to avoid overlapping old/new week numbers during mode changes.
+      - Improved Upcoming widget behavior with clearer complete vs open actions and display-mode settings.
+      - Fixed Settings "Version" entry to display build-aware app version info and separated it from the Changelog action.
+    notes:
+      - This release also aligns in-app version reporting with Flutter build-name/build-number values from `pubspec.yaml`.
+
   - version: 1.1.15
     date: 2026-04-08
     title: Structured Editors + Forward Compatibility
