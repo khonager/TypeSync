@@ -350,20 +350,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               itemCount: weeks.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                mainAxisExtent: 92,
+                crossAxisCount: 7,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
+                childAspectRatio: 1.15,
               ),
               itemBuilder: (context, index) {
                 final week = weeks[index];
                 final weekKey = _dateKey(week.start);
                 final isSelected = weekKey == selectedKey;
-                final eventCount = _eventsInRange(
+                final hasEvents = _weekHasEvents(
                   calendarProvider.events,
                   start: week.start,
                   end: week.end,
-                ).length;
+                );
 
                 return InkWell(
                   borderRadius: BorderRadius.circular(12),
@@ -374,60 +374,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       _selectedDay = week.start;
                     });
                   },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.all(6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'KW ${week.weekNumber}',
+                  child: Tooltip(
+                    message:
+                        'KW ${week.weekNumber} (${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month})',
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : null,
+                          shape: BoxShape.circle,
+                          border: hasEvents
+                              ? Border.all(
+                                  color: isSelected
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.primary,
+                                  width: 1.3,
+                                )
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${week.weekNumber}',
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: isSelected
                                 ? Theme.of(context).colorScheme.onPrimary
                                 : null,
                           ),
                         ),
-                        Text(
-                          '${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(
-                                color: isSelected
-                                    ? Theme.of(context).colorScheme.onPrimary
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                              ),
-                        ),
-                        if (eventCount > 0)
-                          Text(
-                            '$eventCount event${eventCount == 1 ? '' : 's'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: isSelected
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                 );
@@ -582,6 +561,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
           !eventDate.isAfter(_dateOnly(end));
     }).toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
+  }
+
+  bool _weekHasEvents(
+    List<CalendarEvent> source, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final from = _dateOnly(start);
+    final to = _dateOnly(end);
+    return source.any((event) {
+      final eventDate = _dateOnly(event.startTime);
+      return !eventDate.isBefore(from) && !eventDate.isAfter(to);
+    });
   }
 
   List<_YearWeekItem> _buildWeeksForYear(int year) {
