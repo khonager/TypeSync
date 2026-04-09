@@ -41,7 +41,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
-    final userId = authService.userId;
+    final userId = authService.storageUserId;
 
     if (userId != null) {
       await context.read<TimetableProvider>().initialize(userId);
@@ -457,7 +457,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                     }
 
                     final authService = context.read<AuthService>();
-                    final userId = authService.userId;
+                    final userId = authService.storageUserId;
                     if (userId == null) return;
 
                     await context.read<TimetableProvider>().createEntry(
