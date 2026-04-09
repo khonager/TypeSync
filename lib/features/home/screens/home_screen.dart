@@ -198,10 +198,16 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       await foldersProvider.initialize(effectiveUserId);
       if (!mounted) return;
+      await calendarProvider.initialize(effectiveUserId);
+      if (!mounted) return;
+      await homeworkProvider.initialize(effectiveUserId);
+      if (!mounted) return;
+      await timetableProvider.initialize(effectiveUserId);
+      if (!mounted) return;
 
       _diagnostics.info(
         'HomeScreen',
-        'WORKSPACE_FLOW workspace initialized workspace=$effectiveUserId notes=${notesProvider.notes.length} folders=${foldersProvider.folders.length}',
+        'WORKSPACE_FLOW workspace initialized workspace=$effectiveUserId notes=${notesProvider.notes.length} folders=${foldersProvider.folders.length} events=${calendarProvider.events.length} homework=${homeworkProvider.homework.length} timetable=${timetableProvider.entries.length}',
       );
 
       _scheduleRepairAudit();

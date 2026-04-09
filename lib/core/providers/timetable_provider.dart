@@ -19,6 +19,7 @@ import '../services/sync_service.dart';
 class TimetableProvider extends ChangeNotifier {
   // Local storage box
   Box<TimetableEntry>? _entriesBox;
+  String? _activeUserId;
 
   // In-memory entries list
   List<TimetableEntry> _entries = [];
@@ -65,6 +66,10 @@ class TimetableProvider extends ChangeNotifier {
 
   /// Initialize the provider
   Future<void> initialize(String userId) async {
+    if (_activeUserId == userId && _entriesBox != null && _entriesBox!.isOpen) {
+      return;
+    }
+
     _isLoading = true;
     // Defer notifyListeners to avoid calling during build
     Future.microtask(() => notifyListeners());
@@ -74,7 +79,15 @@ class TimetableProvider extends ChangeNotifier {
         Hive.registerAdapter(TimetableEntryAdapter());
       }
 
+      if (_entriesBox != null &&
+          _entriesBox!.isOpen &&
+          _activeUserId != null &&
+          _activeUserId != userId) {
+        await _entriesBox!.close();
+      }
+
       _entriesBox = await Hive.openBox<TimetableEntry>('timetable_$userId');
+      _activeUserId = userId;
       _entries = _entriesBox!.values.toList();
 
       _errorMessage = null;
@@ -237,6 +250,7 @@ class TimetableProvider extends ChangeNotifier {
       await _entriesBox!.close();
     }
     _entriesBox = null;
+    _activeUserId = null;
   }
 
   @override
