@@ -49,7 +49,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   CalendarViewMode _viewMode = CalendarViewMode.month;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   late DateTime _focusedDay;
-  late DateTime _selectedDay;
+  DateTime? _selectedDay;
   late DateTime _selectedWeekStart;
 
   @override
@@ -57,7 +57,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     final now = _dateOnly(DateTime.now());
     _focusedDay = now;
-    _selectedDay = now;
+    _selectedDay = null;
     _selectedWeekStart = _startOfIsoWeek(now);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
@@ -101,20 +101,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
               .map((event) => _dateKey(event.startTime))
               .toSet();
 
-          return Column(
-            children: [
-              const SizedBox(height: 8),
-              _buildViewModeSelector(),
-              const SizedBox(height: 8),
-              if (_viewMode == CalendarViewMode.year)
-                _buildYearCalendar(calendarProvider)
-              else
-                _buildStandardCalendar(eventDayKeys),
-              const Divider(height: 1),
-              Expanded(
-                child: _buildVisibleRangeEventsList(calendarProvider),
-              ),
-            ],
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (_viewMode != CalendarViewMode.year && _selectedDay != null) {
+                setState(() {
+                  _selectedDay = null;
+                });
+              }
+            },
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                _buildViewModeSelector(),
+                const SizedBox(height: 8),
+                if (_viewMode == CalendarViewMode.year)
+                  _buildYearCalendar(calendarProvider)
+                else
+                  _buildStandardCalendar(eventDayKeys),
+                const Divider(height: 1),
+                Expanded(
+                  child: _buildVisibleRangeEventsList(calendarProvider),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -157,7 +167,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 CalendarViewMode.year => CalendarFormat.month,
               };
             } else {
-              _selectedWeekStart = _startOfIsoWeek(_selectedDay);
+              _selectedWeekStart = _startOfIsoWeek(_selectedDay ?? _focusedDay);
               _focusedDay = _selectedWeekStart;
             }
           });
@@ -191,12 +201,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
       focusedDay: _focusedDay,
       calendarFormat: _calendarFormat,
       startingDayOfWeek: StartingDayOfWeek.monday,
-      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+      selectedDayPredicate: (day) =>
+          _selectedDay != null && isSameDay(_selectedDay, day),
       onDaySelected: (selectedDay, focusedDay) {
         setState(() {
-          _selectedDay = _dateOnly(selectedDay);
+          if (_selectedDay != null && isSameDay(_selectedDay, selectedDay)) {
+            _selectedDay = null;
+          } else {
+            _selectedDay = _dateOnly(selectedDay);
+          }
           _focusedDay = _dateOnly(focusedDay);
-          _selectedWeekStart = _startOfIsoWeek(_selectedDay);
+          _selectedWeekStart = _startOfIsoWeek(_dateOnly(selectedDay));
         });
       },
       onPageChanged: (focusedDay) {
@@ -338,7 +353,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 crossAxisCount: 4,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 2.2,
+                mainAxisExtent: 92,
               ),
               itemBuilder: (context, index) {
                 final week = weeks[index];
@@ -368,9 +383,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           'KW ${week.weekNumber}',
@@ -381,9 +397,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 : null,
                           ),
                         ),
-                        const Spacer(),
                         Text(
                           '${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context)
                               .textTheme
                               .labelSmall
@@ -398,6 +415,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         if (eventCount > 0)
                           Text(
                             '$eventCount event${eventCount == 1 ? '' : 's'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .labelSmall
@@ -421,13 +440,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildVisibleRangeEventsList(CalendarProvider calendarProvider) {
-    final range = _visibleRange();
+    final hasSelectedDayFilter =
+        _viewMode != CalendarViewMode.year && _selectedDay != null;
+    final range = hasSelectedDayFilter
+        ? DateTimeRange(start: _selectedDay!, end: _selectedDay!)
+        : _visibleRange();
     final events = _eventsInRange(
       calendarProvider.events,
       start: range.start,
       end: range.end,
     );
-    final header = _eventsHeaderForRange(range.start, range.end);
+    final header = hasSelectedDayFilter
+        ? 'Events on ${DateFormat('EEE, d MMM y').format(range.start)}'
+        : _eventsHeaderForRange(range.start, range.end);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -578,7 +603,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_viewMode == CalendarViewMode.year) {
       return _selectedWeekStart;
     }
-    return _selectedDay;
+    return _selectedDay ?? _focusedDay;
   }
 
   DateTime _dateOnly(DateTime value) {
