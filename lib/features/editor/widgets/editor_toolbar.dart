@@ -29,6 +29,8 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertKanban;
   final EditorToolbarPlacement placement;
   final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
+  final Offset initialPosition;
+  final ValueChanged<Offset> onPositionChanged;
 
   const EditorToolbar({
     required this.controller,
@@ -37,6 +39,8 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertKanban,
     required this.placement,
     required this.onPlacementChanged,
+    required this.initialPosition,
+    required this.onPositionChanged,
     super.key,
   });
 
@@ -90,6 +94,10 @@ class _EditorToolbarState extends State<EditorToolbar> {
     widget.onPlacementChanged(placement);
   }
 
+  void _notifyPositionChanged(Offset position) {
+    widget.onPositionChanged(position);
+  }
+
   void _setAnchor(_ToolbarAnchorEdge edge, {bool notify = true}) {
     _anchor = edge;
     if (notify) {
@@ -97,10 +105,18 @@ class _EditorToolbarState extends State<EditorToolbar> {
     }
   }
 
+  void _setPosition(Offset position, {bool notify = true}) {
+    _position = position;
+    if (notify) {
+      _notifyPositionChanged(position);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _anchor = _edgeFromPlacement(widget.placement);
+    _position = widget.initialPosition;
     widget.controller.addListener(_handleControllerChanged);
   }
 
@@ -113,6 +129,9 @@ class _EditorToolbarState extends State<EditorToolbar> {
     }
     if (oldWidget.placement != widget.placement) {
       _setAnchor(_edgeFromPlacement(widget.placement), notify: false);
+    }
+    if (!_isDragging && oldWidget.initialPosition != widget.initialPosition) {
+      _setPosition(widget.initialPosition, notify: false);
     }
   }
 
@@ -156,7 +175,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
     );
 
     setState(() {
-      _position = Offset(nextX.toDouble(), nextY.toDouble());
+      _setPosition(Offset(nextX.toDouble(), nextY.toDouble()));
     });
   }
 
@@ -205,19 +224,19 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
     if (minDistance > _snapDistance) {
       _setAnchor(_ToolbarAnchorEdge.floating);
-      _position = clamped;
+      _setPosition(clamped);
       return;
     }
 
     if (minDistance == topDistance) {
       _setAnchor(_ToolbarAnchorEdge.top);
-      _position = Offset(clamped.dx, _edgePadding);
+      _setPosition(Offset(clamped.dx, _edgePadding));
       return;
     }
 
     if (minDistance == bottomDistance) {
       _setAnchor(_ToolbarAnchorEdge.bottom);
-      _position = Offset(clamped.dx, maxCollapsedY);
+      _setPosition(Offset(clamped.dx, maxCollapsedY));
       return;
     }
 
@@ -227,12 +246,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
     if (minDistance == leftDistance) {
       _setAnchor(_ToolbarAnchorEdge.left);
-      _position = Offset(_edgePadding, sideY);
+      _setPosition(Offset(_edgePadding, sideY));
       return;
     }
 
     _setAnchor(_ToolbarAnchorEdge.right);
-    _position = Offset(maxCollapsedX, sideY);
+    _setPosition(Offset(maxCollapsedX, sideY));
   }
 
   @override
