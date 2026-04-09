@@ -42,6 +42,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   static final DateTime _firstCalendarDay = DateTime(2020, 1, 1);
   static final DateTime _lastCalendarDay = DateTime(2035, 12, 31);
+  static const Duration _calendarMorphDuration = Duration(milliseconds: 260);
 
   final DateFormat _monthHeaderFormat = DateFormat.yMMMM();
   final DateFormat _dateLabelFormat = DateFormat('EEE, d MMM y');
@@ -134,10 +135,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 const SizedBox(height: 8),
                 _buildViewModeSelector(),
                 const SizedBox(height: 8),
-                if (_viewMode == CalendarViewMode.year)
-                  _buildYearCalendar(calendarProvider)
-                else
-                  _buildStandardCalendar(eventDayKeys),
+                _buildCalendarHeader(),
+                _buildCalendarViewport(
+                  eventDayKeys: eventDayKeys,
+                  calendarProvider: calendarProvider,
+                ),
                 const Divider(height: 1),
                 Expanded(
                   child: _buildVisibleRangeEventsList(calendarProvider),
@@ -213,6 +215,125 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Widget _buildCalendarHeader() {
+    final label = _calendarHeaderLabel();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _goToPreviousPeriod,
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: _calendarMorphDuration,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.15),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: Text(
+                label,
+                key: ValueKey(label),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: _goToNextPeriod,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarViewport({
+    required Set<int> eventDayKeys,
+    required CalendarProvider calendarProvider,
+  }) {
+    final child = _viewMode == CalendarViewMode.year
+        ? _buildYearCalendar(calendarProvider)
+        : _buildStandardCalendar(eventDayKeys);
+
+    return AnimatedSize(
+      duration: _calendarMorphDuration,
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.hardEdge,
+      child: KeyedSubtree(
+        key: ValueKey(_viewMode == CalendarViewMode.year ? 'kw-year' : 'day'),
+        child: child,
+      ),
+    );
+  }
+
+  String _calendarHeaderLabel() {
+    if (_viewMode == CalendarViewMode.year) {
+      return '${_focusedDay.year}';
+    }
+    return _monthHeaderFormat.format(_focusedDay);
+  }
+
+  void _goToPreviousPeriod() {
+    setState(() {
+      switch (_viewMode) {
+        case CalendarViewMode.month:
+          _focusedDay =
+              _dateOnly(DateTime(_focusedDay.year, _focusedDay.month - 1, 1));
+          break;
+        case CalendarViewMode.twoWeeks:
+          _focusedDay = _dateOnly(
+            _focusedDay.subtract(const Duration(days: 14)),
+          );
+          break;
+        case CalendarViewMode.week:
+          _focusedDay = _dateOnly(
+            _focusedDay.subtract(const Duration(days: 7)),
+          );
+          break;
+        case CalendarViewMode.year:
+          _focusedDay = DateTime(_focusedDay.year - 1, 1, 1);
+          _selectedWeekStart = _startOfIsoWeek(_focusedDay);
+          _selectedDay = _selectedWeekStart;
+          break;
+      }
+    });
+  }
+
+  void _goToNextPeriod() {
+    setState(() {
+      switch (_viewMode) {
+        case CalendarViewMode.month:
+          _focusedDay =
+              _dateOnly(DateTime(_focusedDay.year, _focusedDay.month + 1, 1));
+          break;
+        case CalendarViewMode.twoWeeks:
+          _focusedDay = _dateOnly(_focusedDay.add(const Duration(days: 14)));
+          break;
+        case CalendarViewMode.week:
+          _focusedDay = _dateOnly(_focusedDay.add(const Duration(days: 7)));
+          break;
+        case CalendarViewMode.year:
+          _focusedDay = DateTime(_focusedDay.year + 1, 1, 1);
+          _selectedWeekStart = _startOfIsoWeek(_focusedDay);
+          _selectedDay = _selectedWeekStart;
+          break;
+      }
+    });
+  }
+
   Widget _buildStandardCalendar(Set<int> eventDayKeys) {
     return TableCalendar(
       firstDay: _firstCalendarDay,
@@ -238,10 +359,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _focusedDay = _dateOnly(focusedDay);
         });
       },
-      headerStyle: const HeaderStyle(
-        formatButtonVisible: false,
-        titleCentered: true,
-      ),
+      headerVisible: false,
       calendarBuilders: CalendarBuilders(
         defaultBuilder: (context, day, _) => _buildDayCell(
           day,
@@ -322,8 +440,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildYearCalendar(CalendarProvider calendarProvider) {
-    final year = _focusedDay.year;
-    final weeks = _buildWeeksForYear(year);
+    final weeks = _buildWeeksForYear(_focusedDay.year);
     final selectedKey = _dateKey(_selectedWeekStart);
     const columns = 7;
     const crossAxisSpacing = 6.0;
@@ -334,118 +451,73 @@ class _CalendarScreenState extends State<CalendarScreen> {
         (rowCount * cellExtent) + ((rowCount - 1) * mainAxisSpacing) + 8;
 
     return SizedBox(
-      height: 56 + gridHeight,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _focusedDay = DateTime(_focusedDay.year - 1, 1, 1);
-                      _selectedWeekStart = _startOfIsoWeek(_focusedDay);
-                      _selectedDay = _selectedWeekStart;
-                    });
-                  },
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Expanded(
+      height: gridHeight,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        itemCount: weeks.length,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: crossAxisSpacing,
+          mainAxisSpacing: mainAxisSpacing,
+          mainAxisExtent: cellExtent,
+        ),
+        itemBuilder: (context, index) {
+          final week = weeks[index];
+          final weekKey = _dateKey(week.start);
+          final isSelected = weekKey == selectedKey;
+          final hasEvents = _weekHasEvents(
+            calendarProvider.events,
+            start: week.start,
+            end: week.end,
+          );
+
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              setState(() {
+                _selectedWeekStart = week.start;
+                _focusedDay = week.start;
+                _selectedDay = week.start;
+              });
+            },
+            child: Tooltip(
+              message:
+                  'KW ${week.weekNumber} (${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month})',
+              child: Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                    shape: BoxShape.circle,
+                    border: hasEvents
+                        ? Border.all(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.primary,
+                            width: 1.3,
+                          )
+                        : null,
+                  ),
+                  alignment: Alignment.center,
                   child: Text(
-                    '$year',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge,
+                    '${week.weekNumber}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : null,
+                    ),
                   ),
                 ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _focusedDay = DateTime(_focusedDay.year + 1, 1, 1);
-                      _selectedWeekStart = _startOfIsoWeek(_focusedDay);
-                      _selectedDay = _selectedWeekStart;
-                    });
-                  },
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SizedBox(
-              height: gridHeight,
-              child: GridView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                itemCount: weeks.length,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: crossAxisSpacing,
-                  mainAxisSpacing: mainAxisSpacing,
-                  mainAxisExtent: cellExtent,
-                ),
-                itemBuilder: (context, index) {
-                  final week = weeks[index];
-                  final weekKey = _dateKey(week.start);
-                  final isSelected = weekKey == selectedKey;
-                  final hasEvents = _weekHasEvents(
-                    calendarProvider.events,
-                    start: week.start,
-                    end: week.end,
-                  );
-
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      setState(() {
-                        _selectedWeekStart = week.start;
-                        _focusedDay = week.start;
-                        _selectedDay = week.start;
-                      });
-                    },
-                    child: Tooltip(
-                      message:
-                          'KW ${week.weekNumber} (${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month})',
-                      child: Center(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 120),
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primary
-                                : null,
-                            shape: BoxShape.circle,
-                            border: hasEvents
-                                ? Border.all(
-                                    color: isSelected
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .onPrimary
-                                        : Theme.of(context).colorScheme.primary,
-                                    width: 1.3,
-                                  )
-                                : null,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${week.weekNumber}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: isSelected
-                                  ? Theme.of(context).colorScheme.onPrimary
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
