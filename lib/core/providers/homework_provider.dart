@@ -19,6 +19,7 @@ import '../services/sync_service.dart';
 class HomeworkProvider extends ChangeNotifier {
   // Local storage box
   Box<Homework>? _homeworkBox;
+  String? _activeUserId;
 
   // In-memory homework list
   List<Homework> _homework = [];
@@ -76,6 +77,12 @@ class HomeworkProvider extends ChangeNotifier {
 
   /// Initialize the provider
   Future<void> initialize(String userId) async {
+    if (_activeUserId == userId &&
+        _homeworkBox != null &&
+        _homeworkBox!.isOpen) {
+      return;
+    }
+
     _isLoading = true;
     Future.microtask(() => notifyListeners());
 
@@ -84,7 +91,15 @@ class HomeworkProvider extends ChangeNotifier {
         Hive.registerAdapter(HomeworkAdapter());
       }
 
+      if (_homeworkBox != null &&
+          _homeworkBox!.isOpen &&
+          _activeUserId != null &&
+          _activeUserId != userId) {
+        await _homeworkBox!.close();
+      }
+
       _homeworkBox = await Hive.openBox<Homework>('homework_$userId');
+      _activeUserId = userId;
       _homework = _homeworkBox!.values.toList();
 
       _errorMessage = null;
@@ -264,6 +279,7 @@ class HomeworkProvider extends ChangeNotifier {
       await _homeworkBox!.close();
     }
     _homeworkBox = null;
+    _activeUserId = null;
   }
 
   /// Get homework by ID

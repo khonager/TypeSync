@@ -19,6 +19,7 @@ import '../services/sync_service.dart';
 class CalendarProvider extends ChangeNotifier {
   // Local storage box
   Box<CalendarEvent>? _eventsBox;
+  String? _activeUserId;
 
   // In-memory events list
   List<CalendarEvent> _events = [];
@@ -77,6 +78,10 @@ class CalendarProvider extends ChangeNotifier {
 
   /// Initialize the provider
   Future<void> initialize(String userId) async {
+    if (_activeUserId == userId && _eventsBox != null && _eventsBox!.isOpen) {
+      return;
+    }
+
     _isLoading = true;
     Future.microtask(() => notifyListeners());
 
@@ -85,7 +90,15 @@ class CalendarProvider extends ChangeNotifier {
         Hive.registerAdapter(CalendarEventAdapter());
       }
 
+      if (_eventsBox != null &&
+          _eventsBox!.isOpen &&
+          _activeUserId != null &&
+          _activeUserId != userId) {
+        await _eventsBox!.close();
+      }
+
       _eventsBox = await Hive.openBox<CalendarEvent>('calendar_events_$userId');
+      _activeUserId = userId;
       _events = _eventsBox!.values.toList();
 
       _errorMessage = null;
@@ -270,6 +283,7 @@ class CalendarProvider extends ChangeNotifier {
       await _eventsBox!.close();
     }
     _eventsBox = null;
+    _activeUserId = null;
   }
 
   @override
