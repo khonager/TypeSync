@@ -10,7 +10,9 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../core/utils/color_utils.dart';
 
-enum _ToolbarAnchorEdge { top, bottom, left, right }
+enum EditorToolbarPlacement { floating, top, bottom, left, right }
+
+enum _ToolbarAnchorEdge { floating, top, bottom, left, right }
 
 /// Rich text editing toolbar
 ///
@@ -25,12 +27,16 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
+  final EditorToolbarPlacement placement;
+  final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
 
   const EditorToolbar({
     required this.controller,
     required this.onInsertPdf,
     required this.onInsertTable,
     required this.onInsertKanban,
+    required this.placement,
+    required this.onPlacementChanged,
     super.key,
   });
 
@@ -41,13 +47,16 @@ class EditorToolbar extends StatefulWidget {
 class _EditorToolbarState extends State<EditorToolbar> {
   static const double _collapsedSize = 50;
   static const double _edgePadding = 8;
+  static const double _snapDistance = 42;
   static const double _panelPadding = 8;
   static const double _horizontalPanelHeight = 56;
   static const double _horizontalPanelWidth = 340;
   static const double _verticalPanelWidth = 56;
+  static const double _floatingPanelWidth = 260;
+  static const double _floatingPanelMaxHeight = 260;
 
   Offset _position = const Offset(16, 100);
-  _ToolbarAnchorEdge _anchor = _ToolbarAnchorEdge.bottom;
+  _ToolbarAnchorEdge _anchor = _ToolbarAnchorEdge.floating;
   bool _isExpanded = false;
   bool _isDragging = false;
   bool _sideSnapToBottom = true;
@@ -55,18 +64,56 @@ class _EditorToolbarState extends State<EditorToolbar> {
   bool get _isSideAnchor =>
       _anchor == _ToolbarAnchorEdge.left || _anchor == _ToolbarAnchorEdge.right;
 
+  _ToolbarAnchorEdge _edgeFromPlacement(EditorToolbarPlacement placement) {
+    return switch (placement) {
+      EditorToolbarPlacement.floating => _ToolbarAnchorEdge.floating,
+      EditorToolbarPlacement.top => _ToolbarAnchorEdge.top,
+      EditorToolbarPlacement.bottom => _ToolbarAnchorEdge.bottom,
+      EditorToolbarPlacement.left => _ToolbarAnchorEdge.left,
+      EditorToolbarPlacement.right => _ToolbarAnchorEdge.right,
+    };
+  }
+
+  EditorToolbarPlacement _placementFromEdge(_ToolbarAnchorEdge edge) {
+    return switch (edge) {
+      _ToolbarAnchorEdge.floating => EditorToolbarPlacement.floating,
+      _ToolbarAnchorEdge.top => EditorToolbarPlacement.top,
+      _ToolbarAnchorEdge.bottom => EditorToolbarPlacement.bottom,
+      _ToolbarAnchorEdge.left => EditorToolbarPlacement.left,
+      _ToolbarAnchorEdge.right => EditorToolbarPlacement.right,
+    };
+  }
+
+  void _notifyPlacementChanged(_ToolbarAnchorEdge edge) {
+    final placement = _placementFromEdge(edge);
+    if (widget.placement == placement) return;
+    widget.onPlacementChanged(placement);
+  }
+
+  void _setAnchor(_ToolbarAnchorEdge edge, {bool notify = true}) {
+    _anchor = edge;
+    if (notify) {
+      _notifyPlacementChanged(edge);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _anchor = _edgeFromPlacement(widget.placement);
     widget.controller.addListener(_handleControllerChanged);
   }
 
   @override
   void didUpdateWidget(covariant EditorToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller == widget.controller) return;
-    oldWidget.controller.removeListener(_handleControllerChanged);
-    widget.controller.addListener(_handleControllerChanged);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.placement != widget.placement) {
+      _setAnchor(_edgeFromPlacement(widget.placement), notify: false);
+    }
   }
 
   @override
@@ -122,6 +169,14 @@ class _EditorToolbarState extends State<EditorToolbar> {
     });
   }
 
+  void _undockFromDock() {
+    setState(() {
+      _setAnchor(_ToolbarAnchorEdge.floating);
+      _isExpanded = false;
+      _isDragging = false;
+    });
+  }
+
   double _maxCollapsedX(double areaWidth) {
     return math.max(_edgePadding, areaWidth - _collapsedSize - _edgePadding);
   }
@@ -148,14 +203,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
       math.min(topDistance, bottomDistance),
     );
 
+    if (minDistance > _snapDistance) {
+      _setAnchor(_ToolbarAnchorEdge.floating);
+      _position = clamped;
+      return;
+    }
+
     if (minDistance == topDistance) {
-      _anchor = _ToolbarAnchorEdge.top;
+      _setAnchor(_ToolbarAnchorEdge.top);
       _position = Offset(clamped.dx, _edgePadding);
       return;
     }
 
     if (minDistance == bottomDistance) {
-      _anchor = _ToolbarAnchorEdge.bottom;
+      _setAnchor(_ToolbarAnchorEdge.bottom);
       _position = Offset(clamped.dx, maxCollapsedY);
       return;
     }
@@ -165,17 +226,22 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final sideY = _sideSnapToBottom ? maxCollapsedY : _edgePadding;
 
     if (minDistance == leftDistance) {
-      _anchor = _ToolbarAnchorEdge.left;
+      _setAnchor(_ToolbarAnchorEdge.left);
       _position = Offset(_edgePadding, sideY);
       return;
     }
 
-    _anchor = _ToolbarAnchorEdge.right;
+    _setAnchor(_ToolbarAnchorEdge.right);
     _position = Offset(maxCollapsedX, sideY);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_anchor == _ToolbarAnchorEdge.top ||
+        _anchor == _ToolbarAnchorEdge.bottom) {
+      return _buildDockedHorizontal();
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final areaSize = constraints.biggest;
@@ -189,6 +255,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
             if (_isExpanded)
               if (_isSideAnchor)
                 _buildExpandedVertical(areaSize)
+              else if (_anchor == _ToolbarAnchorEdge.floating)
+                _buildExpandedFloating(areaSize)
               else
                 _buildExpandedHorizontal(areaSize)
             else
@@ -207,11 +275,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
     final freeY = _position.dy.clamp(_edgePadding, maxCollapsedY).toDouble();
 
     final snappedX = switch (_anchor) {
+      _ToolbarAnchorEdge.floating => freeX,
       _ToolbarAnchorEdge.left => _edgePadding,
       _ToolbarAnchorEdge.right => maxCollapsedX,
       _ToolbarAnchorEdge.top || _ToolbarAnchorEdge.bottom => freeX,
     };
     final snappedY = switch (_anchor) {
+      _ToolbarAnchorEdge.floating => freeY,
       _ToolbarAnchorEdge.top => _edgePadding,
       _ToolbarAnchorEdge.bottom => maxCollapsedY,
       _ToolbarAnchorEdge.left ||
@@ -241,6 +311,42 @@ class _EditorToolbarState extends State<EditorToolbar> {
               width: _collapsedSize,
               height: _collapsedSize,
               child: Icon(Icons.edit, size: 20),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDockedHorizontal() {
+    final isBottom = _anchor == _ToolbarAnchorEdge.bottom;
+    final scrollItems = _buildToolbarItems(Axis.horizontal);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        12,
+        isBottom ? 8 : 12,
+        12,
+        isBottom ? 12 : 8,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          height: _horizontalPanelHeight,
+          decoration: _panelDecoration(context),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Row(
+              children: [
+                _ToolbarButton(
+                  icon: Icons.open_with,
+                  tooltip: 'Undock',
+                  onTap: _undockFromDock,
+                ),
+                const _ToolbarDivider(axis: Axis.horizontal),
+                ...scrollItems.skip(2),
+              ],
             ),
           ),
         ),
@@ -280,6 +386,80 @@ class _EditorToolbarState extends State<EditorToolbar> {
             padding: const EdgeInsets.all(_panelPadding),
             child: Row(
               children: _buildToolbarItems(Axis.horizontal),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedFloating(Size areaSize) {
+    final maxCollapsedX = _maxCollapsedX(areaSize.width);
+    final maxCollapsedY = _maxCollapsedY(areaSize.height);
+    final freeX = _position.dx.clamp(_edgePadding, maxCollapsedX).toDouble();
+    final freeY = _position.dy.clamp(_edgePadding, maxCollapsedY).toDouble();
+
+    final panelWidth = math
+        .min(
+          _floatingPanelWidth,
+          math.max(180, areaSize.width - (_edgePadding * 2)),
+        )
+        .toDouble();
+    final maxLeft =
+        math.max(_edgePadding, areaSize.width - panelWidth - _edgePadding);
+    final panelLeft = freeX.clamp(_edgePadding, maxLeft).toDouble();
+
+    final panelMaxHeight = math
+        .min(
+          _floatingPanelMaxHeight,
+          math.max(120.0, areaSize.height - (_edgePadding * 2)),
+        )
+        .toDouble();
+    final maxTop =
+        math.max(_edgePadding, areaSize.height - panelMaxHeight - _edgePadding);
+    final panelTop = freeY.clamp(_edgePadding, maxTop).toDouble();
+
+    return Positioned(
+      left: panelLeft,
+      top: panelTop,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: panelWidth,
+          constraints: BoxConstraints(maxHeight: panelMaxHeight),
+          decoration: _panelDecoration(context),
+          child: Padding(
+            padding: const EdgeInsets.all(_panelPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Format',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                    _ToolbarButton(
+                      icon: Icons.close,
+                      tooltip: 'Collapse',
+                      onTap: _toggleExpanded,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: _buildFloatingToolbarItems(),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -405,6 +585,87 @@ class _EditorToolbarState extends State<EditorToolbar> {
         onTap: () => _setAlignment(TextAlign.right),
       ),
       divider,
+      _ToolbarButton(
+        icon: Icons.check_box,
+        tooltip: 'Checklist',
+        isActive: _hasFormat(Attribute.checked),
+        onTap: () => widget.controller.formatSelection(Attribute.checked),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_list_numbered,
+        tooltip: 'Numbered list',
+        isActive: _hasFormat(Attribute.ol),
+        onTap: () => widget.controller.formatSelection(Attribute.ol),
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Code block',
+        isActive: _hasFormat(Attribute.codeBlock),
+        onTap: _toggleCodeBlock,
+      ),
+    ];
+  }
+
+  List<Widget> _buildFloatingToolbarItems() {
+    return [
+      _ToolbarButton(
+        icon: Icons.format_bold,
+        tooltip: 'Bold',
+        isActive: _hasFormat(Attribute.bold),
+        onTap: () => widget.controller.formatSelection(Attribute.bold),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_italic,
+        tooltip: 'Italic',
+        isActive: _hasFormat(Attribute.italic),
+        onTap: () => widget.controller.formatSelection(Attribute.italic),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_underlined,
+        tooltip: 'Underline',
+        isActive: _hasFormat(Attribute.underline),
+        onTap: () => widget.controller.formatSelection(Attribute.underline),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_color_text,
+        tooltip: 'Text color',
+        onTap: _showColorPicker,
+      ),
+      _ToolbarButton(
+        icon: Icons.border_color,
+        tooltip: 'Highlight',
+        onTap: _showMarkerColorPicker,
+      ),
+      _ToolbarButton(
+        icon: Icons.picture_as_pdf_outlined,
+        tooltip: 'Insert PDF',
+        onTap: widget.onInsertPdf,
+      ),
+      _ToolbarButton(
+        icon: Icons.table_chart_outlined,
+        tooltip: 'Insert table',
+        onTap: widget.onInsertTable,
+      ),
+      _ToolbarButton(
+        icon: Icons.view_kanban_outlined,
+        tooltip: 'Insert kanban',
+        onTap: widget.onInsertKanban,
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_left,
+        tooltip: 'Align left',
+        onTap: () => _setAlignment(TextAlign.left),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_center,
+        tooltip: 'Align center',
+        onTap: () => _setAlignment(TextAlign.center),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_align_right,
+        tooltip: 'Align right',
+        onTap: () => _setAlignment(TextAlign.right),
+      ),
       _ToolbarButton(
         icon: Icons.check_box,
         tooltip: 'Checklist',

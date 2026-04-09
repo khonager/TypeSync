@@ -119,6 +119,8 @@ class _EditorScreenState extends State<EditorScreen>
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
   bool _attachmentsExpanded = false;
+  EditorToolbarPlacement _toolbarPlacement = EditorToolbarPlacement.floating;
+  final GlobalKey _editorToolbarKey = GlobalKey();
   late final AnimationController _matchGlowController;
   Timer? _matchGlowStopTimer;
   Rect? _matchGlowRect;
@@ -430,6 +432,17 @@ class _EditorScreenState extends State<EditorScreen>
     return _buildEditor(context);
   }
 
+  bool get _isToolbarDockedInColumn =>
+      _toolbarPlacement == EditorToolbarPlacement.top ||
+      _toolbarPlacement == EditorToolbarPlacement.bottom;
+
+  void _setToolbarPlacement(EditorToolbarPlacement placement) {
+    if (_toolbarPlacement == placement) return;
+    setState(() {
+      _toolbarPlacement = placement;
+    });
+  }
+
   Widget _buildEditor(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
@@ -542,10 +555,26 @@ class _EditorScreenState extends State<EditorScreen>
                 ]
               : [
                   if (_note?.hasConflict == true) _buildConflictBanner(),
+                  if (_toolbarPlacement == EditorToolbarPlacement.top)
+                    _buildToolbar(),
                   _buildEditorWorkspace(bgColor),
+                  if (_toolbarPlacement == EditorToolbarPlacement.bottom)
+                    _buildToolbar(),
                 ],
         ),
       ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return EditorToolbar(
+      key: _editorToolbarKey,
+      controller: _quillController,
+      onInsertPdf: _insertPdf,
+      onInsertTable: _insertTable,
+      onInsertKanban: _insertKanban,
+      placement: _toolbarPlacement,
+      onPlacementChanged: _setToolbarPlacement,
     );
   }
 
@@ -572,14 +601,8 @@ class _EditorScreenState extends State<EditorScreen>
           clipBehavior: Clip.none,
           children: [
             _buildEditorWithAttachments(bgColor),
-            Positioned.fill(
-              child: EditorToolbar(
-                controller: _quillController,
-                onInsertPdf: _insertPdf,
-                onInsertTable: _insertTable,
-                onInsertKanban: _insertKanban,
-              ),
-            ),
+            if (!_isToolbarDockedInColumn)
+              Positioned.fill(child: _buildToolbar()),
             if (_isDragging)
               Container(
                 color: Theme.of(
