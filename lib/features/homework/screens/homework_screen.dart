@@ -40,8 +40,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
     _handledInitialRouteAction = true;
 
     final args = ModalRoute.of(context)?.settings.arguments;
-    final shouldOpenComposer =
-        args is Map && args['openComposer'] == true;
+    final shouldOpenComposer = args is Map && args['openComposer'] == true;
     if (shouldOpenComposer) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;

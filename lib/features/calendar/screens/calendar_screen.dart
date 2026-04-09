@@ -74,8 +74,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _handledInitialRouteAction = true;
 
     final args = ModalRoute.of(context)?.settings.arguments;
-    final shouldOpenComposer =
-        args is Map && args['openComposer'] == true;
+    final shouldOpenComposer = args is Map && args['openComposer'] == true;
     if (shouldOpenComposer) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -326,9 +325,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final year = _focusedDay.year;
     final weeks = _buildWeeksForYear(year);
     final selectedKey = _dateKey(_selectedWeekStart);
+    const columns = 7;
+    const crossAxisSpacing = 6.0;
+    const mainAxisSpacing = 6.0;
+    const cellExtent = 46.0;
+    final rowCount = (weeks.length / columns).ceil();
+    final gridHeight =
+        (rowCount * cellExtent) + ((rowCount - 1) * mainAxisSpacing) + 8;
 
     return SizedBox(
-      height: 320,
+      height: 56 + gridHeight,
       child: Column(
         children: [
           Padding(
@@ -366,71 +372,77 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              itemCount: weeks.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                crossAxisSpacing: 6,
-                mainAxisSpacing: 6,
-                childAspectRatio: 1.15,
-              ),
-              itemBuilder: (context, index) {
-                final week = weeks[index];
-                final weekKey = _dateKey(week.start);
-                final isSelected = weekKey == selectedKey;
-                final hasEvents = _weekHasEvents(
-                  calendarProvider.events,
-                  start: week.start,
-                  end: week.end,
-                );
+            child: SizedBox(
+              height: gridHeight,
+              child: GridView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                itemCount: weeks.length,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: crossAxisSpacing,
+                  mainAxisSpacing: mainAxisSpacing,
+                  mainAxisExtent: cellExtent,
+                ),
+                itemBuilder: (context, index) {
+                  final week = weeks[index];
+                  final weekKey = _dateKey(week.start);
+                  final isSelected = weekKey == selectedKey;
+                  final hasEvents = _weekHasEvents(
+                    calendarProvider.events,
+                    start: week.start,
+                    end: week.end,
+                  );
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    setState(() {
-                      _selectedWeekStart = week.start;
-                      _focusedDay = week.start;
-                      _selectedDay = week.start;
-                    });
-                  },
-                  child: Tooltip(
-                    message:
-                        'KW ${week.weekNumber} (${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month})',
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 120),
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                          shape: BoxShape.circle,
-                          border: hasEvents
-                              ? Border.all(
-                                  color: isSelected
-                                      ? Theme.of(context).colorScheme.onPrimary
-                                      : Theme.of(context).colorScheme.primary,
-                                  width: 1.3,
-                                )
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${week.weekNumber}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      setState(() {
+                        _selectedWeekStart = week.start;
+                        _focusedDay = week.start;
+                        _selectedDay = week.start;
+                      });
+                    },
+                    child: Tooltip(
+                      message:
+                          'KW ${week.weekNumber} (${week.start.day}.${week.start.month} - ${week.end.day}.${week.end.month})',
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
                             color: isSelected
-                                ? Theme.of(context).colorScheme.onPrimary
+                                ? Theme.of(context).colorScheme.primary
                                 : null,
+                            shape: BoxShape.circle,
+                            border: hasEvents
+                                ? Border.all(
+                                    color: isSelected
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .onPrimary
+                                        : Theme.of(context).colorScheme.primary,
+                                    width: 1.3,
+                                  )
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${week.weekNumber}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : null,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ],
