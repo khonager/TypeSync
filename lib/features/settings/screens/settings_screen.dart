@@ -252,8 +252,8 @@ class SettingsScreen extends StatelessWidget {
           _SettingsTile(
             icon: Icons.info_outline,
             title: 'Version',
-            subtitle: kCurrentAppVersion,
-            onTap: () => _showChangelog(context),
+            subtitle: '$kCurrentAppVersion ($kCurrentBuildNumber)',
+            onTap: () => _showVersionDetails(context),
           ),
 
           _SettingsTile(
@@ -346,6 +346,46 @@ class SettingsScreen extends StatelessWidget {
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showVersionDetails(BuildContext context) async {
+    const changelogService = ChangelogService();
+    final changelog = await changelogService.load();
+    if (!context.mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Version'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('App version: $kCurrentAppVersion'),
+              const Text('Build: $kCurrentBuildNumber'),
+              const SizedBox(height: 8),
+              Text('Latest changelog: ${changelog.latestVersion}'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showChangelog(context);
+              },
+              child: const Text('Open Changelog'),
+            ),
+          ],
         );
       },
     );
