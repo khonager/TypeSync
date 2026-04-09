@@ -634,6 +634,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   tooltip: 'Timetable',
                 ),
 
+                IconButton(
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.calendar),
+                  tooltip: 'Calendar',
+                ),
+
                 // Settings
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
@@ -1448,7 +1455,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     subtitle: const Text('Open reminders and events'),
                     onTap: () {
                       Navigator.pop(context);
-                      AppRouter.navigateTo(context, AppRouter.calendar);
+                      AppRouter.navigateTo(
+                        context,
+                        AppRouter.calendar,
+                        arguments: {'openComposer': true},
+                      );
                     },
                   ),
                   ListTile(
@@ -1457,7 +1468,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     subtitle: const Text('Open assignments and tasks'),
                     onTap: () {
                       Navigator.pop(context);
-                      AppRouter.navigateTo(context, AppRouter.homework);
+                      AppRouter.navigateTo(
+                        context,
+                        AppRouter.homework,
+                        arguments: {'openComposer': true},
+                      );
                     },
                   ),
                   const SizedBox(height: 8),

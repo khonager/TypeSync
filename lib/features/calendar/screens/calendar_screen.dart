@@ -51,6 +51,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _focusedDay;
   DateTime? _selectedDay;
   late DateTime _selectedWeekStart;
+  bool _handledInitialRouteAction = false;
 
   @override
   void initState() {
@@ -62,6 +63,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_handledInitialRouteAction) {
+      return;
+    }
+    _handledInitialRouteAction = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final shouldOpenComposer =
+        args is Map && args['openComposer'] == true;
+    if (shouldOpenComposer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _addEvent();
+      });
+    }
   }
 
   Future<void> _initializeData() async {

@@ -21,6 +21,7 @@ class HomeworkScreen extends StatefulWidget {
 class _HomeworkScreenState extends State<HomeworkScreen> {
   // Filter state
   bool _showCompleted = false;
+  bool _handledInitialRouteAction = false;
 
   @override
   void initState() {
@@ -28,6 +29,25 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_handledInitialRouteAction) {
+      return;
+    }
+    _handledInitialRouteAction = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final shouldOpenComposer =
+        args is Map && args['openComposer'] == true;
+    if (shouldOpenComposer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _addHomework();
+      });
+    }
   }
 
   Future<void> _initializeData() async {
