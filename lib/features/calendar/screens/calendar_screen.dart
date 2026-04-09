@@ -86,7 +86,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
-    final userId = authService.userId;
+    final userId = authService.storageUserId;
     if (userId != null) {
       await context.read<CalendarProvider>().initialize(userId);
     }
@@ -949,7 +949,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       }
 
                       final authService = context.read<AuthService>();
-                      final userId = authService.userId;
+                      final userId = authService.storageUserId;
                       if (userId == null) return;
 
                       final startTime = DateTime(

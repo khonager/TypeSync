@@ -51,7 +51,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
 
   Future<void> _initializeData() async {
     final authService = context.read<AuthService>();
-    final userId = authService.userId;
+    final userId = authService.storageUserId;
     if (userId != null) {
       await context.read<HomeworkProvider>().initialize(userId);
     }
@@ -341,7 +341,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
                       }
 
                       final authService = context.read<AuthService>();
-                      final userId = authService.userId;
+                      final userId = authService.storageUserId;
                       if (userId == null) return;
 
                       await context.read<HomeworkProvider>().createHomework(
