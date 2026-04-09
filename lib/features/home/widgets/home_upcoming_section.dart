@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/services/theme_service.dart';
 import '../models/upcoming_item_view_data.dart';
 import 'home_upcoming_card.dart';
 
@@ -17,9 +18,23 @@ class HomeUpcomingSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<CalendarProvider, HomeworkProvider>(
-      builder: (context, calendarProvider, homeworkProvider, _) {
+    return Consumer3<CalendarProvider, HomeworkProvider, ThemeService>(
+      builder: (context, calendarProvider, homeworkProvider, themeService, _) {
+        final visibilityMode = themeService.homeUpcomingVisibilityMode;
+        if (visibilityMode == HomeUpcomingVisibilityMode.never) {
+          return const SizedBox.shrink();
+        }
+
         if (calendarProvider.isLoading || homeworkProvider.isLoading) {
+          if (visibilityMode == HomeUpcomingVisibilityMode.always) {
+            return const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: HomeUpcomingCard(
+                items: [],
+                emptyMessage: 'Loading upcoming items...',
+              ),
+            );
+          }
           return const SizedBox.shrink();
         }
 
@@ -28,7 +43,8 @@ class HomeUpcomingSection extends StatelessWidget {
           homeworkItems: homeworkProvider.homework,
           limit: _maxVisibleItems,
         );
-        if (items.isEmpty) {
+        if (visibilityMode == HomeUpcomingVisibilityMode.onlyWithItems &&
+            items.isEmpty) {
           return const SizedBox.shrink();
         }
 
@@ -44,6 +60,13 @@ class HomeUpcomingSection extends StatelessWidget {
                     : AppRouter.calendar,
               );
             },
+            onItemCheck: (item) async {
+              if (!item.isCompletable) return;
+              await homeworkProvider.toggleCompletion(item.sourceId);
+            },
+            emptySubtitle: visibilityMode == HomeUpcomingVisibilityMode.always
+                ? 'Open TypeSync to add homework or events'
+                : null,
           ),
         );
       },

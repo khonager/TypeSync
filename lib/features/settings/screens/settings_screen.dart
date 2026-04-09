@@ -102,6 +102,15 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _showColorPicker(context, themeService),
           ),
 
+          _SettingsTile(
+            icon: Icons.view_agenda_outlined,
+            title: 'Upcoming Widget Visibility',
+            subtitle: _homeUpcomingVisibilityLabel(
+              themeService.homeUpcomingVisibilityMode,
+            ),
+            onTap: () => _showUpcomingVisibilityPicker(context, themeService),
+          ),
+
           const Divider(),
 
           // Account Section
@@ -469,6 +478,75 @@ class SettingsScreen extends StatelessWidget {
           }).toList(),
         ),
       ),
+    );
+  }
+
+  String _homeUpcomingVisibilityLabel(HomeUpcomingVisibilityMode mode) {
+    return switch (mode) {
+      HomeUpcomingVisibilityMode.always => 'Always show',
+      HomeUpcomingVisibilityMode.onlyWithItems => 'Only with upcoming items',
+      HomeUpcomingVisibilityMode.never => 'Never show',
+    };
+  }
+
+  void _showUpcomingVisibilityPicker(
+    BuildContext context,
+    ThemeService themeService,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        final currentMode = themeService.homeUpcomingVisibilityMode;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Always show'),
+                subtitle: const Text('Keep the upcoming widget visible'),
+                trailing: currentMode == HomeUpcomingVisibilityMode.always
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () {
+                  themeService.setHomeUpcomingVisibilityMode(
+                    HomeUpcomingVisibilityMode.always,
+                  );
+                  Navigator.pop(sheetContext);
+                },
+              ),
+              ListTile(
+                title: const Text('Only with upcoming items'),
+                subtitle: const Text(
+                  'Hide the widget when there is nothing upcoming',
+                ),
+                trailing:
+                    currentMode == HomeUpcomingVisibilityMode.onlyWithItems
+                        ? const Icon(Icons.check)
+                        : null,
+                onTap: () {
+                  themeService.setHomeUpcomingVisibilityMode(
+                    HomeUpcomingVisibilityMode.onlyWithItems,
+                  );
+                  Navigator.pop(sheetContext);
+                },
+              ),
+              ListTile(
+                title: const Text('Never show'),
+                subtitle: const Text('Always hide the upcoming widget'),
+                trailing: currentMode == HomeUpcomingVisibilityMode.never
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () {
+                  themeService.setHomeUpcomingVisibilityMode(
+                    HomeUpcomingVisibilityMode.never,
+                  );
+                  Navigator.pop(sheetContext);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

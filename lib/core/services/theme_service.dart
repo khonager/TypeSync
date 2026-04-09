@@ -11,6 +11,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'sync_service.dart';
 import '../utils/color_value_compat.dart';
 
+enum HomeUpcomingVisibilityMode {
+  always,
+  onlyWithItems,
+  never,
+}
+
 /// Service for managing app theme and appearance
 ///
 /// Supports light mode, dark mode, and system-sync mode.
@@ -20,6 +26,8 @@ class ThemeService extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _accentColor = const Color(0xFF64D2FF);
   bool _syncWithSystem = false;
+  HomeUpcomingVisibilityMode _homeUpcomingVisibilityMode =
+      HomeUpcomingVisibilityMode.onlyWithItems;
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
@@ -32,6 +40,8 @@ class ThemeService extends ChangeNotifier {
   static const String _themeModeKey = 'theme_mode';
   static const String _accentColorKey = 'accent_color';
   static const String _syncWithSystemKey = 'sync_with_system';
+  static const String _homeUpcomingVisibilityModeKey =
+      'home_upcoming_visibility_mode';
 
   // Predefined accent colors
   static const List<Color> accentColors = [
@@ -53,6 +63,8 @@ class ThemeService extends ChangeNotifier {
   Color get accentColor => _accentColor;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
   bool get syncWithSystem => _syncWithSystem;
+  HomeUpcomingVisibilityMode get homeUpcomingVisibilityMode =>
+      _homeUpcomingVisibilityMode;
 
   /// Get the actual brightness based on current settings
   Brightness get currentBrightness {
@@ -117,6 +129,13 @@ class ThemeService extends ChangeNotifier {
   /// Set accent color
   void setAccentColor(Color color) {
     _accentColor = color;
+    _savePreferences();
+    notifyListeners();
+  }
+
+  void setHomeUpcomingVisibilityMode(HomeUpcomingVisibilityMode mode) {
+    if (_homeUpcomingVisibilityMode == mode) return;
+    _homeUpcomingVisibilityMode = mode;
     _savePreferences();
     notifyListeners();
   }
@@ -208,6 +227,15 @@ class ThemeService extends ChangeNotifier {
       // Load system sync preference
       _syncWithSystem = prefs.getBool(_syncWithSystemKey) ?? false;
 
+      // Load home upcoming visibility mode.
+      final visibilityIndex = prefs.getInt(_homeUpcomingVisibilityModeKey);
+      if (visibilityIndex != null &&
+          visibilityIndex >= 0 &&
+          visibilityIndex < HomeUpcomingVisibilityMode.values.length) {
+        _homeUpcomingVisibilityMode =
+            HomeUpcomingVisibilityMode.values[visibilityIndex];
+      }
+
       notifyListeners();
     } catch (e) {
       // Use defaults if loading fails
@@ -224,6 +252,10 @@ class ThemeService extends ChangeNotifier {
       await prefs.setInt(_themeModeKey, _themeMode.index);
       await prefs.setInt(_accentColorKey, accentColorValue);
       await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
+      await prefs.setInt(
+        _homeUpcomingVisibilityModeKey,
+        _homeUpcomingVisibilityMode.index,
+      );
 
       if (syncToCloud && _syncService != null) {
         _syncService!.syncSettings({
