@@ -76,8 +76,6 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
-  static const String _toolbarAnchorPreferenceKey =
-      'typesync_editor_toolbar_anchor';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -121,7 +119,6 @@ class _EditorScreenState extends State<EditorScreen>
   double _sideBySideAttachmentFraction = 0.46;
   double _stackedAttachmentHeight = 320;
   bool _attachmentsExpanded = false;
-  EditorToolbarAnchor _toolbarAnchor = EditorToolbarAnchor.bottom;
   late final AnimationController _matchGlowController;
   Timer? _matchGlowStopTimer;
   Rect? _matchGlowRect;
@@ -212,11 +209,6 @@ class _EditorScreenState extends State<EditorScreen>
       if (restoredCaretOffset != null) {
         _setEditorSelection(restoredCaretOffset);
       }
-    }
-
-    final restoredToolbarAnchor = await _loadToolbarAnchor();
-    if (restoredToolbarAnchor != null) {
-      _toolbarAnchor = restoredToolbarAnchor;
     }
 
     // Listen for content changes
@@ -311,40 +303,6 @@ class _EditorScreenState extends State<EditorScreen>
     } catch (_) {
       // Best-effort persistence; ignore local preference write failures.
     }
-  }
-
-  Future<EditorToolbarAnchor?> _loadToolbarAnchor() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final rawValue = prefs.getString(_toolbarAnchorPreferenceKey);
-      return switch (rawValue) {
-        'top' => EditorToolbarAnchor.top,
-        'bottom' => EditorToolbarAnchor.bottom,
-        _ => null,
-      };
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _persistToolbarAnchor(EditorToolbarAnchor anchor) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _toolbarAnchorPreferenceKey,
-        anchor == EditorToolbarAnchor.top ? 'top' : 'bottom',
-      );
-    } catch (_) {
-      // Best-effort persistence; ignore local preference write failures.
-    }
-  }
-
-  void _setToolbarAnchor(EditorToolbarAnchor anchor) {
-    if (_toolbarAnchor == anchor) return;
-    setState(() {
-      _toolbarAnchor = anchor;
-    });
-    unawaited(_persistToolbarAnchor(anchor));
   }
 
   void _setEditorSelection(int offset) {
@@ -584,25 +542,10 @@ class _EditorScreenState extends State<EditorScreen>
                 ]
               : [
                   if (_note?.hasConflict == true) _buildConflictBanner(),
-                  if (_toolbarAnchor == EditorToolbarAnchor.top)
-                    _buildToolbar(),
                   _buildEditorWorkspace(bgColor),
-                  if (_toolbarAnchor == EditorToolbarAnchor.bottom)
-                    _buildToolbar(),
                 ],
         ),
       ),
-    );
-  }
-
-  Widget _buildToolbar() {
-    return EditorToolbar(
-      controller: _quillController,
-      onInsertPdf: _insertPdf,
-      onInsertTable: _insertTable,
-      onInsertKanban: _insertKanban,
-      anchor: _toolbarAnchor,
-      onAnchorChanged: _setToolbarAnchor,
     );
   }
 
@@ -629,6 +572,14 @@ class _EditorScreenState extends State<EditorScreen>
           clipBehavior: Clip.none,
           children: [
             _buildEditorWithAttachments(bgColor),
+            Positioned.fill(
+              child: EditorToolbar(
+                controller: _quillController,
+                onInsertPdf: _insertPdf,
+                onInsertTable: _insertTable,
+                onInsertKanban: _insertKanban,
+              ),
+            ),
             if (_isDragging)
               Container(
                 color: Theme.of(
