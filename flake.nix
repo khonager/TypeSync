@@ -69,7 +69,6 @@
             (with pkgs; [
               androidSdk
               flutter
-              dart
               jdk17
 
               # Common libraries needed by unpatched binaries (like aapt2)
@@ -128,6 +127,10 @@
           profile = ''
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
             export PATH="${pkgs.zenity}/bin:$PATH"
+            # Keep Flutter + Dart from the same SDK to avoid hot-restart API mismatches.
+            export FLUTTER_ROOT="${pkgs.flutter}"
+            export DART_SDK="${pkgs.flutter}/bin/cache/dart-sdk"
+            export PATH="$FLUTTER_ROOT/bin:$DART_SDK/bin:$PATH"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
@@ -187,7 +190,6 @@
           buildInputs = with pkgs; [
             androidSdk
             flutter
-            dart
             jdk17
             cocoapods # Required for iOS development on macOS
 
@@ -204,6 +206,10 @@
           ];
 
           shellHook = ''
+            # Keep Flutter + Dart from the same SDK to avoid hot-restart API mismatches.
+            export FLUTTER_ROOT="${pkgs.flutter}"
+            export DART_SDK="${pkgs.flutter}/bin/cache/dart-sdk"
+            export PATH="$FLUTTER_ROOT/bin:$DART_SDK/bin:$PATH"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
