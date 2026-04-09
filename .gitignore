@@ -70,6 +70,7 @@ coverage/
 result
 result-*
 .direnv/
+.nix-flutter-sdk
 
 # Test artifacts
 test_driver/screenshots/

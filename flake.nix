@@ -127,10 +127,6 @@
           profile = ''
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
             export PATH="${pkgs.zenity}/bin:$PATH"
-            # Keep Flutter + Dart from the same SDK to avoid hot-restart API mismatches.
-            export FLUTTER_ROOT="${pkgs.flutter}"
-            export DART_SDK="${pkgs.flutter}/bin/cache/dart-sdk"
-            export PATH="$FLUTTER_ROOT/bin:$DART_SDK/bin:$PATH"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
@@ -154,6 +150,21 @@
             if [ -d "android" ]; then
               echo "sdk.dir=${androidSdk}/share/android-sdk" > android/local.properties
               echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
+            fi
+
+            # Make Flutter SDK path stable for IDEs across Nix store path changes.
+            ln -sfn "${pkgs.flutter}" .nix-flutter-sdk
+
+            # If a different Flutter SDK previously generated .dart_tool metadata,
+            # hot restart can fail with framework/engine API mismatches.
+            if [ -f ".dart_tool/package_config.json" ]; then
+              existing_flutter_root="$(sed -n 's/.*"flutterRoot": "\(.*\)",/\1/p' .dart_tool/package_config.json | head -n 1)"
+              expected_flutter_root="file://${pkgs.flutter}"
+              if [ -n "$existing_flutter_root" ] && [ "$existing_flutter_root" != "$expected_flutter_root" ]; then
+                echo "Detected Flutter SDK switch; regenerating .dart_tool metadata for ${pkgs.flutter}"
+                rm -f .dart_tool/package_config.json .dart_tool/package_config_subset .dart_tool/version
+                flutter pub get >/dev/null || true
+              fi
             fi
 
             echo "╔═══════════════════════════════════════════════════════════╗"
@@ -206,10 +217,6 @@
           ];
 
           shellHook = ''
-            # Keep Flutter + Dart from the same SDK to avoid hot-restart API mismatches.
-            export FLUTTER_ROOT="${pkgs.flutter}"
-            export DART_SDK="${pkgs.flutter}/bin/cache/dart-sdk"
-            export PATH="$FLUTTER_ROOT/bin:$DART_SDK/bin:$PATH"
             export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="${androidSdk}/share/android-sdk"
             export JAVA_HOME="${pkgs.jdk17}"
@@ -225,6 +232,21 @@
             if [ -d "android" ]; then
               echo "sdk.dir=${androidSdk}/share/android-sdk" > android/local.properties
               echo "flutter.sdk=${pkgs.flutter}" >> android/local.properties
+            fi
+
+            # Make Flutter SDK path stable for IDEs across Nix store path changes.
+            ln -sfn "${pkgs.flutter}" .nix-flutter-sdk
+
+            # Repair stale .dart_tool metadata if this workspace was opened with a
+            # different Flutter SDK earlier.
+            if [ -f ".dart_tool/package_config.json" ]; then
+              existing_flutter_root="$(sed -n 's/.*"flutterRoot": "\(.*\)",/\1/p' .dart_tool/package_config.json | head -n 1)"
+              expected_flutter_root="file://${pkgs.flutter}"
+              if [ -n "$existing_flutter_root" ] && [ "$existing_flutter_root" != "$expected_flutter_root" ]; then
+                echo "Detected Flutter SDK switch; regenerating .dart_tool metadata for ${pkgs.flutter}"
+                rm -f .dart_tool/package_config.json .dart_tool/package_config_subset .dart_tool/version
+                flutter pub get >/dev/null || true
+              fi
             fi
 
             echo "TypeSync development environment ready!"
