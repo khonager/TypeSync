@@ -313,7 +313,7 @@ class AnytypeImportService {
   }
 
   Future<List<File>> _collectNativeObjectFiles(
-      Directory exportDirectory) async {
+      Directory exportDirectory,) async {
     final objectsDirectory =
         Directory(path.join(exportDirectory.path, 'objects'));
     if (!await objectsDirectory.exists()) {
@@ -628,7 +628,7 @@ class AnytypeImportService {
 
   static String _convertNativeObjectToQuillJson(Map<String, dynamic> data) {
     final blocks = (data['blocks'] as List?)
-            ?.whereType<Map>()
+            ?.whereType<Map<Object?, Object?>>()
             .map((block) => Map<String, dynamic>.from(block))
             .toList() ??
         const <Map<String, dynamic>>[];
