@@ -3,6 +3,7 @@
 /// Imports Anytype Markdown exports into the active TypeSync workspace.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
@@ -79,11 +80,11 @@ class AnytypeImportService {
     final folderIdsByRelativePath = <String, String?>{'': null};
 
     if (markdownFiles.isEmpty) {
-      return const AnytypeImportResult(
-        importedNotes: 0,
-        importedFolders: 0,
-        importedAttachments: 0,
-        skippedEntries: ['No Markdown notes were found in the selected folder'],
+      return _importNativeExport(
+        exportDirectory: exportDirectory,
+        noteUserId: noteUserId,
+        notesProvider: notesProvider,
+        foldersProvider: foldersProvider,
       );
     }
 
@@ -96,9 +97,11 @@ class AnytypeImportService {
           _relativePath(markdownFile.path, exportDirectory);
 
       try {
+        final rawMarkdown = await markdownFile.readAsString();
         final relativeDirectory = _relativeDirectoryForFile(
           markdownFile,
           exportDirectory,
+          rawMarkdown: rawMarkdown,
         );
 
         final folderResult = await _ensureFolderPath(
@@ -109,7 +112,6 @@ class AnytypeImportService {
         );
         importedFolders += folderResult.createdFolders;
 
-        final rawMarkdown = await markdownFile.readAsString();
         final initialConversion =
             MarkdownRichTextService.instance.convertAnytypeMarkdown(
           rawMarkdown: rawMarkdown,
@@ -189,6 +191,87 @@ class AnytypeImportService {
     );
   }
 
+  Future<AnytypeImportResult> _importNativeExport({
+    required Directory exportDirectory,
+    required String noteUserId,
+    required NotesProvider notesProvider,
+    required FoldersProvider foldersProvider,
+  }) async {
+    final objectFiles = await _collectNativeObjectFiles(exportDirectory);
+    if (objectFiles.isEmpty) {
+      return const AnytypeImportResult(
+        importedNotes: 0,
+        importedFolders: 0,
+        importedAttachments: 0,
+        skippedEntries: ['No Markdown or Anytype object notes were found'],
+      );
+    }
+
+    final typeNames = await _loadNativeTypeNames(exportDirectory);
+    final folderIdsByRelativePath = <String, String?>{'': null};
+    final failedEntries = <String>[];
+    var importedNotes = 0;
+    var importedFolders = 0;
+
+    for (final objectFile in objectFiles) {
+      final relativeFilePath = _relativePath(objectFile.path, exportDirectory);
+
+      try {
+        final jsonData = jsonDecode(await objectFile.readAsString());
+        if (jsonData is! Map<String, dynamic> || jsonData['sbType'] != 'Page') {
+          continue;
+        }
+
+        final data = _nativeData(jsonData);
+        if (data == null) {
+          continue;
+        }
+
+        final details = _mapValue(data['details']);
+        final title = _stringValue(details?['name']) ??
+            path.basenameWithoutExtension(objectFile.path);
+        final relativeDirectory = _nativeFolderForObject(data, typeNames);
+        final folderResult = await _ensureFolderPath(
+          relativeDirectory: relativeDirectory,
+          folderIdsByRelativePath: folderIdsByRelativePath,
+          foldersProvider: foldersProvider,
+          userId: noteUserId,
+        );
+        importedFolders += folderResult.createdFolders;
+
+        final content = _convertNativeObjectToQuillJson(data);
+        final note = await notesProvider.createNote(
+          userId: noteUserId,
+          folderId: folderResult.folderId,
+          title: title,
+          content: content,
+          type: NoteType.text,
+          size: content.length,
+        );
+
+        if (note == null) {
+          failedEntries.add(relativeFilePath);
+          continue;
+        }
+
+        importedNotes++;
+      } catch (error) {
+        failedEntries.add(relativeFilePath);
+        _diagnostics.error(
+          'AnytypeImportService',
+          'Failed to import native Anytype object $relativeFilePath: $error',
+        );
+      }
+    }
+
+    return AnytypeImportResult(
+      importedNotes: importedNotes,
+      importedFolders: importedFolders,
+      importedAttachments: 0,
+      failedEntries: failedEntries,
+    );
+  }
+
   static List<String> extractReferencedLocalPaths(String markdownContent) {
     final matches =
         RegExp(r'!?\[[^\]]*\]\(([^)]+)\)').allMatches(markdownContent);
@@ -227,6 +310,66 @@ class AnytypeImportService {
 
     files.sort((left, right) => left.path.compareTo(right.path));
     return files;
+  }
+
+  Future<List<File>> _collectNativeObjectFiles(
+      Directory exportDirectory) async {
+    final objectsDirectory =
+        Directory(path.join(exportDirectory.path, 'objects'));
+    if (!await objectsDirectory.exists()) {
+      return const [];
+    }
+
+    final files = <File>[];
+    await for (final entity
+        in objectsDirectory.list(recursive: false, followLinks: false)) {
+      if (entity is File && entity.path.endsWith('.pb.json')) {
+        files.add(entity);
+      }
+    }
+    files.sort((left, right) => left.path.compareTo(right.path));
+    return files;
+  }
+
+  Future<Map<String, String>> _loadNativeTypeNames(
+    Directory exportDirectory,
+  ) async {
+    final typesDirectory = Directory(path.join(exportDirectory.path, 'types'));
+    if (!await typesDirectory.exists()) {
+      return const {};
+    }
+
+    final namesByKey = <String, String>{};
+    await for (final entity
+        in typesDirectory.list(recursive: false, followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.pb.json')) {
+        continue;
+      }
+
+      try {
+        final jsonData = jsonDecode(await entity.readAsString());
+        final data =
+            jsonData is Map<String, dynamic> ? _nativeData(jsonData) : null;
+        final details = _mapValue(data?['details']);
+        final name = _stringValue(details?['name']);
+        if (name == null || name.isEmpty) {
+          continue;
+        }
+
+        final id = _stringValue(details?['id']);
+        final uniqueKey = _stringValue(details?['uniqueKey']);
+        if (id != null) {
+          namesByKey[id] = name;
+        }
+        if (uniqueKey != null) {
+          namesByKey[uniqueKey] = name;
+        }
+      } catch (_) {
+        // Type metadata is best effort; pages can still import at root.
+      }
+    }
+
+    return namesByKey;
   }
 
   Future<({String? folderId, int createdFolders})> _ensureFolderPath({
@@ -419,13 +562,26 @@ class AnytypeImportService {
 
   static String _relativeDirectoryForFile(
     File file,
-    Directory exportDirectory,
-  ) {
+    Directory exportDirectory, {
+    required String rawMarkdown,
+  }) {
     final relativePath = path.relative(
       file.parent.path,
       from: exportDirectory.path,
     );
-    return relativePath == '.' ? '' : relativePath;
+    if (relativePath != '.') {
+      return relativePath;
+    }
+
+    final objectType = MarkdownRichTextService.extractAnytypeFrontMatterValue(
+      rawMarkdown: rawMarkdown,
+      key: 'Object type',
+    );
+    if (objectType == null || objectType.trim().isEmpty) {
+      return '';
+    }
+
+    return _sanitizePathSegment(objectType.trim());
   }
 
   static String _relativePath(String targetPath, Directory exportDirectory) {
@@ -435,6 +591,150 @@ class AnytypeImportService {
   static String _titleForMarkdownFile(File markdownFile) {
     final title = path.basenameWithoutExtension(markdownFile.path).trim();
     return title.isEmpty ? 'Imported note' : title;
+  }
+
+  static Map<String, dynamic>? _nativeData(Map<String, dynamic> jsonData) {
+    final snapshot = _mapValue(jsonData['snapshot']);
+    final data = _mapValue(snapshot?['data']);
+    return data;
+  }
+
+  static String _nativeFolderForObject(
+    Map<String, dynamic> data,
+    Map<String, String> typeNames,
+  ) {
+    final details = _mapValue(data['details']);
+    final typeId = _stringValue(details?['type']);
+    if (typeId != null) {
+      final typeName = typeNames[typeId];
+      if (typeName != null && typeName.trim().isNotEmpty) {
+        return _sanitizePathSegment(typeName.trim());
+      }
+    }
+
+    final objectTypes = data['objectTypes'];
+    if (objectTypes is List) {
+      for (final objectType in objectTypes) {
+        final key = _stringValue(objectType);
+        final typeName = key == null ? null : typeNames[key];
+        if (typeName != null && typeName.trim().isNotEmpty) {
+          return _sanitizePathSegment(typeName.trim());
+        }
+      }
+    }
+
+    return '';
+  }
+
+  static String _convertNativeObjectToQuillJson(Map<String, dynamic> data) {
+    final blocks = (data['blocks'] as List?)
+            ?.whereType<Map>()
+            .map((block) => Map<String, dynamic>.from(block))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final blocksById = {
+      for (final block in blocks)
+        if (_stringValue(block['id']) != null)
+          _stringValue(block['id'])!: block,
+    };
+    final root = blocks.isEmpty ? null : blocks.first;
+    final operations = <Map<String, dynamic>>[];
+    final visited = <String>{};
+
+    void visit(String id) {
+      if (!visited.add(id)) {
+        return;
+      }
+
+      if (id == 'header' || id == 'title' || id == 'featuredRelations') {
+        return;
+      }
+
+      final block = blocksById[id];
+      if (block == null) {
+        return;
+      }
+
+      _appendNativeTextBlock(operations, block);
+      final childrenIds = block['childrenIds'];
+      if (childrenIds is List) {
+        for (final childId in childrenIds) {
+          final child = _stringValue(childId);
+          if (child != null) {
+            visit(child);
+          }
+        }
+      }
+    }
+
+    final rootChildren = root?['childrenIds'];
+    if (rootChildren is List) {
+      for (final childId in rootChildren) {
+        final child = _stringValue(childId);
+        if (child != null) {
+          visit(child);
+        }
+      }
+    }
+
+    if (operations.isEmpty) {
+      operations.add({'insert': '\n'});
+    }
+
+    return jsonEncode(operations);
+  }
+
+  static void _appendNativeTextBlock(
+    List<Map<String, dynamic>> operations,
+    Map<String, dynamic> block,
+  ) {
+    final text = _mapValue(block['text']);
+    if (text == null) {
+      return;
+    }
+
+    final value = _stringValue(text['text']) ?? '';
+    final textAttributes = <String, dynamic>{};
+    final lineAttributes = <String, dynamic>{};
+
+    final textColor = MarkdownRichTextService.quillColorFromCss(
+      _stringValue(text['color']),
+    );
+    if (textColor != null) {
+      textAttributes['color'] = textColor;
+    }
+
+    final backgroundColor = MarkdownRichTextService.quillColorFromCss(
+      _stringValue(block['backgroundColor']),
+    );
+    if (backgroundColor != null) {
+      textAttributes['background'] = backgroundColor;
+    }
+
+    switch (_stringValue(text['style'])) {
+      case 'Marked':
+        lineAttributes['list'] = 'bullet';
+      case 'Numbered':
+        lineAttributes['list'] = 'ordered';
+      case 'Checkbox':
+        lineAttributes['list'] = 'unchecked';
+      case 'Header1':
+      case 'Header':
+        lineAttributes['header'] = 1;
+      case 'Header2':
+        lineAttributes['header'] = 2;
+      case 'Header3':
+        lineAttributes['header'] = 3;
+    }
+
+    operations.add({
+      'insert': value,
+      if (textAttributes.isNotEmpty) 'attributes': textAttributes,
+    });
+    operations.add({
+      'insert': '\n',
+      if (lineAttributes.isNotEmpty) 'attributes': lineAttributes,
+    });
   }
 
   static String? _normalizeMarkdownTarget(String? rawTarget) {
@@ -479,6 +779,10 @@ class AnytypeImportService {
 
   static String _sanitizeFileName(String fileName) {
     return fileName.replaceAll(RegExp(r'[^\w.\- ]'), '_');
+  }
+
+  static String _sanitizePathSegment(String segment) {
+    return segment.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_').trim();
   }
 
   static bool _isLikelyImageFile(String filePath) {
@@ -536,6 +840,14 @@ class AnytypeImportService {
       default:
         return null;
     }
+  }
+
+  static Map<String, dynamic>? _mapValue(Object? value) {
+    return value is Map ? Map<String, dynamic>.from(value) : null;
+  }
+
+  static String? _stringValue(Object? value) {
+    return value is String ? value : null;
   }
 }
 

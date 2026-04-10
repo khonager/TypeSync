@@ -82,6 +82,52 @@ class MarkdownRichTextService {
     );
   }
 
+  static String? extractAnytypeFrontMatterValue({
+    required String rawMarkdown,
+    required String key,
+  }) {
+    final frontMatter = _extractAnytypeFrontMatter(rawMarkdown);
+    if (frontMatter == null) {
+      return null;
+    }
+
+    final lines = frontMatter.split('\n');
+    for (var index = 0; index < lines.length; index++) {
+      if (lines[index].trimRight() != '$key:') {
+        continue;
+      }
+
+      for (var valueIndex = index + 1;
+          valueIndex < lines.length;
+          valueIndex++) {
+        final line = lines[valueIndex];
+        if (RegExp(r'^\S.*:\s*').hasMatch(line)) {
+          return null;
+        }
+
+        final listMatch = RegExp(r'^\s*-\s+(.+?)\s*$').firstMatch(line);
+        if (listMatch != null) {
+          return _unquoteYamlScalar(listMatch.group(1)!);
+        }
+
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          return _unquoteYamlScalar(trimmed);
+        }
+      }
+    }
+
+    final inlineMatch = RegExp(
+      '^${RegExp.escape(key)}:\\s*(.+?)\\s*\$',
+      multiLine: true,
+    ).firstMatch(frontMatter);
+    final inlineValue = inlineMatch?.group(1);
+    if (inlineValue == null || inlineValue.isEmpty) {
+      return null;
+    }
+    return _unquoteYamlScalar(inlineValue);
+  }
+
   Delta _convertMarkdownDocument(String markdown) {
     final blocks = _splitIntoBlocks(markdown);
     var delta = Delta();
@@ -173,6 +219,25 @@ class MarkdownRichTextService {
     return match?.group(1)?.trim();
   }
 
+  static String? _extractAnytypeFrontMatter(String rawMarkdown) {
+    final normalized = rawMarkdown.replaceAll('\r\n', '\n');
+    final match = RegExp(r'^\ufeff?---\s*\n([\s\S]*?)\n---\s*(?:\n|$)')
+        .firstMatch(normalized);
+    return match?.group(1);
+  }
+
+  static String _unquoteYamlScalar(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length >= 2) {
+      final first = trimmed[0];
+      final last = trimmed[trimmed.length - 1];
+      if ((first == '"' && last == '"') || (first == "'" && last == "'")) {
+        return trimmed.substring(1, trimmed.length - 1);
+      }
+    }
+    return trimmed;
+  }
+
   static String? _quillColorFromCss(String? value) {
     if (value == null || value.trim().isEmpty) {
       return null;
@@ -186,6 +251,7 @@ class MarkdownRichTextService {
       'green': 'FF008000',
       'blue': 'FF0000FF',
       'yellow': 'FFFFFF00',
+      'lime': 'FFCDFFCC',
       'orange': 'FFFFA500',
       'amber': 'FFFFC107',
       'pink': 'FFFFC0CB',
@@ -193,6 +259,7 @@ class MarkdownRichTextService {
       'teal': 'FF008080',
       'cyan': 'FF00BCD4',
       'sky': 'FF87CEEB',
+      'ice': 'FFD8F6FF',
       'grey': 'FF9E9E9E',
       'gray': 'FF9E9E9E',
     };
@@ -265,6 +332,10 @@ class MarkdownRichTextService {
 
   static String? normalizeMarkdownTargetForReplacement(String rawTarget) {
     return _normalizeMarkdownTarget(rawTarget);
+  }
+
+  static String? quillColorFromCss(String? value) {
+    return _quillColorFromCss(value);
   }
 
   static String _inferUnderlinedLabels(String markdown) {

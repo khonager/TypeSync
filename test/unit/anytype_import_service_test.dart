@@ -72,5 +72,26 @@ Body only
       expect(extracted.title, 'fallback title');
       expect(extracted.body, 'Body only');
     });
+
+    test('reads Object type from Anytype front matter', () {
+      const rawMarkdown = '''
+---
+# yaml-language-server: \$schema=schemas/lernfeld_1.schema.json
+Object type:
+    - Lernfeld 1
+Creation date: "2026-03-09T12:06:42Z"
+id: abc123
+---
+# Imported title
+''';
+
+      expect(
+        MarkdownRichTextService.extractAnytypeFrontMatterValue(
+          rawMarkdown: rawMarkdown,
+          key: 'Object type',
+        ),
+        'Lernfeld 1',
+      );
+    });
   });
 }
