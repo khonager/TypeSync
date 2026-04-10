@@ -92,6 +92,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/adi-registration.properties
     - assets/data/changelog.json
 
   # Using Google Fonts instead of bundled fonts
