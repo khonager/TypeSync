@@ -44,11 +44,9 @@ void main() async {
 
   // Initialize Firebase for cloud sync and authentication
   try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (e) {
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
