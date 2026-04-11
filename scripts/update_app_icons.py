@@ -20,6 +20,7 @@ IOS_CONTENTS = REPO_ROOT / "ios/Runner/Assets.xcassets/AppIcon.appiconset/Conten
 MACOS_CONTENTS = REPO_ROOT / "macos/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json"
 WINDOWS_ICON = REPO_ROOT / "windows/runner/resources/app_icon.ico"
 TOOL_HOME = Path(tempfile.gettempdir()) / "typesync-app-icons-home"
+EXPORT_BACKGROUND = "#1d1d1d"
 
 ANDROID_TARGETS = {
     48: [
@@ -127,6 +128,9 @@ def export_png(size: int, output_path: Path) -> None:
             f"--export-filename={output_path}",
             f"--export-width={size}",
             f"--export-height={size}",
+            f"--export-background={EXPORT_BACKGROUND}",
+            "--export-background-opacity=1",
+            "--export-png-color-mode=RGB_8",
         ],
         env=tool_env(),
         check=True,
