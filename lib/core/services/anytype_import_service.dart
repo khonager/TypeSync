@@ -313,7 +313,8 @@ class AnytypeImportService {
   }
 
   Future<List<File>> _collectNativeObjectFiles(
-      Directory exportDirectory,) async {
+    Directory exportDirectory,
+  ) async {
     final objectsDirectory =
         Directory(path.join(exportDirectory.path, 'objects'));
     if (!await objectsDirectory.exists()) {
