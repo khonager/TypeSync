@@ -1,7 +1,9 @@
+// ignore_for_file: deprecated_member_use
+
 library;
 
 final RegExp _basicEmailPattern = RegExp(
-  r"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$",
+  r'^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$',
   caseSensitive: false,
 );
 
