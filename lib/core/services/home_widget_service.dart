@@ -55,14 +55,22 @@ class HomeWidgetService {
   ];
 
   bool _configured = false;
+  bool _disabledForSession = false;
 
   bool get _supportsWidgets {
     if (kIsWeb) {
       return false;
     }
 
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      // The repo currently lacks the native WidgetKit extension target and
+      // App Group setup described in docs/ios_home_widget_setup.md.
+      // Avoid touching the iOS home_widget bridge during startup until that
+      // native setup exists, otherwise launch can fail very early.
+      return false;
+    }
+
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 
   Future<void> syncUpcoming({
@@ -70,66 +78,71 @@ class HomeWidgetService {
     required Brightness brightness,
     required Color accentColor,
   }) async {
-    if (!_supportsWidgets) {
+    if (!_supportsWidgets || _disabledForSession) {
       return;
     }
 
-    await _configurePlatform();
+    try {
+      await _configurePlatform();
 
-    final placeholderTitle =
-        items.isEmpty ? 'No upcoming items' : 'Upcoming in TypeSync';
-    final placeholderSubtitle = items.isEmpty
-        ? 'Open TypeSync to add homework or events'
-        : 'Open the app to refresh this widget';
+      final placeholderTitle =
+          items.isEmpty ? 'No upcoming items' : 'Upcoming in TypeSync';
+      final placeholderSubtitle = items.isEmpty
+          ? 'Open TypeSync to add homework or events'
+          : 'Open the app to refresh this widget';
 
-    await HomeWidget.saveWidgetData<String>(
-      placeholderTitleKey,
-      placeholderTitle,
-    );
-    await HomeWidget.saveWidgetData<String>(
-      placeholderSubtitleKey,
-      placeholderSubtitle,
-    );
+      await HomeWidget.saveWidgetData<String>(
+        placeholderTitleKey,
+        placeholderTitle,
+      );
+      await HomeWidget.saveWidgetData<String>(
+        placeholderSubtitleKey,
+        placeholderSubtitle,
+      );
 
-    final renderOperations = <Future<String>>[
-      HomeWidget.renderFlutterWidget(
-        _buildPreview(
-          items: items,
-          brightness: brightness,
-          accentColor: accentColor,
+      final renderOperations = <Future<String>>[
+        HomeWidget.renderFlutterWidget(
+          _buildPreview(
+            items: items,
+            brightness: brightness,
+            accentColor: accentColor,
+            logicalSize: defaultWidgetSize,
+          ),
+          key: widgetImageKey,
           logicalSize: defaultWidgetSize,
         ),
-        key: widgetImageKey,
-        logicalSize: defaultWidgetSize,
-      ),
-    ];
+      ];
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      renderOperations.addAll(
-        _androidWidgetVariants
-            .where((variant) => variant.key != widgetImageKey)
-            .map(
-              (variant) => HomeWidget.renderFlutterWidget(
-                _buildPreview(
-                  items: items,
-                  brightness: brightness,
-                  accentColor: accentColor,
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        renderOperations.addAll(
+          _androidWidgetVariants
+              .where((variant) => variant.key != widgetImageKey)
+              .map(
+                (variant) => HomeWidget.renderFlutterWidget(
+                  _buildPreview(
+                    items: items,
+                    brightness: brightness,
+                    accentColor: accentColor,
+                    logicalSize: variant.logicalSize,
+                  ),
+                  key: variant.key,
                   logicalSize: variant.logicalSize,
                 ),
-                key: variant.key,
-                logicalSize: variant.logicalSize,
               ),
-            ),
+        );
+      }
+
+      await Future.wait(renderOperations);
+
+      await HomeWidget.updateWidget(
+        name: androidWidgetName,
+        qualifiedAndroidName: androidQualifiedName,
+        iOSName: iosWidgetName,
       );
+    } catch (e) {
+      _disabledForSession = true;
+      debugPrint('HomeWidgetService disabled for this launch: $e');
     }
-
-    await Future.wait(renderOperations);
-
-    await HomeWidget.updateWidget(
-      name: androidWidgetName,
-      qualifiedAndroidName: androidQualifiedName,
-      iOSName: iosWidgetName,
-    );
   }
 
   Future<void> _configurePlatform() async {
