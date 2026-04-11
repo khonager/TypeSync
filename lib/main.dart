@@ -44,9 +44,21 @@ void main() async {
 
   // Initialize Firebase for cloud sync and authentication
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    if (kIsWeb) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } else if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      // On Apple platforms the native Firebase app may already be created from
+      // bundled configuration before Dart runs. Reusing that default app avoids
+      // duplicate-app crashes during startup.
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
   } catch (e) {
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
