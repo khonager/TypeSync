@@ -396,11 +396,19 @@ class AuthService extends ChangeNotifier {
       return true;
     } on firebase.FirebaseAuthException catch (e) {
       // Handle specific Firebase auth errors
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW signIn failed code=${e.code} message=${e.message ?? 'unknown'} email=${email.trim()}',
+      );
       _setError(_mapFirebaseError(e.code));
       _setLoading(false);
       return false;
     } catch (e) {
       // Firedart errors might come here
+      _diagnostics.error(
+        'AuthService',
+        'AUTH_FLOW signIn unexpected failure email=${email.trim()} error=$e',
+      );
       _setError(
         e.toString().contains('INVALID_PASSWORD')
             ? 'Incorrect password.'
@@ -514,10 +522,18 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
       return true;
     } on firebase.FirebaseAuthException catch (e) {
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW register failed code=${e.code} message=${e.message ?? 'unknown'} email=${email.trim()}',
+      );
       _setError(_mapFirebaseError(e.code));
       _setLoading(false);
       return false;
     } catch (e) {
+      _diagnostics.error(
+        'AuthService',
+        'AUTH_FLOW register unexpected failure email=${email.trim()} error=$e',
+      );
       _setError('Registration failed. Please try again: $e');
       _setLoading(false);
       return false;

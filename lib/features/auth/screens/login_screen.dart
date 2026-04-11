@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/utils/email_validation.dart';
 import 'magic_link_dialog.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/expandable_error.dart';
@@ -124,15 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     prefixIcon: Icons.email_outlined,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Email is required';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Enter a valid email';
-                      }
-                      return null;
-                    },
+                    validator: validateEmailAddress,
                   ),
                   const SizedBox(height: 16),
 
