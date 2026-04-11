@@ -52,25 +52,26 @@ class DefaultFirebaseOptions {
   // 5. Run: flutterfire configure (recommended)
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
-    appId: '1:461465199276:web:default',
+    apiKey: 'AIzaSyDbOerbQZ6Dqx5XkZGRVHRuV8vbPmdKaoU',
+    appId: '1:461465199276:web:6ce6089fe3829c9ebd3509',
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
-    authDomain: 'typesync.khonager.de',
+    authDomain: 'typesynced.firebaseapp.com',
     storageBucket: 'typesynced.firebasestorage.app',
+    measurementId: 'G-FQVW9Z5NX1',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
-    appId: '1:461465199276:android:5c90b9333e07c88ebd3509',
+    appId: '1:461465199276:android:43f89e04963a4357bd3509',
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
     storageBucket: 'typesynced.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs',
-    appId: '1:461465199276:ios:default',
+    apiKey: 'AIzaSyA75WfsuU-2FigM2TeOJrGuLZVwHPf9l6s',
+    appId: '1:461465199276:ios:0b86a2a2e5e6810bbd3509',
     messagingSenderId: '461465199276',
     projectId: 'typesynced',
     storageBucket: 'typesynced.firebasestorage.app',
