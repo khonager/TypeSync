@@ -44,21 +44,7 @@ void main() async {
 
   // Initialize Firebase for cloud sync and authentication
   try {
-    if (kIsWeb) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    } else if (defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      // On Apple platforms the native Firebase app may already be created from
-      // bundled configuration before Dart runs. Reusing that default app avoids
-      // duplicate-app crashes during startup.
-      await Firebase.initializeApp();
-    } else {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
+    await _initializeFirebase();
   } catch (e) {
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
@@ -112,6 +98,46 @@ void main() async {
 
   // Run the app with multi-provider setup for state management
   runApp(const TypeSyncApp());
+}
+
+Future<void> _initializeFirebase() async {
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    return;
+  }
+
+  if (defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS) {
+    try {
+      // Prefer the native default app on Apple platforms when a bundled
+      // GoogleService-Info.plist exists.
+      await Firebase.initializeApp();
+      return;
+    } on FirebaseException catch (e) {
+      final code = e.code.toLowerCase();
+      final message = e.message?.toLowerCase() ?? '';
+      final missingNativeApp = code == 'no-app' ||
+          code == 'core/no-app' ||
+          message.contains('no firebase app') ||
+          message.contains('no app');
+
+      if (!missingNativeApp) {
+        rethrow;
+      }
+
+      // Fall back to Dart-provided options when the native plist is absent.
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      return;
+    }
+  }
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 }
 
 /// Root widget that sets up all providers for the application
