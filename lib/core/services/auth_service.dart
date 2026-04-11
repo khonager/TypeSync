@@ -1126,6 +1126,9 @@ class AuthService extends ChangeNotifier {
   /// Map Firebase error codes to user-friendly messages
   String _mapFirebaseError(String code) {
     switch (code) {
+      case 'invalid-credential':
+      case 'invalid-login-credentials':
+        return 'Email or password is incorrect.';
       case 'user-not-found':
         return 'No account found with this email.';
       case 'wrong-password':
