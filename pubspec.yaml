@@ -63,6 +63,7 @@ dependencies:
   path: ^1.9.0
   http: ^1.2.0
   firedart: ^0.9.8
+  package_info_plus: ^8.3.0
 
   # Platform Specific
   window_manager: ^0.4.2
