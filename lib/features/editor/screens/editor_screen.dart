@@ -171,8 +171,9 @@ class _EditorScreenState extends State<EditorScreen>
         // Parse content as Delta if it's JSON, otherwise treat as plain text
         try {
           if (_note!.content.isNotEmpty && _note!.content.startsWith('[')) {
-            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
-            final document = Document.fromJson(jsonData);
+            final loadResult = _loadDocumentFromStoredContent(_note!.content);
+            final document = loadResult.document;
+            _lastSavedContent = loadResult.normalizedContent;
             _quillController = QuillController(
               document: document,
               selection: const TextSelection.collapsed(offset: 0),
@@ -180,6 +181,7 @@ class _EditorScreenState extends State<EditorScreen>
           } else {
             // Plain text content
             final document = Document()..insert(0, _note!.content);
+            _lastSavedContent = _note!.content;
             _quillController = QuillController(
               document: document,
               selection: const TextSelection.collapsed(offset: 0),
@@ -188,6 +190,7 @@ class _EditorScreenState extends State<EditorScreen>
         } catch (e) {
           // If parsing fails, create empty document with content as plain text
           final document = Document()..insert(0, _note!.content);
+          _lastSavedContent = _note!.content;
           _quillController = QuillController(
             document: document,
             selection: const TextSelection.collapsed(offset: 0),
@@ -381,6 +384,116 @@ class _EditorScreenState extends State<EditorScreen>
     return offset.clamp(0, maxOffset).toInt();
   }
 
+  ({Document document, String normalizedContent})
+      _loadDocumentFromStoredContent(
+    String content,
+  ) {
+    final normalizedContent = _normalizedStoredContent(content);
+    final document = Document.fromJson(
+      jsonDecode(normalizedContent) as List<dynamic>,
+    );
+    return (document: document, normalizedContent: normalizedContent);
+  }
+
+  String _normalizedStoredContent(String content) {
+    if (content.isEmpty || !content.trimLeft().startsWith('[')) {
+      return content;
+    }
+
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is! List<dynamic>) {
+        return content;
+      }
+      final normalized = _sanitizeDeltaOperations(decoded);
+      return jsonEncode(normalized);
+    } catch (_) {
+      return content;
+    }
+  }
+
+  List<dynamic> _sanitizeDeltaOperations(List<dynamic> operations) {
+    final sanitized = <Map<String, dynamic>>[];
+
+    for (final rawOperation in operations) {
+      if (rawOperation is! Map) {
+        continue;
+      }
+
+      final operation = Map<String, dynamic>.from(rawOperation);
+      final insert = operation['insert'];
+      if (insert is! Map) {
+        sanitized.add(operation);
+        continue;
+      }
+
+      final replacement = _unsupportedEmbedReplacement(insert);
+      if (replacement != null) {
+        sanitized.addAll(replacement);
+        continue;
+      }
+
+      sanitized.add(operation);
+    }
+
+    if (sanitized.isEmpty) {
+      return const [
+        {'insert': '\n'},
+      ];
+    }
+
+    final lastInsert = sanitized.last['insert'];
+    if (lastInsert is! String || !lastInsert.endsWith('\n')) {
+      sanitized.add(const {'insert': '\n'});
+    }
+
+    return sanitized;
+  }
+
+  List<Map<String, dynamic>>? _unsupportedEmbedReplacement(
+    Map<dynamic, dynamic> insert,
+  ) {
+    final keys = insert.keys.toList(growable: false);
+    if (keys.isEmpty) {
+      return const [
+        {'insert': '[Unsupported content]\n'},
+      ];
+    }
+
+    final embedType = '${keys.first}';
+    if (embedType == TypeSyncKanbanEmbed.kanbanType ||
+        embedType == TypeSyncTableEmbed.tableType ||
+        embedType == 'x-embed-table') {
+      return null;
+    }
+
+    final embedValue = insert[keys.first];
+    return [
+      {'insert': _unsupportedEmbedText(embedType, embedValue)},
+    ];
+  }
+
+  String _unsupportedEmbedText(String embedType, Object? embedValue) {
+    final rawValue = embedValue?.toString().trim() ?? '';
+    final uri = Uri.tryParse(rawValue);
+    final uriPath = uri?.path;
+    final label = rawValue.isEmpty
+        ? ''
+        : p
+            .basename((uriPath?.isNotEmpty ?? false) ? uriPath! : rawValue)
+            .trim();
+
+    return switch (embedType) {
+      BlockEmbed.imageType =>
+        label.isEmpty ? '[Image attachment]\n' : '[Image attachment: $label]\n',
+      BlockEmbed.videoType =>
+        label.isEmpty ? '[Video attachment]\n' : '[Video attachment: $label]\n',
+      BlockEmbed.formulaType =>
+        rawValue.isEmpty ? '[Formula]\n' : '$rawValue\n',
+      _ => '[Unsupported content]\n',
+    };
+  }
+
   String? _minimumVersionRequiredByCurrentDocument() {
     final operations = _quillController.document.toDelta().toJson();
     for (final operation in operations) {
@@ -528,7 +641,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (providerNote.updatedAt.isAfter(_note!.updatedAt) ||
           providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
-        final providerContent = providerNote.content;
+        final providerContent = _normalizedStoredContent(providerNote.content);
         final localContent =
             jsonEncode(_quillController.document.toDelta().toJson());
 
@@ -2943,8 +3056,9 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted) return;
 
     try {
+      final normalizedContent = _normalizedStoredContent(providerNote.content);
       final delta =
-          Delta.fromJson(jsonDecode(providerNote.content) as List<dynamic>);
+          Delta.fromJson(jsonDecode(normalizedContent) as List<dynamic>);
 
       setState(() {
         _isUpdatingFromExternal = true;
@@ -2960,7 +3074,7 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         _note = providerNote;
-        _lastSavedContent = providerNote.content;
+        _lastSavedContent = normalizedContent;
         _characterCount = providerNote.characterCount;
         _lineCount = providerNote.lineCount;
         _titleController.text = providerNote.title;

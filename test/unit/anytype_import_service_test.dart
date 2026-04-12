@@ -195,5 +195,35 @@ Object type:
         true,
       );
     });
+
+    test('flattens unsupported image embeds into safe text', () {
+      const rawMarkdown = '''
+# Images
+
+![Cover](assets/cover.png)
+''';
+
+      final converted = MarkdownRichTextService.instance.convertAnytypeMarkdown(
+        rawMarkdown: rawMarkdown,
+        fallbackTitle: 'fallback',
+      );
+      final operations =
+          jsonDecode(converted.quillContentJson) as List<dynamic>;
+
+      expect(
+        operations.every(
+          (operation) =>
+              (operation as Map<String, dynamic>)['insert'] is String,
+        ),
+        isTrue,
+      );
+      expect(
+        operations
+            .map((operation) => (operation as Map<String, dynamic>)['insert'])
+            .whereType<String>()
+            .join(),
+        contains('[Image attachment: cover.png]'),
+      );
+    });
   });
 }

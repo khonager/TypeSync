@@ -4,10 +4,13 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:path/path.dart' as path;
 
+import '../models/typesync_kanban_embed.dart';
 import '../models/typesync_table_embed.dart';
 
 class ConvertedMarkdownNote {
@@ -199,7 +202,7 @@ class MarkdownRichTextService {
       html,
       transformTableAsEmbed: false,
     );
-    return _normalizeColorAttributes(delta);
+    return _flattenUnsupportedEmbeds(_normalizeColorAttributes(delta));
   }
 
   static String _stripInlineMarkdown(String input) {
@@ -235,6 +238,49 @@ class MarkdownRichTextService {
     }
 
     return normalized;
+  }
+
+  static Delta _flattenUnsupportedEmbeds(Delta delta) {
+    final normalized = Delta();
+
+    for (final operation in delta.toList()) {
+      final data = operation.data;
+      if (data is! Map) {
+        normalized.push(operation);
+        continue;
+      }
+
+      final embedKeys = data.keys.toList(growable: false);
+      final embedType = embedKeys.isEmpty ? null : embedKeys.first;
+      if (embedType == TypeSyncKanbanEmbed.kanbanType ||
+          embedType == TypeSyncTableEmbed.tableType ||
+          embedType == 'x-embed-table') {
+        normalized.push(operation);
+        continue;
+      }
+
+      final embedValue = embedType == null ? null : data[embedType as Object];
+      normalized.insert(_unsupportedEmbedText('$embedType', embedValue));
+    }
+
+    return normalized;
+  }
+
+  static String _unsupportedEmbedText(String embedType, Object? embedValue) {
+    final rawValue = embedValue?.toString().trim() ?? '';
+    final label = rawValue.isEmpty
+        ? ''
+        : path.basename(Uri.tryParse(rawValue)?.path ?? rawValue).trim();
+
+    return switch (embedType) {
+      BlockEmbed.imageType =>
+        label.isEmpty ? '[Image attachment]\n' : '[Image attachment: $label]\n',
+      BlockEmbed.videoType =>
+        label.isEmpty ? '[Video attachment]\n' : '[Video attachment: $label]\n',
+      BlockEmbed.formulaType =>
+        rawValue.isEmpty ? '[Formula]\n' : '$rawValue\n',
+      _ => '[Unsupported content]\n',
+    };
   }
 
   static String? _extractAnytypeFrontMatter(String rawMarkdown) {
