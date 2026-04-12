@@ -4,9 +4,8 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter_quill/flutter_quill.dart';
-import 'package:flutter_quill/markdown_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
+import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../models/typesync_table_embed.dart';
@@ -86,46 +85,78 @@ class MarkdownRichTextService {
     required String rawMarkdown,
     required String key,
   }) {
-    final frontMatter = _extractAnytypeFrontMatter(rawMarkdown);
-    if (frontMatter == null) {
+    final values = extractAnytypeFrontMatterValues(rawMarkdown: rawMarkdown);
+    for (final entry in values.entries) {
+      if (entry.key.toLowerCase() != key.toLowerCase()) {
+        continue;
+      }
+      for (final value in entry.value) {
+        if (value.trim().isNotEmpty) {
+          return value.trim();
+        }
+      }
       return null;
     }
+    return null;
+  }
 
-    final lines = frontMatter.split('\n');
-    for (var index = 0; index < lines.length; index++) {
-      if (lines[index].trimRight() != '$key:') {
+  static Map<String, List<String>> extractAnytypeFrontMatterValues({
+    required String rawMarkdown,
+  }) {
+    final frontMatter = _extractAnytypeFrontMatter(rawMarkdown);
+    if (frontMatter == null) {
+      return <String, List<String>>{};
+    }
+
+    final values = <String, List<String>>{};
+    String? currentKey;
+
+    for (final rawLine in frontMatter.split('\n')) {
+      final line = rawLine.trimRight();
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
         continue;
       }
 
-      for (var valueIndex = index + 1;
-          valueIndex < lines.length;
-          valueIndex++) {
-        final line = lines[valueIndex];
-        if (RegExp(r'^\S.*:\s*').hasMatch(line)) {
-          return null;
+      final keyMatch =
+          RegExp(r'^([^:\n][^:\n]*?):(?:\s*(.*))?$').firstMatch(trimmed);
+      if (keyMatch != null && !trimmed.startsWith('- ')) {
+        currentKey = keyMatch.group(1)!.trim();
+        final inlineValue = keyMatch.group(2)?.trim() ?? '';
+        if (currentKey.isEmpty) {
+          currentKey = null;
+          continue;
         }
 
-        final listMatch = RegExp(r'^\s*-\s+(.+?)\s*$').firstMatch(line);
-        if (listMatch != null) {
-          return _unquoteYamlScalar(listMatch.group(1)!);
+        values.putIfAbsent(currentKey, () => <String>[]);
+        if (inlineValue.isNotEmpty) {
+          values[currentKey]!.add(_unquoteYamlScalar(inlineValue));
+          currentKey = null;
         }
+        continue;
+      }
 
-        final trimmed = line.trim();
-        if (trimmed.isNotEmpty) {
-          return _unquoteYamlScalar(trimmed);
-        }
+      if (currentKey == null) {
+        continue;
+      }
+
+      final listMatch = RegExp(r'^-\s+(.+?)\s*$').firstMatch(trimmed);
+      if (listMatch != null) {
+        values[currentKey]!.add(_unquoteYamlScalar(listMatch.group(1)!));
+        continue;
+      }
+
+      if (!RegExp(r'^\S.*:\s*').hasMatch(line)) {
+        values[currentKey]!.add(_unquoteYamlScalar(trimmed));
+        currentKey = null;
       }
     }
 
-    final inlineMatch = RegExp(
-      '^${RegExp.escape(key)}:\\s*(.+?)\\s*\$',
-      multiLine: true,
-    ).firstMatch(frontMatter);
-    final inlineValue = inlineMatch?.group(1);
-    if (inlineValue == null || inlineValue.isEmpty) {
-      return null;
-    }
-    return _unquoteYamlScalar(inlineValue);
+    values.removeWhere((_, entries) {
+      entries.removeWhere((entry) => entry.trim().isEmpty);
+      return entries.isEmpty;
+    });
+    return values;
   }
 
   Delta _convertMarkdownDocument(String markdown) {
@@ -159,49 +190,16 @@ class MarkdownRichTextService {
   }
 
   Delta _markdownToDelta(String markdown) {
-    final document = md.Document(
-      encodeHtml: false,
+    final html = md.markdownToHtml(
+      markdown,
       extensionSet: md.ExtensionSet.gitHubFlavored,
+      encodeHtml: false,
     );
-
-    final converter = MarkdownToDelta(
-      markdownDocument: document,
-      customElementToInlineAttribute: {
-        'mark': (_) => const [BackgroundAttribute('FFFFFF00')],
-        'u': (_) => const [Attribute.underline],
-        'span': _attributesForStyledSpan,
-        'font': _attributesForStyledSpan,
-      },
+    final delta = HtmlToDelta().convert(
+      html,
+      transformTableAsEmbed: false,
     );
-
-    return converter.convert(markdown);
-  }
-
-  List<Attribute<dynamic>> _attributesForStyledSpan(md.Element element) {
-    final attributes = <Attribute<dynamic>>[];
-    final directColor = element.attributes['color'];
-    final style = element.attributes['style'] ?? '';
-
-    final colorValue = directColor ?? _cssDeclaration(style, 'color');
-    final backgroundValue = _cssDeclaration(style, 'background-color');
-
-    final quillColor = _quillColorFromCss(colorValue);
-    if (quillColor != null) {
-      attributes.add(ColorAttribute(quillColor));
-    }
-
-    final quillBackground = _quillColorFromCss(backgroundValue);
-    if (quillBackground != null) {
-      attributes.add(BackgroundAttribute(quillBackground));
-    }
-
-    final textDecoration = _cssDeclaration(style, 'text-decoration');
-    if (textDecoration != null &&
-        textDecoration.toLowerCase().contains('underline')) {
-      attributes.add(Attribute.underline);
-    }
-
-    return attributes;
+    return _normalizeColorAttributes(delta);
   }
 
   static String _stripInlineMarkdown(String input) {
@@ -211,12 +209,32 @@ class MarkdownRichTextService {
         .trim();
   }
 
-  static String? _cssDeclaration(String style, String name) {
-    final match = RegExp(
-      '$name\\s*:\\s*([^;]+)',
-      caseSensitive: false,
-    ).firstMatch(style);
-    return match?.group(1)?.trim();
+  static Delta _normalizeColorAttributes(Delta delta) {
+    final normalized = Delta();
+
+    for (final operation in delta.toList()) {
+      final rawAttributes = operation.attributes;
+      if (rawAttributes == null || rawAttributes.isEmpty) {
+        normalized.push(operation);
+        continue;
+      }
+
+      final attributes = Map<String, dynamic>.from(rawAttributes);
+      final color = _quillColorFromCss(attributes['color'] as String?);
+      if (color != null) {
+        attributes['color'] = color;
+      }
+
+      final background =
+          _quillColorFromCss(attributes['background'] as String?);
+      if (background != null) {
+        attributes['background'] = background;
+      }
+
+      normalized.insert(operation.data, attributes.isEmpty ? null : attributes);
+    }
+
+    return normalized;
   }
 
   static String? _extractAnytypeFrontMatter(String rawMarkdown) {
@@ -245,23 +263,23 @@ class MarkdownRichTextService {
 
     final normalized = value.trim().toLowerCase();
     const named = <String, String>{
-      'black': 'FF000000',
-      'white': 'FFFFFFFF',
-      'red': 'FFFF0000',
-      'green': 'FF008000',
-      'blue': 'FF0000FF',
-      'yellow': 'FFFFFF00',
-      'lime': 'FFCDFFCC',
-      'orange': 'FFFFA500',
-      'amber': 'FFFFC107',
-      'pink': 'FFFFC0CB',
-      'purple': 'FF800080',
-      'teal': 'FF008080',
-      'cyan': 'FF00BCD4',
-      'sky': 'FF87CEEB',
-      'ice': 'FFD8F6FF',
-      'grey': 'FF9E9E9E',
-      'gray': 'FF9E9E9E',
+      'black': '#000000',
+      'white': '#FFFFFF',
+      'red': '#FF0000',
+      'green': '#008000',
+      'blue': '#0000FF',
+      'yellow': '#FFFF00',
+      'lime': '#CDFFCC',
+      'orange': '#FFA500',
+      'amber': '#FFC107',
+      'pink': '#FFC0CB',
+      'purple': '#800080',
+      'teal': '#008080',
+      'cyan': '#00BCD4',
+      'sky': '#87CEEB',
+      'ice': '#D8F6FF',
+      'grey': '#9E9E9E',
+      'gray': '#9E9E9E',
     };
 
     if (named.containsKey(normalized)) {
@@ -272,13 +290,13 @@ class MarkdownRichTextService {
       final hex = normalized.substring(1);
       if (hex.length == 3) {
         final expanded = hex.split('').map((char) => '$char$char').join();
-        return 'FF${expanded.toUpperCase()}';
+        return '#${expanded.toUpperCase()}';
       }
       if (hex.length == 6) {
-        return 'FF${hex.toUpperCase()}';
+        return '#${hex.toUpperCase()}';
       }
       if (hex.length == 8) {
-        return hex.toUpperCase();
+        return '#${hex.toUpperCase()}';
       }
     }
 
@@ -293,16 +311,19 @@ class MarkdownRichTextService {
       final alpha = alphaGroup == null
           ? 255
           : (double.parse(alphaGroup).clamp(0, 1) * 255).round();
-      return _argbHex(alpha, red, green, blue);
+      return _hexColor(alpha, red, green, blue);
     }
 
     return null;
   }
 
-  static String _argbHex(int alpha, int red, int green, int blue) {
+  static String _hexColor(int alpha, int red, int green, int blue) {
     String hex(int value) =>
-        value.clamp(0, 255).toRadixString(16).padLeft(2, '0');
-    return '${hex(alpha)}${hex(red)}${hex(green)}${hex(blue)}'.toUpperCase();
+        value.clamp(0, 255).toRadixString(16).padLeft(2, '0').toUpperCase();
+    if (alpha >= 255) {
+      return '#${hex(red)}${hex(green)}${hex(blue)}';
+    }
+    return '#${hex(alpha)}${hex(red)}${hex(green)}${hex(blue)}';
   }
 
   static String _rewriteMarkdownTargets(

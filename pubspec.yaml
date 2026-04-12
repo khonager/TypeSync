@@ -38,6 +38,7 @@ dependencies:
 
   # Markdown & Text Editing
   flutter_quill: ^10.8.0
+  flutter_quill_delta_from_html: ^1.5.3
   markdown: ^7.2.2
   flutter_markdown: ^0.7.3
 

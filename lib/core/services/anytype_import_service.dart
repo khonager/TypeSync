@@ -574,15 +574,97 @@ class AnytypeImportService {
       return relativePath;
     }
 
-    final objectType = MarkdownRichTextService.extractAnytypeFrontMatterValue(
+    return inferFolderPathFromMarkdownMetadata(rawMarkdown: rawMarkdown);
+  }
+
+  static String inferFolderPathFromMarkdownMetadata({
+    required String rawMarkdown,
+  }) {
+    final frontMatterValues =
+        MarkdownRichTextService.extractAnytypeFrontMatterValues(
       rawMarkdown: rawMarkdown,
-      key: 'Object type',
     );
-    if (objectType == null || objectType.trim().isEmpty) {
+    if (frontMatterValues.isEmpty) {
       return '';
     }
 
-    return _sanitizePathSegment(objectType.trim());
+    const preferredKeys = <String>[
+      'Folder',
+      'Folders',
+      'Class',
+      'Classes',
+      'Course',
+      'Courses',
+      'Subject',
+      'Subjects',
+      'Topic',
+      'Topics',
+      'Area',
+      'Areas',
+      'Project',
+      'Projects',
+      'Notebook',
+      'Notebooks',
+      'Collection',
+      'Collections',
+      'Set',
+      'Sets',
+      'Tag',
+      'Tags',
+    ];
+    final preferredValue = _firstFrontMatterValueForKeys(
+      frontMatterValues,
+      preferredKeys,
+    );
+    final sanitizedPreferred = _sanitizeFolderCandidate(preferredValue);
+    if (sanitizedPreferred != null) {
+      return sanitizedPreferred;
+    }
+
+    const ignoredKeys = <String>{
+      'id',
+      'name',
+      'title',
+      'object type',
+      'type',
+      'created',
+      'creation date',
+      'created at',
+      'last modified',
+      'last modified date',
+      'updated',
+      'updated at',
+      'description',
+      'source',
+      'origin',
+      'cover',
+      'icon',
+      'layout',
+    };
+
+    for (final entry in frontMatterValues.entries) {
+      if (ignoredKeys.contains(entry.key.toLowerCase())) {
+        continue;
+      }
+
+      for (final value in entry.value) {
+        final candidate = _sanitizeFolderCandidate(value);
+        if (candidate != null) {
+          return candidate;
+        }
+      }
+    }
+
+    final objectType = _sanitizeFolderCandidate(
+      _firstFrontMatterValueForKeys(
+        frontMatterValues,
+        const ['Object type', 'Type'],
+      ),
+    );
+    if (objectType == null || _isGenericAnytypeObjectType(objectType)) {
+      return '';
+    }
+    return objectType;
   }
 
   static String _relativePath(String targetPath, Directory exportDirectory) {
@@ -769,6 +851,62 @@ class AnytypeImportService {
     }
 
     return target;
+  }
+
+  static String? _firstFrontMatterValueForKeys(
+    Map<String, List<String>> values,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      for (final entry in values.entries) {
+        if (entry.key.toLowerCase() != key.toLowerCase()) {
+          continue;
+        }
+        for (final value in entry.value) {
+          if (value.trim().isNotEmpty) {
+            return value.trim();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? _sanitizeFolderCandidate(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final sanitized = _sanitizePathSegment(value);
+    if (sanitized.isEmpty || _looksLikeMetadataOnlyValue(sanitized)) {
+      return null;
+    }
+    return sanitized;
+  }
+
+  static bool _looksLikeMetadataOnlyValue(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return true;
+    }
+    if (Uri.tryParse(trimmed)?.hasScheme == true) {
+      return true;
+    }
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$').hasMatch(trimmed)) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _isGenericAnytypeObjectType(String value) {
+    return const {
+      'page',
+      'note',
+      'bookmark',
+      'task',
+      'file',
+      'tag',
+    }.contains(value.trim().toLowerCase());
   }
 
   static bool _isWithinOrEqual(String parentPath, String targetPath) {
