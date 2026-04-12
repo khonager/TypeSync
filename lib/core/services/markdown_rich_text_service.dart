@@ -165,6 +165,7 @@ class MarkdownRichTextService {
   Delta _convertMarkdownDocument(String markdown) {
     final blocks = _splitIntoBlocks(markdown);
     var delta = Delta();
+    var hasContent = false;
 
     for (final block in blocks) {
       switch (block) {
@@ -172,11 +173,19 @@ class MarkdownRichTextService {
           if (block.markdown.trim().isEmpty) {
             continue;
           }
+          if (hasContent) {
+            _ensureTrailingNewline(delta);
+          }
           delta = delta.concat(_markdownToDelta(block.markdown));
+          hasContent = true;
         case _MarkdownTableBlock():
+          if (hasContent) {
+            _ensureTrailingNewline(delta);
+          }
           final table = TypeSyncTableData.fromMarkdownTable(block.markdown);
           delta.insert(TypeSyncTableEmbed.toBlockEmbed(table).toJson());
           delta.insert('\n');
+          hasContent = true;
       }
     }
 
@@ -190,6 +199,17 @@ class MarkdownRichTextService {
     }
 
     return delta;
+  }
+
+  void _ensureTrailingNewline(Delta delta) {
+    if (delta.isEmpty) {
+      return;
+    }
+
+    final last = delta.last.value;
+    if (last is! String || !last.endsWith('\n')) {
+      delta.insert('\n');
+    }
   }
 
   Delta _markdownToDelta(String markdown) {
@@ -520,6 +540,15 @@ class MarkdownRichTextService {
         continue;
       }
 
+      if (_isBlankMarkdownSeparator(lines[index])) {
+        if (buffer.isNotEmpty) {
+          blocks.add(_MarkdownTextBlock(buffer.join('\n')));
+          buffer.clear();
+        }
+        index++;
+        continue;
+      }
+
       buffer.add(lines[index]);
       index++;
     }
@@ -529,6 +558,10 @@ class MarkdownRichTextService {
     }
 
     return blocks;
+  }
+
+  static bool _isBlankMarkdownSeparator(String line) {
+    return _trimLooseIndent(line).isEmpty;
   }
 
   static bool _isMarkdownTableStart(List<String> lines, int index) {

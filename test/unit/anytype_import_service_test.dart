@@ -308,6 +308,53 @@ Example
         contains('Example'),
       );
     });
+
+    test('preserves paragraph and label line breaks from Anytype markdown', () {
+      const rawMarkdown = '''
+Präsentation Elektronische Sicherheitstechnik (was gibt es alles)   
+   
+Grundlagen des Einbruchsschutzen   
+  Top prinzip   
+     
+Präsentation 3-5 Minuten   
+an:    
+von:    
+Auflistung:   
+- BMA    
+- EMA   
+''';
+
+      final converted = MarkdownRichTextService.instance.convertAnytypeMarkdown(
+        rawMarkdown: rawMarkdown,
+        fallbackTitle: 'fallback',
+      );
+      final operations =
+          jsonDecode(converted.quillContentJson) as List<dynamic>;
+      final text = operations
+          .map((operation) => (operation as Map<String, dynamic>)['insert'])
+          .whereType<String>()
+          .join();
+
+      expect(
+        text,
+        contains(
+          'Präsentation Elektronische Sicherheitstechnik (was gibt es alles)\n',
+        ),
+      );
+      expect(text, contains('Grundlagen des Einbruchsschutzen\nTop prinzip'));
+      expect(text, contains('Präsentation 3-5 Minuten\n'));
+      expect(text, contains('an:'));
+      expect(text, contains('von:'));
+      expect(text, contains('Auflistung:'));
+      expect(text, contains('BMA'));
+      expect(text, contains('EMA'));
+      expect(
+        text.contains(
+          'Präsentation Elektronische Sicherheitstechnik (was gibt es alles)Grundlagen des Einbruchsschutzen',
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('AnytypeImportService.convertNativeObjectToQuillJsonForTesting', () {
