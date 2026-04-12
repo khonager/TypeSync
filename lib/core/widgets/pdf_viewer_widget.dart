@@ -35,6 +35,14 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
     _loadPdf();
   }
 
+  @override
+  void didUpdateWidget(covariant PdfViewerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pdfFile.path != widget.pdfFile.path) {
+      _loadPdf();
+    }
+  }
+
   Future<void> _loadPdf() async {
     try {
       setState(() {

@@ -18,11 +18,24 @@ class RemotePdfEmbed extends StatefulWidget {
 }
 
 class _RemotePdfEmbedState extends State<RemotePdfEmbed> {
-  late final String _viewType;
+  late String _viewType;
 
   @override
   void initState() {
     super.initState();
+    _registerView();
+  }
+
+  @override
+  void didUpdateWidget(covariant RemotePdfEmbed oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _registerView();
+      setState(() {});
+    }
+  }
+
+  void _registerView() {
     _viewType =
         'remote-pdf-${DateTime.now().microsecondsSinceEpoch}-${widget.url.hashCode}';
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (viewId) {

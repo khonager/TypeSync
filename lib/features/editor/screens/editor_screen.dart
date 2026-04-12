@@ -1798,7 +1798,10 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
-        return _buildInlinePdfPreview(bytes);
+        return _buildInlinePdfPreview(
+          bytes,
+          identity: attachment.id,
+        );
       }
 
       if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
@@ -1829,9 +1832,13 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isRemoteAttachmentPath(attachment.path)) {
       if (_isPdfAttachment(extension, mimeType)) {
         if (kIsWeb) {
-          return RemotePdfEmbed(url: attachment.path);
+          return RemotePdfEmbed(
+            key: ValueKey('remote-pdf-${attachment.path}'),
+            url: attachment.path,
+          );
         }
         return FutureBuilder<Uint8List?>(
+          key: ValueKey('remote-pdf-future-${attachment.path}'),
           future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1840,7 +1847,10 @@ class _EditorScreenState extends State<EditorScreen>
             if (!snapshot.hasData) {
               return _buildAttachmentUnavailable(attachment);
             }
-            return _buildInlinePdfPreview(snapshot.data!);
+            return _buildInlinePdfPreview(
+              snapshot.data!,
+              identity: attachment.path,
+            );
           },
         );
       }
@@ -1921,7 +1931,10 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (_isPdfAttachment(extension, mimeType)) {
-      return PdfViewerWidget(pdfFile: file);
+      return PdfViewerWidget(
+        key: ValueKey('local-pdf-${attachment.path}'),
+        pdfFile: file,
+      );
     }
 
     if (_isSvgAttachment(extension, mimeType)) {
@@ -2223,8 +2236,14 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Widget _buildInlinePdfPreview(Uint8List bytes) {
-    return InlinePdfPreview(pdfBytes: bytes);
+  Widget _buildInlinePdfPreview(
+    Uint8List bytes, {
+    Object? identity,
+  }) {
+    return InlinePdfPreview(
+      key: identity == null ? null : ValueKey('inline-pdf-$identity'),
+      pdfBytes: bytes,
+    );
   }
 
   void _showConflictDialog() {
