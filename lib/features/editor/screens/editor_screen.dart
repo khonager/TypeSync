@@ -205,7 +205,7 @@ class _EditorScreenState extends State<EditorScreen>
     // Create new note if none exists
     if (_note == null) {
       _quillController = QuillController.basic();
-      _titleController.text = 'No name';
+      _titleController.text = DateTime.now().toIso8601String().substring(0, 16);
 
       final authService = context.read<AuthService>();
       if (authService.userId != null) {

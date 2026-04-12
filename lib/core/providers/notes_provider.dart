@@ -505,7 +505,7 @@ class NotesProvider extends ChangeNotifier {
   /// Create a new note
   Future<Note?> createNote({
     required String userId,
-    String title = 'No name',
+    String? title,
     String content = emptyDocumentJson,
     String? folderId,
     NoteType type = NoteType.text,
