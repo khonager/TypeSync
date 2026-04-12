@@ -322,6 +322,7 @@ von:
 Auflistung:   
 - BMA    
 - EMA   
+• Brandschutzanlage   
 ''';
 
       final converted = MarkdownRichTextService.instance.convertAnytypeMarkdown(
@@ -341,18 +342,39 @@ Auflistung:
           'Präsentation Elektronische Sicherheitstechnik (was gibt es alles)\n',
         ),
       );
-      expect(text, contains('Grundlagen des Einbruchsschutzen\nTop prinzip'));
+      expect(
+          text,
+          contains(
+              'Grundlagen des Einbruchsschutzen\n\u00A0\u00A0Top prinzip'));
       expect(text, contains('Präsentation 3-5 Minuten\n'));
       expect(text, contains('an:'));
       expect(text, contains('von:'));
       expect(text, contains('Auflistung:'));
+      expect(text.contains('an:von:Auflistung:'), isFalse);
       expect(text, contains('BMA'));
       expect(text, contains('EMA'));
+      expect(text, contains('Brandschutzanlage'));
       expect(
         text.contains(
           'Präsentation Elektronische Sicherheitstechnik (was gibt es alles)Grundlagen des Einbruchsschutzen',
         ),
         isFalse,
+      );
+
+      final bulletLineCount = operations.where((operation) {
+        final map = operation as Map<String, dynamic>;
+        return map['attributes'] is Map<String, dynamic> &&
+            (map['attributes'] as Map<String, dynamic>)['list'] == 'bullet';
+      }).length;
+      expect(bulletLineCount, greaterThanOrEqualTo(3));
+
+      expect(
+        operations.any((operation) {
+          final map = operation as Map<String, dynamic>;
+          return map['insert'] is String &&
+              (map['insert'] as String).contains('\u00A0\u00A0Top prinzip');
+        }),
+        isTrue,
       );
     });
   });

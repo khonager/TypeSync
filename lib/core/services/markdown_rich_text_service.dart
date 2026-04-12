@@ -176,7 +176,7 @@ class MarkdownRichTextService {
           if (hasContent) {
             _ensureTrailingNewline(delta);
           }
-          delta = delta.concat(_markdownToDelta(block.markdown));
+          delta = delta.concat(_markdownTextBlockToDelta(block.markdown));
           hasContent = true;
         case _MarkdownTableBlock():
           if (hasContent) {
@@ -210,6 +210,36 @@ class MarkdownRichTextService {
     if (last is! String || !last.endsWith('\n')) {
       delta.insert('\n');
     }
+  }
+
+  Delta _markdownTextBlockToDelta(String markdown) {
+    final lines = markdown.split('\n');
+    var delta = Delta();
+
+    for (final line in lines) {
+      if (_trimLooseIndent(line).isEmpty) {
+        delta.insert('\n');
+        continue;
+      }
+
+      final leadingIndent = _leadingIndent(line);
+      final content = line.substring(leadingIndent.length).trimRight();
+      final rewrittenContent = _rewriteStandaloneBulletLine(content);
+
+      if (leadingIndent.isNotEmpty) {
+        delta.insert(_indentAsTextPrefix(leadingIndent));
+      }
+
+      final lineDelta = _markdownToDelta(rewrittenContent);
+      delta = delta.concat(lineDelta);
+
+      final last = delta.isEmpty ? null : delta.last.value;
+      if (last is! String || !last.endsWith('\n')) {
+        delta.insert('\n');
+      }
+    }
+
+    return delta;
   }
 
   Delta _markdownToDelta(String markdown) {
@@ -477,6 +507,35 @@ class MarkdownRichTextService {
     }
 
     return output.join('\n');
+  }
+
+  static String _leadingIndent(String line) {
+    final match =
+        RegExp(r'^[\s\u2000-\u200A\u202F\u205F\u3000]+').firstMatch(line);
+    return match?.group(0) ?? '';
+  }
+
+  static String _indentAsTextPrefix(String indent) {
+    final buffer = StringBuffer();
+    for (final rune in indent.runes) {
+      if (rune == 0x09) {
+        buffer.write('\t');
+      } else if (rune == 0x20) {
+        buffer.write(' ');
+      } else {
+        buffer.write('\u00A0');
+      }
+    }
+    return buffer.toString();
+  }
+
+  static String _rewriteStandaloneBulletLine(String line) {
+    final trimmed = line.trimLeft();
+    final leading = line.substring(0, line.length - trimmed.length);
+    if (trimmed.startsWith('• ')) {
+      return '$leading- ${trimmed.substring(2)}';
+    }
+    return line;
   }
 
   static bool _shouldUnderlineLabel(
