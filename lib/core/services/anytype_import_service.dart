@@ -10,6 +10,8 @@ import 'package:path/path.dart' as path;
 
 import '../models/folder.dart';
 import '../models/note.dart';
+import '../models/typesync_kanban_embed.dart';
+import '../models/typesync_table_embed.dart';
 import '../providers/folders_provider.dart';
 import '../providers/notes_provider.dart';
 import 'diagnostics_service.dart';
@@ -208,6 +210,11 @@ class AnytypeImportService {
     }
 
     final typeNames = await _loadNativeTypeNames(exportDirectory);
+    final nativeContext = await _loadNativeImportContext(
+      exportDirectory,
+      objectFiles: objectFiles,
+      typeNames: typeNames,
+    );
     final folderIdsByRelativePath = <String, String?>{'': null};
     final failedEntries = <String>[];
     var importedNotes = 0;
@@ -239,7 +246,7 @@ class AnytypeImportService {
         );
         importedFolders += folderResult.createdFolders;
 
-        final content = _convertNativeObjectToQuillJson(data);
+        final content = _convertNativeObjectToQuillJson(data, nativeContext);
         final note = await notesProvider.createNote(
           userId: noteUserId,
           folderId: folderResult.folderId,
@@ -371,6 +378,110 @@ class AnytypeImportService {
     }
 
     return namesByKey;
+  }
+
+  Future<_NativeImportContext> _loadNativeImportContext(
+    Directory exportDirectory, {
+    required List<File> objectFiles,
+    required Map<String, String> typeNames,
+  }) async {
+    final objectDataById = <String, Map<String, dynamic>>{};
+    final objectNamesById = <String, String>{};
+
+    for (final objectFile in objectFiles) {
+      try {
+        final jsonData = jsonDecode(await objectFile.readAsString());
+        final data =
+            jsonData is Map<String, dynamic> ? _nativeData(jsonData) : null;
+        if (data == null) {
+          continue;
+        }
+
+        final details = _mapValue(data['details']);
+        final objectId = _stringValue(details?['id']);
+        if (objectId == null || objectId.isEmpty) {
+          continue;
+        }
+
+        objectDataById[objectId] = data;
+
+        final name = _stringValue(details?['name']);
+        if (name != null && name.trim().isNotEmpty) {
+          objectNamesById[objectId] = name.trim();
+        }
+      } catch (_) {
+        // Best-effort metadata loading. Import can continue without it.
+      }
+    }
+
+    final relationMetadataByKey = <String, _NativeRelationMetadata>{};
+    final relationsDirectory =
+        Directory(path.join(exportDirectory.path, 'relations'));
+    if (await relationsDirectory.exists()) {
+      await for (final entity
+          in relationsDirectory.list(recursive: false, followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith('.pb.json')) {
+          continue;
+        }
+
+        try {
+          final jsonData = jsonDecode(await entity.readAsString());
+          final data =
+              jsonData is Map<String, dynamic> ? _nativeData(jsonData) : null;
+          final details = _mapValue(data?['details']);
+          final key = _stringValue(details?['relationKey']);
+          if (key == null || key.isEmpty) {
+            continue;
+          }
+
+          relationMetadataByKey[key] = _NativeRelationMetadata(
+            name: _stringValue(details?['name']) ?? key,
+            format: details?['relationFormat'] as num?,
+          );
+        } catch (_) {
+          // Ignore malformed relation definitions.
+        }
+      }
+    }
+
+    final relationOptionNamesById = <String, String>{};
+    final relationOptionsDirectory =
+        Directory(path.join(exportDirectory.path, 'relationsOptions'));
+    if (await relationOptionsDirectory.exists()) {
+      await for (final entity in relationOptionsDirectory.list(
+        recursive: false,
+        followLinks: false,
+      )) {
+        if (entity is! File || !entity.path.endsWith('.pb.json')) {
+          continue;
+        }
+
+        try {
+          final jsonData = jsonDecode(await entity.readAsString());
+          final data =
+              jsonData is Map<String, dynamic> ? _nativeData(jsonData) : null;
+          final details = _mapValue(data?['details']);
+          final optionId = _stringValue(details?['id']);
+          final name = _stringValue(details?['name']);
+          if (optionId != null &&
+              optionId.isNotEmpty &&
+              name != null &&
+              name.trim().isNotEmpty) {
+            relationOptionNamesById[optionId] = name.trim();
+          }
+        } catch (_) {
+          // Ignore malformed relation option values.
+        }
+      }
+    }
+
+    return _NativeImportContext(
+      typeNames: typeNames,
+      relationMetadataByKey: relationMetadataByKey,
+      relationOptionNamesById: relationOptionNamesById,
+      objectDataById: objectDataById,
+      objectNamesById: objectNamesById,
+    );
   }
 
   Future<({String? folderId, int createdFolders})> _ensureFolderPath({
@@ -709,7 +820,35 @@ class AnytypeImportService {
     return '';
   }
 
-  static String _convertNativeObjectToQuillJson(Map<String, dynamic> data) {
+  static String convertNativeObjectToQuillJsonForTesting(
+    Map<String, dynamic> data, {
+    Map<String, String> typeNames = const {},
+    Map<String, String> relationNamesByKey = const {},
+    Map<String, String> relationOptionNamesById = const {},
+    Map<String, Map<String, dynamic>> objectDataById = const {},
+    Map<String, String> objectNamesById = const {},
+  }) {
+    final relationMetadataByKey = {
+      for (final entry in relationNamesByKey.entries)
+        entry.key: _NativeRelationMetadata(name: entry.value),
+    };
+
+    return _convertNativeObjectToQuillJson(
+      data,
+      _NativeImportContext(
+        typeNames: typeNames,
+        relationMetadataByKey: relationMetadataByKey,
+        relationOptionNamesById: relationOptionNamesById,
+        objectDataById: objectDataById,
+        objectNamesById: objectNamesById,
+      ),
+    );
+  }
+
+  static String _convertNativeObjectToQuillJson(
+    Map<String, dynamic> data,
+    _NativeImportContext context,
+  ) {
     final blocks = (data['blocks'] as List?)
             ?.whereType<Map<Object?, Object?>>()
             .map((block) => Map<String, dynamic>.from(block))
@@ -735,6 +874,16 @@ class AnytypeImportService {
 
       final block = blocksById[id];
       if (block == null) {
+        return;
+      }
+
+      if (_appendNativeStructuredBlock(
+        operations,
+        block,
+        blocksById,
+        data,
+        context: context,
+      )) {
         return;
       }
 
@@ -765,6 +914,494 @@ class AnytypeImportService {
     }
 
     return jsonEncode(operations);
+  }
+
+  static bool _appendNativeStructuredBlock(
+    List<Map<String, dynamic>> operations,
+    Map<String, dynamic> block,
+    Map<String, Map<String, dynamic>> blocksById,
+    Map<String, dynamic> data, {
+    required _NativeImportContext context,
+  }) {
+    if (block['table'] is Map) {
+      final table = _buildNativeTableData(block, blocksById);
+      if (table != null) {
+        operations
+            .add({'insert': TypeSyncTableEmbed.toBlockEmbed(table).toJson()});
+        operations.add({'insert': '\n'});
+      }
+      return true;
+    }
+
+    final dataview = _mapValue(block['dataview']);
+    if (dataview != null) {
+      final embed = _buildNativeDataviewEmbed(
+        data,
+        dataview,
+        context,
+      );
+      if (embed != null) {
+        operations.add({'insert': embed});
+        operations.add({'insert': '\n'});
+      } else {
+        final label = _nativeDataviewLabel(data, dataview);
+        operations.add({'insert': '[$label]\n'});
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  static TypeSyncTableData? _buildNativeTableData(
+    Map<String, dynamic> tableBlock,
+    Map<String, Map<String, dynamic>> blocksById,
+  ) {
+    final childIds = (tableBlock['childrenIds'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+    if (childIds.isEmpty) {
+      return null;
+    }
+
+    Map<String, dynamic>? columnsBlock;
+    Map<String, dynamic>? rowsBlock;
+
+    for (final childId in childIds) {
+      final child = blocksById[childId];
+      final layout = _mapValue(child?['layout']);
+      final style = _stringValue(layout?['style']);
+      if (style == 'TableColumns') {
+        columnsBlock = child;
+      } else if (style == 'TableRows') {
+        rowsBlock = child;
+      }
+    }
+
+    final columnIds = (columnsBlock?['childrenIds'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+    final widths = <double>[
+      for (final columnId in columnIds)
+        ((blocksById[columnId]?['fields'] as Map?)?['width'] as num?)
+                ?.toDouble() ??
+            180,
+    ];
+
+    final rowIds = (rowsBlock?['childrenIds'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+    if (rowIds.isEmpty) {
+      return null;
+    }
+
+    final rows = <List<String>>[];
+    var headerRowCount = 0;
+    for (final rowId in rowIds) {
+      final rowBlock = blocksById[rowId];
+      if (rowBlock == null) {
+        continue;
+      }
+
+      final cellIds = (rowBlock['childrenIds'] as List?)
+              ?.map(_stringValue)
+              .whereType<String>()
+              .toList() ??
+          const <String>[];
+      if (cellIds.isEmpty) {
+        continue;
+      }
+
+      final row = <String>[
+        for (final cellId in cellIds)
+          _nativeBlockPlainText(blocksById[cellId], blocksById).trim(),
+      ];
+      rows.add(row);
+
+      final tableRow = _mapValue(rowBlock['tableRow']);
+      if ((tableRow?['isHeader'] as bool?) ?? false) {
+        headerRowCount++;
+      }
+    }
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final columnCount = widths.isNotEmpty
+        ? widths.length
+        : rows.map((row) => row.length).fold(0, (a, b) => a > b ? a : b);
+    final normalizedRows = [
+      for (final row in rows)
+        List<String>.generate(
+          columnCount,
+          (index) => index < row.length ? row[index] : '',
+        ),
+    ];
+
+    return TypeSyncTableData(
+      rows: normalizedRows,
+      columnWidths: widths.isNotEmpty
+          ? List<double>.generate(
+              columnCount,
+              (index) => index < widths.length ? widths[index] : 180,
+            )
+          : List<double>.filled(columnCount, 180),
+      headerRowCount: headerRowCount > 0 ? headerRowCount : 1,
+    );
+  }
+
+  static Map<String, dynamic>? _buildNativeDataviewEmbed(
+    Map<String, dynamic> data,
+    Map<String, dynamic> dataview,
+    _NativeImportContext context,
+  ) {
+    final views = (dataview['views'] as List?)
+            ?.whereType<Map<Object?, Object?>>()
+            .map((view) => Map<String, dynamic>.from(view))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    if (views.isEmpty) {
+      return null;
+    }
+
+    final activeViewId = _stringValue(dataview['activeView']);
+    final view = (activeViewId == null || activeViewId.isEmpty)
+        ? views.first
+        : views.firstWhere(
+            (candidate) => _stringValue(candidate['id']) == activeViewId,
+            orElse: () => views.first,
+          );
+
+    final objectIds = _nativeDataviewObjectIds(data);
+    final relationConfigs = (view['relations'] as List?)
+            ?.whereType<Map<Object?, Object?>>()
+            .map((relation) => Map<String, dynamic>.from(relation))
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final visibleRelations = relationConfigs.where((relation) {
+      return relation['isVisible'] != false &&
+          (_stringValue(relation['key'])?.isNotEmpty ?? false);
+    }).toList();
+    final relationsToShow = visibleRelations.isNotEmpty
+        ? visibleRelations
+        : [
+            const {'key': 'name', 'width': 200},
+          ];
+
+    final viewType = (_stringValue(view['type']) ?? '').trim();
+    final groupRelationKey =
+        _stringValue(view['groupRelationKey'])?.trim() ?? '';
+    if (viewType == 'Graph' &&
+        groupRelationKey.isNotEmpty &&
+        !_looksLikeDateRelation(groupRelationKey)) {
+      final board = _buildNativeKanbanData(
+        data,
+        objectIds,
+        groupRelationKey,
+        relationsToShow,
+        context,
+      );
+      if (board != null) {
+        return TypeSyncKanbanEmbed.toBlockEmbed(board).toJson();
+      }
+    }
+
+    final table = _buildNativeDataviewTableData(
+      objectIds,
+      relationsToShow,
+      context,
+    );
+    if (table == null) {
+      return null;
+    }
+    return TypeSyncTableEmbed.toBlockEmbed(table).toJson();
+  }
+
+  static List<String> _nativeDataviewObjectIds(Map<String, dynamic> data) {
+    final collections = _mapValue(data['collections']);
+    final collectionObjects = (collections?['objects'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+    if (collectionObjects.isNotEmpty) {
+      return collectionObjects;
+    }
+
+    final details = _mapValue(data['details']);
+    return (details?['links'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+  }
+
+  static TypeSyncTableData? _buildNativeDataviewTableData(
+    List<String> objectIds,
+    List<Map<String, dynamic>> relationsToShow,
+    _NativeImportContext context,
+  ) {
+    if (relationsToShow.isEmpty) {
+      return null;
+    }
+
+    final headers = <String>[
+      for (final relation in relationsToShow)
+        _nativeRelationLabel(_stringValue(relation['key'])!, context),
+    ];
+    final widths = <double>[
+      for (final relation in relationsToShow)
+        (relation['width'] as num?)?.toDouble() ?? 180,
+    ];
+
+    final rows = <List<String>>[headers];
+    for (final objectId in objectIds) {
+      final objectData = context.objectDataById[objectId];
+      final details = _mapValue(objectData?['details']);
+      rows.add([
+        for (final relation in relationsToShow)
+          _stringifyNativeRelationValue(
+            details,
+            _stringValue(relation['key'])!,
+            context,
+          ),
+      ]);
+    }
+
+    return TypeSyncTableData(
+      rows: rows,
+      columnWidths: widths,
+      headerRowCount: 1,
+    );
+  }
+
+  static TypeSyncKanbanData? _buildNativeKanbanData(
+    Map<String, dynamic> data,
+    List<String> objectIds,
+    String groupRelationKey,
+    List<Map<String, dynamic>> relationsToShow,
+    _NativeImportContext context,
+  ) {
+    final columnsByTitle = <String, List<TypeSyncKanbanCardData>>{};
+
+    for (final objectId in objectIds) {
+      final objectData = context.objectDataById[objectId];
+      final details = _mapValue(objectData?['details']);
+      final title =
+          _stringifyNativeRelationValue(details, 'name', context).trim();
+      if (title.isEmpty) {
+        continue;
+      }
+
+      final group = _stringifyNativeRelationValue(
+        details,
+        groupRelationKey,
+        context,
+      ).trim();
+      final columnTitle = group.isEmpty ? 'Ungrouped' : group;
+      final descriptionLines = <String>[];
+      for (final relation in relationsToShow) {
+        final key = _stringValue(relation['key']);
+        if (key == null || key == 'name' || key == groupRelationKey) {
+          continue;
+        }
+        final value = _stringifyNativeRelationValue(details, key, context);
+        if (value.trim().isEmpty) {
+          continue;
+        }
+        descriptionLines.add(
+          '${_nativeRelationLabel(key, context)}: $value',
+        );
+      }
+
+      if (descriptionLines.isEmpty) {
+        final snippet = _stringValue(details?['snippet'])?.trim() ?? '';
+        if (snippet.isNotEmpty) {
+          descriptionLines.add(snippet);
+        }
+      }
+
+      columnsByTitle.putIfAbsent(columnTitle, () => <TypeSyncKanbanCardData>[]);
+      columnsByTitle[columnTitle]!.add(
+        TypeSyncKanbanCardData.create(
+          title: title,
+          description: descriptionLines.join('\n'),
+        ),
+      );
+    }
+
+    if (columnsByTitle.isEmpty) {
+      return null;
+    }
+
+    final details = _mapValue(data['details']);
+    return TypeSyncKanbanData.empty(
+      title: _stringValue(details?['name'])?.trim().isNotEmpty == true
+          ? _stringValue(details?['name'])!.trim()
+          : 'Kanban board',
+      columnTitles: const [],
+    ).copyWith(
+      columns: columnsByTitle.entries.map((entry) {
+        return TypeSyncKanbanColumnData.create(
+          title: entry.key,
+          cards: entry.value,
+        );
+      }).toList(),
+    );
+  }
+
+  static String _nativeDataviewLabel(
+    Map<String, dynamic> data,
+    Map<String, dynamic> dataview,
+  ) {
+    final details = _mapValue(data['details']);
+    final title = _stringValue(details?['name'])?.trim();
+    if (title != null && title.isNotEmpty) {
+      return 'Anytype view: $title';
+    }
+    final views = dataview['views'];
+    if (views is List && views.isNotEmpty) {
+      final firstView = _mapValue(views.first);
+      final type = _stringValue(firstView?['type'])?.trim();
+      if (type != null && type.isNotEmpty) {
+        return 'Anytype $type view';
+      }
+    }
+    return 'Anytype view';
+  }
+
+  static String _nativeBlockPlainText(
+    Map<String, dynamic>? block,
+    Map<String, Map<String, dynamic>> blocksById,
+  ) {
+    if (block == null) {
+      return '';
+    }
+
+    final text = _mapValue(block['text']);
+    final value = _stringValue(text?['text']);
+    if (value != null) {
+      return value;
+    }
+
+    final childrenIds = (block['childrenIds'] as List?)
+            ?.map(_stringValue)
+            .whereType<String>()
+            .toList() ??
+        const <String>[];
+    if (childrenIds.isEmpty) {
+      return '';
+    }
+
+    final parts = <String>[];
+    for (final childId in childrenIds) {
+      final childText = _nativeBlockPlainText(blocksById[childId], blocksById);
+      if (childText.trim().isNotEmpty) {
+        parts.add(childText.trim());
+      }
+    }
+    return parts.join('\n');
+  }
+
+  static String _nativeRelationLabel(
+    String relationKey,
+    _NativeImportContext context,
+  ) {
+    final metadata = context.relationMetadataByKey[relationKey];
+    final label = metadata?.name.trim();
+    if (label != null && label.isNotEmpty) {
+      return label;
+    }
+
+    final normalized = relationKey
+        .replaceAll(RegExp(r'[_-]+'), ' ')
+        .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
+        .trim();
+    if (normalized.isEmpty) {
+      return relationKey;
+    }
+    return normalized[0].toUpperCase() + normalized.substring(1);
+  }
+
+  static String _stringifyNativeRelationValue(
+    Map<String, dynamic>? details,
+    String relationKey,
+    _NativeImportContext context,
+  ) {
+    if (details == null) {
+      return '';
+    }
+
+    final value = details[relationKey];
+    return _stringifyNativeValue(value, relationKey, context);
+  }
+
+  static String _stringifyNativeValue(
+    Object? value,
+    String relationKey,
+    _NativeImportContext context,
+  ) {
+    if (value == null) {
+      return '';
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) {
+        return '';
+      }
+      if (relationKey == 'type') {
+        return context.typeNames[trimmed] ??
+            context.objectNamesById[trimmed] ??
+            trimmed;
+      }
+      return context.relationOptionNamesById[trimmed] ??
+          context.objectNamesById[trimmed] ??
+          trimmed;
+    }
+    if (value is bool) {
+      return value ? 'Yes' : 'No';
+    }
+    if (value is num) {
+      if (_looksLikeDateRelation(relationKey)) {
+        final milliseconds =
+            value > 9999999999 ? value.toInt() : value.toInt() * 1000;
+        final date = DateTime.fromMillisecondsSinceEpoch(
+          milliseconds,
+          isUtc: true,
+        );
+        final month = date.month.toString().padLeft(2, '0');
+        final day = date.day.toString().padLeft(2, '0');
+        return '${date.year}-$month-$day';
+      }
+      return '$value';
+    }
+    if (value is List) {
+      return value
+          .map((entry) => _stringifyNativeValue(entry, relationKey, context))
+          .where((entry) => entry.trim().isNotEmpty)
+          .join(', ');
+    }
+    if (value is Map) {
+      final mapValue = _mapValue(value);
+      return _stringifyNativeValue(
+        mapValue?['name'] ?? mapValue?['id'] ?? value.toString(),
+        relationKey,
+        context,
+      );
+    }
+    return '$value';
+  }
+
+  static bool _looksLikeDateRelation(String relationKey) {
+    final normalized = relationKey.trim().toLowerCase();
+    return normalized.contains('date') || normalized.contains('time');
   }
 
   static void _appendNativeTextBlock(
@@ -999,5 +1636,31 @@ class _ReferencedMarkdownFile {
     required this.file,
     required this.relativeMarkdownTarget,
     required this.isImage,
+  });
+}
+
+class _NativeImportContext {
+  final Map<String, String> typeNames;
+  final Map<String, _NativeRelationMetadata> relationMetadataByKey;
+  final Map<String, String> relationOptionNamesById;
+  final Map<String, Map<String, dynamic>> objectDataById;
+  final Map<String, String> objectNamesById;
+
+  const _NativeImportContext({
+    required this.typeNames,
+    required this.relationMetadataByKey,
+    required this.relationOptionNamesById,
+    required this.objectDataById,
+    required this.objectNamesById,
+  });
+}
+
+class _NativeRelationMetadata {
+  final String name;
+  final num? format;
+
+  const _NativeRelationMetadata({
+    required this.name,
+    this.format,
   });
 }
