@@ -250,20 +250,56 @@ class MarkdownRichTextService {
         continue;
       }
 
-      final embedKeys = data.keys.toList(growable: false);
-      final embedType = embedKeys.isEmpty ? null : embedKeys.first;
-      if (embedType == TypeSyncKanbanEmbed.kanbanType ||
-          embedType == TypeSyncTableEmbed.tableType ||
-          embedType == 'x-embed-table') {
+      final resolved = _resolveEmbed(data);
+      if (resolved == null) {
+        normalized.insert('[Unsupported content]\n');
+        continue;
+      }
+      if (_isSupportedEmbedType(resolved.type)) {
         normalized.push(operation);
         continue;
       }
 
-      final embedValue = embedType == null ? null : data[embedType as Object];
-      normalized.insert(_unsupportedEmbedText('$embedType', embedValue));
+      normalized.insert(_unsupportedEmbedText(resolved.type, resolved.value));
     }
 
     return normalized;
+  }
+
+  static ({String type, Object? value})? _resolveEmbed(
+    Map<dynamic, dynamic> data,
+  ) {
+    final embedKeys = data.keys.toList(growable: false);
+    if (embedKeys.isEmpty) {
+      return null;
+    }
+
+    final embedType = '${embedKeys.first}';
+    final embedValue = data[embedKeys.first];
+    if (embedType != BlockEmbed.customType || embedValue is! String) {
+      return (type: embedType, value: embedValue);
+    }
+
+    try {
+      final decoded = jsonDecode(embedValue);
+      if (decoded is! Map) {
+        return (type: embedType, value: embedValue);
+      }
+      final customKeys = decoded.keys.toList(growable: false);
+      if (customKeys.isEmpty) {
+        return (type: embedType, value: embedValue);
+      }
+      final customType = '${customKeys.first}';
+      return (type: customType, value: decoded[customKeys.first]);
+    } catch (_) {
+      return (type: embedType, value: embedValue);
+    }
+  }
+
+  static bool _isSupportedEmbedType(String embedType) {
+    return embedType == TypeSyncKanbanEmbed.kanbanType ||
+        embedType == TypeSyncTableEmbed.tableType ||
+        embedType == 'x-embed-table';
   }
 
   static String _unsupportedEmbedText(String embedType, Object? embedValue) {

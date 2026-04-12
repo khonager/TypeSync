@@ -2,6 +2,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:typesync/core/models/typesync_kanban_embed.dart';
+import 'package:typesync/core/models/typesync_table_embed.dart';
 import 'package:typesync/core/services/rich_text_plain_text_service.dart';
 
 void main() {
@@ -79,6 +80,23 @@ void main() {
       expect(plainText, contains('Draft announcement'));
       expect(plainText, contains('Link back to the release note later.'));
       expect(plainText, contains('Outro'));
+    });
+
+    test('extracts custom-wrapped table embed text from delta operations', () {
+      const table = TypeSyncTableData(
+        rows: [
+          ['Day', 'Teacher'],
+          ['Wednesday', 'Roescher'],
+        ],
+        columnWidths: [180, 180],
+      );
+
+      final plainText = RichTextPlainTextService.extractPlainTextFromDelta([
+        {'insert': TypeSyncTableEmbed.toBlockEmbed(table).toJson()},
+      ]);
+
+      expect(plainText, contains('Day\tTeacher'));
+      expect(plainText, contains('Wednesday\tRoescher'));
     });
   });
 }

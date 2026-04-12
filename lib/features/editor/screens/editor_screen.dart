@@ -453,24 +453,54 @@ class _EditorScreenState extends State<EditorScreen>
   List<Map<String, dynamic>>? _unsupportedEmbedReplacement(
     Map<dynamic, dynamic> insert,
   ) {
-    final keys = insert.keys.toList(growable: false);
-    if (keys.isEmpty) {
+    final resolved = _resolveEmbed(insert);
+    if (resolved == null) {
       return const [
         {'insert': '[Unsupported content]\n'},
       ];
     }
 
-    final embedType = '${keys.first}';
-    if (embedType == TypeSyncKanbanEmbed.kanbanType ||
-        embedType == TypeSyncTableEmbed.tableType ||
-        embedType == 'x-embed-table') {
+    if (_isSupportedEmbedType(resolved.type)) {
       return null;
     }
 
-    final embedValue = insert[keys.first];
     return [
-      {'insert': _unsupportedEmbedText(embedType, embedValue)},
+      {'insert': _unsupportedEmbedText(resolved.type, resolved.value)},
     ];
+  }
+
+  ({String type, Object? value})? _resolveEmbed(Map<dynamic, dynamic> insert) {
+    final keys = insert.keys.toList(growable: false);
+    if (keys.isEmpty) {
+      return null;
+    }
+
+    final embedType = '${keys.first}';
+    final embedValue = insert[keys.first];
+    if (embedType != BlockEmbed.customType || embedValue is! String) {
+      return (type: embedType, value: embedValue);
+    }
+
+    try {
+      final decoded = jsonDecode(embedValue);
+      if (decoded is! Map) {
+        return (type: embedType, value: embedValue);
+      }
+      final customKeys = decoded.keys.toList(growable: false);
+      if (customKeys.isEmpty) {
+        return (type: embedType, value: embedValue);
+      }
+      final customType = '${customKeys.first}';
+      return (type: customType, value: decoded[customKeys.first]);
+    } catch (_) {
+      return (type: embedType, value: embedValue);
+    }
+  }
+
+  bool _isSupportedEmbedType(String embedType) {
+    return embedType == TypeSyncKanbanEmbed.kanbanType ||
+        embedType == TypeSyncTableEmbed.tableType ||
+        embedType == 'x-embed-table';
   }
 
   String _unsupportedEmbedText(String embedType, Object? embedValue) {
@@ -499,7 +529,8 @@ class _EditorScreenState extends State<EditorScreen>
     for (final operation in operations) {
       final insert = operation['insert'];
       if (insert is! Map) continue;
-      if (insert.containsKey(TypeSyncKanbanEmbed.kanbanType)) {
+      final resolved = _resolveEmbed(insert);
+      if (resolved?.type == TypeSyncKanbanEmbed.kanbanType) {
         return TypeSyncKanbanEmbed.minimumSupportedAppVersion;
       }
     }
