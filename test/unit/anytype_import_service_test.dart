@@ -400,6 +400,40 @@ Auflistung:
         isFalse,
       );
     });
+
+    test('keeps standalone numbered markers as literal text', () {
+      const rawMarkdown = '''
+Script für die Präsentation:   
+1.   
+Erster Punkt   
+2.   
+Zweiter Punkt   
+3.   
+Dritter Punkt   
+''';
+
+      final converted = MarkdownRichTextService.instance.convertAnytypeMarkdown(
+        rawMarkdown: rawMarkdown,
+        fallbackTitle: 'fallback',
+      );
+      final operations =
+          jsonDecode(converted.quillContentJson) as List<dynamic>;
+      final text = operations
+          .map((operation) => (operation as Map<String, dynamic>)['insert'])
+          .whereType<String>()
+          .join();
+
+      expect(text, contains('1.\nErster Punkt'));
+      expect(text, contains('2.\nZweiter Punkt'));
+      expect(text, contains('3.\nDritter Punkt'));
+
+      final orderedLineCount = operations.where((operation) {
+        final map = operation as Map<String, dynamic>;
+        return map['attributes'] is Map<String, dynamic> &&
+            (map['attributes'] as Map<String, dynamic>)['list'] == 'ordered';
+      }).length;
+      expect(orderedLineCount, 0);
+    });
   });
 
   group('AnytypeImportService.convertNativeObjectToQuillJsonForTesting', () {

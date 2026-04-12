@@ -228,7 +228,7 @@ class MarkdownRichTextService {
 
       final leadingIndent = _leadingIndent(line);
       final content = line.substring(leadingIndent.length).trimRight();
-      final rewrittenContent = _rewriteStandaloneBulletLine(content);
+      final rewrittenContent = _rewriteStandaloneMarkdownLine(content);
 
       if (leadingIndent.isNotEmpty) {
         delta.insert(_indentAsTextPrefix(leadingIndent));
@@ -515,11 +515,14 @@ class MarkdownRichTextService {
     return buffer.toString();
   }
 
-  static String _rewriteStandaloneBulletLine(String line) {
+  static String _rewriteStandaloneMarkdownLine(String line) {
     final trimmed = line.trimLeft();
     final leading = line.substring(0, line.length - trimmed.length);
     if (trimmed.startsWith('• ')) {
       return '$leading- ${trimmed.substring(2)}';
+    }
+    if (RegExp(r'^\d+\.$').hasMatch(trimmed)) {
+      return '$leading${trimmed.replaceFirst('.', r'\.')}';
     }
     return line;
   }
