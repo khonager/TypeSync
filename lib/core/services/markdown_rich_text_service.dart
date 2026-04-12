@@ -41,8 +41,7 @@ class MarkdownRichTextService {
       extracted.body,
       pathReplacements,
     );
-    final inferredMarkdown = _inferUnderlinedLabels(rewrittenMarkdown);
-    final delta = _convertMarkdownDocument(inferredMarkdown);
+    final delta = _convertMarkdownDocument(rewrittenMarkdown);
 
     return ConvertedMarkdownNote(
       title: extracted.title,
@@ -186,6 +185,11 @@ class MarkdownRichTextService {
           delta.insert(TypeSyncTableEmbed.toBlockEmbed(table).toJson());
           delta.insert('\n');
           hasContent = true;
+        case _MarkdownBlankBlock():
+          if (!hasContent || block.count <= 0) {
+            continue;
+          }
+          delta.insert('\n' * block.count);
       }
     }
 
@@ -491,24 +495,6 @@ class MarkdownRichTextService {
     return _quillColorFromCss(value);
   }
 
-  static String _inferUnderlinedLabels(String markdown) {
-    final lines = markdown.split('\n');
-    final output = <String>[];
-
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final trimmed = _trimLooseIndent(line);
-      if (_shouldUnderlineLabel(lines, i, trimmed)) {
-        final leading = line.substring(0, line.length - line.trimLeft().length);
-        output.add('$leading<u>$trimmed</u>');
-      } else {
-        output.add(line);
-      }
-    }
-
-    return output.join('\n');
-  }
-
   static String _leadingIndent(String line) {
     final match =
         RegExp(r'^[\s\u2000-\u200A\u202F\u205F\u3000]+').firstMatch(line);
@@ -536,36 +522,6 @@ class MarkdownRichTextService {
       return '$leading- ${trimmed.substring(2)}';
     }
     return line;
-  }
-
-  static bool _shouldUnderlineLabel(
-    List<String> lines,
-    int index,
-    String trimmed,
-  ) {
-    if (trimmed.isEmpty ||
-        !trimmed.endsWith(':') ||
-        trimmed.startsWith('#') ||
-        trimmed.startsWith('- ') ||
-        trimmed.startsWith('* ') ||
-        trimmed.startsWith('|') ||
-        trimmed.startsWith('<u>')) {
-      return false;
-    }
-
-    for (int i = index + 1; i < lines.length; i++) {
-      final next = lines[i];
-      final nextTrimmed = _trimLooseIndent(next);
-      if (nextTrimmed.isEmpty) {
-        continue;
-      }
-      return next != nextTrimmed ||
-          nextTrimmed.startsWith('|') ||
-          nextTrimmed.startsWith('- ') ||
-          RegExp(r'^\d+\.\s').hasMatch(nextTrimmed);
-    }
-
-    return false;
   }
 
   static List<_MarkdownBlock> _splitIntoBlocks(String markdown) {
@@ -604,7 +560,13 @@ class MarkdownRichTextService {
           blocks.add(_MarkdownTextBlock(buffer.join('\n')));
           buffer.clear();
         }
-        index++;
+        var blankCount = 0;
+        while (
+            index < lines.length && _isBlankMarkdownSeparator(lines[index])) {
+          blankCount++;
+          index++;
+        }
+        blocks.add(_MarkdownBlankBlock(blankCount));
         continue;
       }
 
@@ -702,4 +664,10 @@ class _MarkdownTableBlock extends _MarkdownBlock {
   final String markdown;
 
   const _MarkdownTableBlock(this.markdown);
+}
+
+class _MarkdownBlankBlock extends _MarkdownBlock {
+  final int count;
+
+  const _MarkdownBlankBlock(this.count);
 }

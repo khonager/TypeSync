@@ -343,9 +343,17 @@ Auflistung:
         ),
       );
       expect(
-          text,
-          contains(
-              'Grundlagen des Einbruchsschutzen\n\u00A0\u00A0Top prinzip'));
+        text,
+        contains(
+          'Präsentation Elektronische Sicherheitstechnik (was gibt es alles)\n\nGrundlagen des Einbruchsschutzen',
+        ),
+      );
+      expect(
+        text,
+        contains(
+          'Grundlagen des Einbruchsschutzen\n\u00A0\u00A0Top prinzip',
+        ),
+      );
       expect(text, contains('Präsentation 3-5 Minuten\n'));
       expect(text, contains('an:'));
       expect(text, contains('von:'));
@@ -375,6 +383,21 @@ Auflistung:
               (map['insert'] as String).contains('\u00A0\u00A0Top prinzip');
         }),
         isTrue,
+      );
+      expect(
+        operations.any((operation) {
+          final map = operation as Map<String, dynamic>;
+          final insert = map['insert'];
+          final attributes = map['attributes'];
+          if (insert is! String || attributes is! Map<String, dynamic>) {
+            return false;
+          }
+          final isLabel = insert.contains('an:') ||
+              insert.contains('von:') ||
+              insert.contains('Auflistung:');
+          return isLabel && attributes['underline'] == true;
+        }),
+        isFalse,
       );
     });
   });
