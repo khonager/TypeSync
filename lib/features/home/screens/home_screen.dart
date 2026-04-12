@@ -591,6 +591,12 @@ class _HomeScreenState extends State<HomeScreen> {
       allFolders: foldersProvider.folders,
       allNotes: notesProvider.notes,
     );
+    final noteLocationLabels = isSearchActive
+        ? _buildNoteLocationLabels(
+            notes: notes,
+            foldersProvider: foldersProvider,
+          )
+        : const <String, String>{};
 
     return Scaffold(
       extendBody: true,
@@ -670,6 +676,7 @@ class _HomeScreenState extends State<HomeScreen> {
               showFolderResults: showFolderResults,
               showFileResults: showFileResults,
               noteOpenSearchQuery: noteOpenSearchQuery,
+              noteLocationLabels: noteLocationLabels,
             ),
 
       // Bottom navigation bar matching the design
@@ -891,6 +898,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required bool showFolderResults,
     required bool showFileResults,
     required String? noteOpenSearchQuery,
+    required Map<String, String> noteLocationLabels,
   }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
@@ -1009,6 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FileGrid(
                             notes: notes,
+                            noteLocationLabels: noteLocationLabels,
                             onNoteTap: (noteId) => _openNote(
                               noteId,
                               searchQuery: noteOpenSearchQuery,
@@ -1022,6 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FileList(
                             notes: notes,
+                            noteLocationLabels: noteLocationLabels,
                             onNoteTap: (noteId) => _openNote(
                               noteId,
                               searchQuery: noteOpenSearchQuery,
@@ -1084,6 +1094,25 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Map<String, String> _buildNoteLocationLabels({
+    required List<Note> notes,
+    required FoldersProvider foldersProvider,
+  }) {
+    final labels = <String, String>{};
+
+    for (final note in notes) {
+      final path = foldersProvider.getFolderPath(note.folderId);
+      if (path.isEmpty) {
+        labels[note.id] = 'Root';
+        continue;
+      }
+
+      labels[note.id] = path.map((folder) => folder.name).join(' / ');
+    }
+
+    return labels;
   }
 
   Widget _buildEmptyState({required bool isSearchActive}) {
