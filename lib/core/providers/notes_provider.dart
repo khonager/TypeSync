@@ -13,6 +13,8 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
+import '../models/typesync_kanban_embed.dart';
+import '../models/typesync_table_embed.dart';
 import '../services/diagnostics_service.dart';
 import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
@@ -198,10 +200,72 @@ class NotesProvider extends ChangeNotifier {
         case 'pdf':
           if (!_noteHasPdfAsset(note)) return false;
           break;
+        case 'table':
+          if (!_noteHasStructuredEmbed(note, TypeSyncTableEmbed.tableType)) {
+            return false;
+          }
+          break;
+        case 'kanban':
+          if (!_noteHasStructuredEmbed(note, TypeSyncKanbanEmbed.kanbanType)) {
+            return false;
+          }
+          break;
       }
     }
 
     return true;
+  }
+
+  bool _noteHasStructuredEmbed(Note note, String embedType) {
+    if (note.content.isEmpty) {
+      return false;
+    }
+
+    try {
+      final decoded = jsonDecode(note.content);
+      if (decoded is List<dynamic>) {
+        return _operationsContainEmbedType(decoded, embedType);
+      }
+      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
+        return _operationsContainEmbedType(decoded['ops'] as List<dynamic>, embedType);
+      }
+    } catch (_) {
+      return note.content.contains(embedType);
+    }
+
+    return false;
+  }
+
+  bool _operationsContainEmbedType(List<dynamic> operations, String embedType) {
+    for (final operation in operations) {
+      if (operation is! Map) {
+        continue;
+      }
+
+      final insertValue = operation['insert'];
+      if (insertValue is! Map) {
+        continue;
+      }
+
+      if (insertValue.containsKey(embedType)) {
+        return true;
+      }
+
+      final customValue = insertValue['custom'];
+      if (customValue is String) {
+        try {
+          final decodedCustom = jsonDecode(customValue);
+          if (decodedCustom is Map<String, dynamic> &&
+              decodedCustom.containsKey(embedType)) {
+            return true;
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+
+    return false;
   }
 
   bool _matchesTokenInNote(

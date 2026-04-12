@@ -6,7 +6,7 @@ library;
 /// Supported operators:
 /// - `is:folder`, `is:file`
 /// - `in:text`, `in:title`, `in:attachment`, `in:pdf`, `in:txt`, `in:markdown`
-/// - `has:attachment`, `has:image`, `has:pdf`
+/// - `has:attachment`, `has:image`, `has:pdf`, `has:table`, `has:kanban`
 class SearchQuery {
   final String raw;
   final List<String> textTokens;
@@ -164,6 +164,13 @@ class SearchQuery {
         return 'image';
       case 'pdf':
         return 'pdf';
+      case 'table':
+      case 'tables':
+        return 'table';
+      case 'kanban':
+      case 'board':
+      case 'boards':
+        return 'kanban';
       default:
         return null;
     }

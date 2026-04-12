@@ -69,6 +69,8 @@ class _HomeScreenState extends State<HomeScreen> {
     'has:attachment',
     'has:image',
     'has:pdf',
+    'has:table',
+    'has:kanban',
   ];
   static const List<String> _isSearchSuggestions = [
     'is:file',
