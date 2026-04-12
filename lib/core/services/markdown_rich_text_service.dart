@@ -509,7 +509,7 @@ class MarkdownRichTextService {
 
         while (index < lines.length) {
           final trimmed = _trimLooseIndent(lines[index]);
-          if (trimmed.isEmpty || !_looksLikeTableRow(trimmed)) {
+          if (trimmed.isEmpty || !_looksLikeMarkdownTableBodyRow(trimmed)) {
             break;
           }
           tableLines.add(trimmed);
@@ -544,9 +544,17 @@ class MarkdownRichTextService {
     return line.contains('|') && line.replaceAll('|', '').trim().isNotEmpty;
   }
 
+  static bool _looksLikeMarkdownTableBodyRow(String line) {
+    if (!line.contains('|')) {
+      return false;
+    }
+    final trimmed = line.trim();
+    return trimmed.startsWith('|') || trimmed.endsWith('|');
+  }
+
   static bool _looksLikeTableDivider(String line) {
     return RegExp(
-      r'^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$',
+      r'^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$',
     ).hasMatch(line);
   }
 

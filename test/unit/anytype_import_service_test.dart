@@ -227,6 +227,87 @@ Object type:
         contains('[Image attachment: cover.png]'),
       );
     });
+
+    test('keeps multiple markdown tables with short dividers and spacer rows',
+        () {
+      const rawMarkdown = '''
+# Fall 3 Sachbeschädigung Dogge und Gartenzwerg
+Example
+|  Defensiver Notstand § 228 BGB |      |                                                                   |                                                                                                         |   |
+|:-------------------------------|:-----|:------------------------------------------------------------------|:--------------------------------------------------------------------------------------------------------|:--|
+|               Voraussetzungen: |    + |                                                            Gefahr | Situation in der es zu negativen Auswirkungen auf Personen, Sachen, Sachverhalte oder Tiere kommen kann |   |
+|                                |    + | Retrieving data. Wait a few seconds and try to cut or copy again. |                                                                                                         |   |
+|                                |    + |                                                                   |                                                                                                         |   |
+|                     Maßnahmen: |    + |                                  Sache von der die Gefahr ausgeht |                                                                                                         |   |
+|                                |    + |                                                       beschädigen |                                                                                                         |   |
+|                                | oder |                                                         zerstören |                                                                                                         |   |
+|                                |    + |                                                  Erforderlichkeit |                                                                                        mildestes Mittel |   |
+|                                |    + |                                               Verhältnismäßigkeit |                                                (Schaden durch Gefahr — Schaden durch Notstandshandlung) |   |
+|                                |      |                                                                   |                                                                                                         |   |
+|                     Sonstiges: |      |     Schadenersatz bei Verschulden der Gefahr durch den Handelnden |                                                                                                         |   |
+
+|  Defensiver Notstand § 228 BGB |         |                                                               |                                                                                                         |                                                                                                     |
+|:-------------------------------|:--------|:--------------------------------------------------------------|:--------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------|
+|               Voraussetzungen: |       + |                                                        Gefahr | Situation in der es zu negativen Auswirkungen auf Personen, Sachen, Sachverhalte oder Tiere kommen kann |                                                       Gefahr auf Person durch verletzung durch Tier |
+|                                |       + |                               ausgehend von Sache (oder Tier) |                                                                                                         |                                                                Ja, durch eine Kampfdogge (Caligula) |
+|                                |         |                                                               |                                                                                                         |                                                                                                     |
+|                     Maßnahmen: |       + |                              Sache von der die Gefahr ausgeht |                                                                                                         |                                                                                Eine Kampfdogge/Tier |
+|                                |       + |                                                   beschädigen |                                                                                                         |                                                                                         Kieferbruch |
+|                                | oder: - |                                                     zerstören |                                                                                                         |                                                                                                Nein |
+|                                |       - |                                              Erforderlichkeit |                                                                                        mildestes Mittel |                                                                    Nein, hätte auch schreien können |
+|                                |       + |                                           Verhältnismäßigkeit |                                                (Schaden durch Gefahr — Schaden durch Notstandshandlung) |                                                          Gartenzwerg geht zu bruch. Verhaltensmäßig |
+|                                |         |                                                               |                                                                                                         |                                                                                                     |
+|                     Sonstiges: |         | Schadenersatz bei Verschulden der Gefahr durch den Handelnden |                                                                                                         | Nein, da er die Gefhr nicht verschuldet hat und es ein defensiver und nicht aggresiver Notstand ist |
+''';
+
+      final converted = MarkdownRichTextService.instance.convertAnytypeMarkdown(
+        rawMarkdown: rawMarkdown,
+        fallbackTitle: 'fallback',
+      );
+      final operations =
+          jsonDecode(converted.quillContentJson) as List<dynamic>;
+
+      final customTableOps = operations
+          .map((operation) => (operation as Map<String, dynamic>)['insert'])
+          .whereType<Map<String, dynamic>>()
+          .where((insert) => insert.containsKey('custom'))
+          .map((insert) => jsonDecode(insert['custom'] as String))
+          .whereType<Map<String, dynamic>>()
+          .where((insert) => insert.containsKey(TypeSyncTableEmbed.tableType))
+          .toList();
+
+      expect(customTableOps, hasLength(2));
+
+      final firstTable = TypeSyncTableEmbed.parseData(
+        customTableOps.first[TypeSyncTableEmbed.tableType] as String,
+      );
+      final secondTable = TypeSyncTableEmbed.parseData(
+        customTableOps.last[TypeSyncTableEmbed.tableType] as String,
+      );
+
+      expect(firstTable.rows.first.first, 'Defensiver Notstand § 228 BGB');
+      expect(
+        firstTable.rows.any(
+          (row) => row.contains(
+            'Schadenersatz bei Verschulden der Gefahr durch den Handelnden',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        secondTable.rows.any(
+          (row) => row.contains('Eine Kampfdogge/Tier'),
+        ),
+        isTrue,
+      );
+      expect(
+        operations
+            .map((operation) => (operation as Map<String, dynamic>)['insert'])
+            .whereType<String>()
+            .join(),
+        contains('Example'),
+      );
+    });
   });
 
   group('AnytypeImportService.convertNativeObjectToQuillJsonForTesting', () {
