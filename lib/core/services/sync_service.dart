@@ -843,10 +843,7 @@ class SyncService extends ChangeNotifier {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
         final fdFirestore = _firedartFirestore;
         if (fdFirestore == null) return false;
-        await fdFirestore
-            .collection('tags')
-            .document(tag.id)
-            .set(tag.toJson());
+        await fdFirestore.collection('tags').document(tag.id).set(tag.toJson());
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;
@@ -1126,7 +1123,12 @@ class SyncService extends ChangeNotifier {
     final hasHomework = dirtyHomework != null && dirtyHomework.isNotEmpty;
     final hasEntries = dirtyEntries != null && dirtyEntries.isNotEmpty;
 
-    if (!hasNotes && !hasFolders && !hasTags && !hasEvents && !hasHomework && !hasEntries) {
+    if (!hasNotes &&
+        !hasFolders &&
+        !hasTags &&
+        !hasEvents &&
+        !hasHomework &&
+        !hasEntries) {
       return true;
     }
 

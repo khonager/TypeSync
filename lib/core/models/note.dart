@@ -328,7 +328,12 @@ class Note extends Equatable {
 
     return Note(
       id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? (json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String).toIso8601String().substring(0, 16) : DateTime.now().toIso8601String().substring(0, 16)),
+      title: json['title'] as String? ??
+          (json['createdAt'] != null
+              ? DateTime.parse(json['createdAt'] as String)
+                  .toIso8601String()
+                  .substring(0, 16)
+              : DateTime.now().toIso8601String().substring(0, 16)),
       content: json['content'] as String? ?? '',
       type: NoteType.values[typeIndex],
       folderId: json['folderId'] as String?,

@@ -428,7 +428,8 @@ class FileListItem extends StatelessWidget {
                               color: textColor.withValues(alpha: 0.7),
                             ),
                       ),
-                      if (locationLabel != null && locationLabel!.isNotEmpty) ...[
+                      if (locationLabel != null &&
+                          locationLabel!.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
                           locationLabel!,

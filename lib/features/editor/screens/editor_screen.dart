@@ -3305,8 +3305,8 @@ class _TagDialogContentState extends State<_TagDialogContent> {
             .where((t) => t.name.toLowerCase().contains(query))
             .toList();
 
-    final showCreateOption = query.isNotEmpty &&
-        !allTags.any((t) => t.name.toLowerCase() == query);
+    final showCreateOption =
+        query.isNotEmpty && !allTags.any((t) => t.name.toLowerCase() == query);
 
     return AlertDialog(
       title: const Text('Tags'),

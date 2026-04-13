@@ -259,7 +259,8 @@ class NotesProvider extends ChangeNotifier {
         return _operationsContainEmbedType(decoded, embedType);
       }
       if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
-        return _operationsContainEmbedType(decoded['ops'] as List<dynamic>, embedType);
+        return _operationsContainEmbedType(
+            decoded['ops'] as List<dynamic>, embedType);
       }
     } catch (_) {
       return note.content.contains(embedType);
