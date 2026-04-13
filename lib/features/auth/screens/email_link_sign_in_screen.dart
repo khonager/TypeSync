@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/utils/email_validation.dart';
 
 class EmailLinkSignInScreen extends StatefulWidget {
   const EmailLinkSignInScreen({super.key});
@@ -145,15 +146,7 @@ class _EmailLinkSignInScreenState extends State<EmailLinkSignInScreen> {
                       hintText: 'name@example.com',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Email is required';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Enter a valid email';
-                      }
-                      return null;
-                    },
+                    validator: validateEmailAddress,
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(

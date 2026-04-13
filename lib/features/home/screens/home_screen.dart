@@ -24,6 +24,7 @@ import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/tags_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/data_repair_service.dart';
@@ -69,10 +70,15 @@ class _HomeScreenState extends State<HomeScreen> {
     'has:attachment',
     'has:image',
     'has:pdf',
+    'has:table',
+    'has:kanban',
   ];
   static const List<String> _isSearchSuggestions = [
     'is:file',
     'is:folder',
+  ];
+  static const List<String> _tagSearchSuggestionPrefixes = [
+    'tag:',
   ];
 
   // Current folder being viewed (null = root)
@@ -181,6 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final notesProvider = context.read<NotesProvider>();
     final foldersProvider = context.read<FoldersProvider>();
+    final tagsProvider = context.read<TagsProvider>();
     final calendarProvider = context.read<CalendarProvider>();
     final homeworkProvider = context.read<HomeworkProvider>();
     final timetableProvider = context.read<TimetableProvider>();
@@ -197,6 +204,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await notesProvider.initialize(effectiveUserId);
       if (!mounted) return;
       await foldersProvider.initialize(effectiveUserId);
+      if (!mounted) return;
+      await tagsProvider.initialize(effectiveUserId);
       if (!mounted) return;
       await calendarProvider.initialize(effectiveUserId);
       if (!mounted) return;
@@ -221,6 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Connect providers to sync service
         notesProvider.setSyncService(syncService);
         foldersProvider.setSyncService(syncService);
+        tagsProvider.setSyncService(syncService);
         calendarProvider.setSyncService(syncService);
         homeworkProvider.setSyncService(syncService);
         timetableProvider.setSyncService(syncService);
@@ -573,8 +583,12 @@ class _HomeScreenState extends State<HomeScreen> {
       folders = showFolderResults
           ? foldersProvider.searchFolders(parsedSearchQuery.plainTextQuery)
           : <Folder>[];
+      final tagsProvider = context.read<TagsProvider>();
       notes = showFileResults
-          ? notesProvider.searchNotesWithQuery(parsedSearchQuery)
+          ? notesProvider.searchNotesWithQuery(
+              parsedSearchQuery,
+              tagNameResolver: (id) => tagsProvider.getTagById(id)?.name,
+            )
           : <Note>[];
     } else {
       showFolderResults = true;
@@ -589,6 +603,12 @@ class _HomeScreenState extends State<HomeScreen> {
       allFolders: foldersProvider.folders,
       allNotes: notesProvider.notes,
     );
+    final noteLocationLabels = isSearchActive
+        ? _buildNoteLocationLabels(
+            notes: notes,
+            foldersProvider: foldersProvider,
+          )
+        : const <String, String>{};
 
     return Scaffold(
       extendBody: true,
@@ -668,6 +688,7 @@ class _HomeScreenState extends State<HomeScreen> {
               showFolderResults: showFolderResults,
               showFileResults: showFileResults,
               noteOpenSearchQuery: noteOpenSearchQuery,
+              noteLocationLabels: noteLocationLabels,
             ),
 
       // Bottom navigation bar matching the design
@@ -889,6 +910,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required bool showFolderResults,
     required bool showFileResults,
     required String? noteOpenSearchQuery,
+    required Map<String, String> noteLocationLabels,
   }) {
     if (foldersProvider.isLoading || notesProvider.isLoading) {
       return const Center(
@@ -1007,6 +1029,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     sliver: _isGridView
                         ? FileGrid(
                             notes: notes,
+                            noteLocationLabels: noteLocationLabels,
                             onNoteTap: (noteId) => _openNote(
                               noteId,
                               searchQuery: noteOpenSearchQuery,
@@ -1020,6 +1043,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           )
                         : FileList(
                             notes: notes,
+                            noteLocationLabels: noteLocationLabels,
                             onNoteTap: (noteId) => _openNote(
                               noteId,
                               searchQuery: noteOpenSearchQuery,
@@ -1084,6 +1108,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Map<String, String> _buildNoteLocationLabels({
+    required List<Note> notes,
+    required FoldersProvider foldersProvider,
+  }) {
+    final labels = <String, String>{};
+
+    for (final note in notes) {
+      final path = foldersProvider.getFolderPath(note.folderId);
+      if (path.isEmpty) {
+        labels[note.id] = 'Root';
+        continue;
+      }
+
+      labels[note.id] = path.map((folder) => folder.name).join(' / ');
+    }
+
+    return labels;
+  }
+
   Widget _buildEmptyState({required bool isSearchActive}) {
     final icon =
         isSearchActive ? Icons.search_off_outlined : Icons.folder_open_outlined;
@@ -1135,7 +1178,7 @@ class _HomeScreenState extends State<HomeScreen> {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 hintText:
-                    'Search... (type in: / has: / is:, press Tab to accept)',
+                    'Search... (type in: / has: / is: / tag:, press Tab to accept)',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isEmpty
                     ? null
@@ -1267,6 +1310,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (lowerToken == 'is' || lowerToken == 'is:') {
       return _isSearchSuggestions;
     }
+    if (lowerToken == 'tag' || lowerToken == 'tag:') {
+      // Show existing tag names as suggestions
+      final tagsProvider = context.read<TagsProvider>();
+      final tagNames = tagsProvider.tagNames;
+      if (tagNames.isEmpty) return _tagSearchSuggestionPrefixes;
+      return tagNames.map((name) => 'tag:$name').toList();
+    }
     if (lowerToken.startsWith('in:')) {
       return _inSearchSuggestions
           .where((option) => option.startsWith(lowerToken))
@@ -1280,6 +1330,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (lowerToken.startsWith('is:')) {
       return _isSearchSuggestions
           .where((option) => option.startsWith(lowerToken))
+          .toList();
+    }
+    if (lowerToken.startsWith('tag:')) {
+      final partial = lowerToken.substring(4);
+      final tagsProvider = context.read<TagsProvider>();
+      return tagsProvider.tagNames
+          .where((name) => name.toLowerCase().startsWith(partial))
+          .map((name) => 'tag:$name')
           .toList();
     }
 

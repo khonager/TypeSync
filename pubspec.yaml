@@ -1,7 +1,7 @@
 name: typesync
 description: A cross-platform note-taking app with cloud sync, markdown support, and productivity features.
 publish_to: "none"
-version: 1.1.16+16
+version: 1.1.17+24
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -38,6 +38,7 @@ dependencies:
 
   # Markdown & Text Editing
   flutter_quill: ^10.8.0
+  flutter_quill_delta_from_html: ^1.5.3
   markdown: ^7.2.2
   flutter_markdown: ^0.7.3
 
@@ -63,6 +64,7 @@ dependencies:
   path: ^1.9.0
   http: ^1.2.0
   firedart: ^0.9.8
+  package_info_plus: ^8.3.0
 
   # Platform Specific
   window_manager: ^0.4.2
@@ -92,6 +94,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/adi-registration.properties
     - assets/data/changelog.json
 
   # Using Google Fonts instead of bundled fonts

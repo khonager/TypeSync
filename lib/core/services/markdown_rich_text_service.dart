@@ -5,10 +5,12 @@ library;
 import 'dart:convert';
 
 import 'package:flutter_quill/flutter_quill.dart';
-import 'package:flutter_quill/markdown_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
+import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:path/path.dart' as path;
 
+import '../models/typesync_kanban_embed.dart';
 import '../models/typesync_table_embed.dart';
 
 class ConvertedMarkdownNote {
@@ -39,8 +41,7 @@ class MarkdownRichTextService {
       extracted.body,
       pathReplacements,
     );
-    final inferredMarkdown = _inferUnderlinedLabels(rewrittenMarkdown);
-    final delta = _convertMarkdownDocument(inferredMarkdown);
+    final delta = _convertMarkdownDocument(rewrittenMarkdown);
 
     return ConvertedMarkdownNote(
       title: extracted.title,
@@ -82,9 +83,88 @@ class MarkdownRichTextService {
     );
   }
 
+  static String? extractAnytypeFrontMatterValue({
+    required String rawMarkdown,
+    required String key,
+  }) {
+    final values = extractAnytypeFrontMatterValues(rawMarkdown: rawMarkdown);
+    for (final entry in values.entries) {
+      if (entry.key.toLowerCase() != key.toLowerCase()) {
+        continue;
+      }
+      for (final value in entry.value) {
+        if (value.trim().isNotEmpty) {
+          return value.trim();
+        }
+      }
+      return null;
+    }
+    return null;
+  }
+
+  static Map<String, List<String>> extractAnytypeFrontMatterValues({
+    required String rawMarkdown,
+  }) {
+    final frontMatter = _extractAnytypeFrontMatter(rawMarkdown);
+    if (frontMatter == null) {
+      return <String, List<String>>{};
+    }
+
+    final values = <String, List<String>>{};
+    String? currentKey;
+
+    for (final rawLine in frontMatter.split('\n')) {
+      final line = rawLine.trimRight();
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      final keyMatch =
+          RegExp(r'^([^:\n][^:\n]*?):(?:\s*(.*))?$').firstMatch(trimmed);
+      if (keyMatch != null && !trimmed.startsWith('- ')) {
+        currentKey = keyMatch.group(1)!.trim();
+        final inlineValue = keyMatch.group(2)?.trim() ?? '';
+        if (currentKey.isEmpty) {
+          currentKey = null;
+          continue;
+        }
+
+        values.putIfAbsent(currentKey, () => <String>[]);
+        if (inlineValue.isNotEmpty) {
+          values[currentKey]!.add(_unquoteYamlScalar(inlineValue));
+          currentKey = null;
+        }
+        continue;
+      }
+
+      if (currentKey == null) {
+        continue;
+      }
+
+      final listMatch = RegExp(r'^-\s+(.+?)\s*$').firstMatch(trimmed);
+      if (listMatch != null) {
+        values[currentKey]!.add(_unquoteYamlScalar(listMatch.group(1)!));
+        continue;
+      }
+
+      if (!RegExp(r'^\S.*:\s*').hasMatch(line)) {
+        values[currentKey]!.add(_unquoteYamlScalar(trimmed));
+        currentKey = null;
+      }
+    }
+
+    values.removeWhere((_, entries) {
+      entries.removeWhere((entry) => entry.trim().isEmpty);
+      return entries.isEmpty;
+    });
+    return values;
+  }
+
   Delta _convertMarkdownDocument(String markdown) {
     final blocks = _splitIntoBlocks(markdown);
     var delta = Delta();
+    var hasContent = false;
 
     for (final block in blocks) {
       switch (block) {
@@ -92,11 +172,24 @@ class MarkdownRichTextService {
           if (block.markdown.trim().isEmpty) {
             continue;
           }
-          delta = delta.concat(_markdownToDelta(block.markdown));
+          if (hasContent) {
+            _ensureTrailingNewline(delta);
+          }
+          delta = delta.concat(_markdownTextBlockToDelta(block.markdown));
+          hasContent = true;
         case _MarkdownTableBlock():
+          if (hasContent) {
+            _ensureTrailingNewline(delta);
+          }
           final table = TypeSyncTableData.fromMarkdownTable(block.markdown);
           delta.insert(TypeSyncTableEmbed.toBlockEmbed(table).toJson());
           delta.insert('\n');
+          hasContent = true;
+        case _MarkdownBlankBlock():
+          if (!hasContent || block.count <= 0) {
+            continue;
+          }
+          delta.insert('\n' * block.count);
       }
     }
 
@@ -112,50 +205,58 @@ class MarkdownRichTextService {
     return delta;
   }
 
-  Delta _markdownToDelta(String markdown) {
-    final document = md.Document(
-      encodeHtml: false,
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-    );
+  void _ensureTrailingNewline(Delta delta) {
+    if (delta.isEmpty) {
+      return;
+    }
 
-    final converter = MarkdownToDelta(
-      markdownDocument: document,
-      customElementToInlineAttribute: {
-        'mark': (_) => const [BackgroundAttribute('FFFFFF00')],
-        'u': (_) => const [Attribute.underline],
-        'span': _attributesForStyledSpan,
-        'font': _attributesForStyledSpan,
-      },
-    );
-
-    return converter.convert(markdown);
+    final last = delta.last.value;
+    if (last is! String || !last.endsWith('\n')) {
+      delta.insert('\n');
+    }
   }
 
-  List<Attribute<dynamic>> _attributesForStyledSpan(md.Element element) {
-    final attributes = <Attribute<dynamic>>[];
-    final directColor = element.attributes['color'];
-    final style = element.attributes['style'] ?? '';
+  Delta _markdownTextBlockToDelta(String markdown) {
+    final lines = markdown.split('\n');
+    var delta = Delta();
 
-    final colorValue = directColor ?? _cssDeclaration(style, 'color');
-    final backgroundValue = _cssDeclaration(style, 'background-color');
+    for (final line in lines) {
+      if (_trimLooseIndent(line).isEmpty) {
+        delta.insert('\n');
+        continue;
+      }
 
-    final quillColor = _quillColorFromCss(colorValue);
-    if (quillColor != null) {
-      attributes.add(ColorAttribute(quillColor));
+      final leadingIndent = _leadingIndent(line);
+      final content = line.substring(leadingIndent.length).trimRight();
+      final rewrittenContent = _rewriteStandaloneMarkdownLine(content);
+
+      if (leadingIndent.isNotEmpty) {
+        delta.insert(_indentAsTextPrefix(leadingIndent));
+      }
+
+      final lineDelta = _markdownToDelta(rewrittenContent);
+      delta = delta.concat(lineDelta);
+
+      final last = delta.isEmpty ? null : delta.last.value;
+      if (last is! String || !last.endsWith('\n')) {
+        delta.insert('\n');
+      }
     }
 
-    final quillBackground = _quillColorFromCss(backgroundValue);
-    if (quillBackground != null) {
-      attributes.add(BackgroundAttribute(quillBackground));
-    }
+    return delta;
+  }
 
-    final textDecoration = _cssDeclaration(style, 'text-decoration');
-    if (textDecoration != null &&
-        textDecoration.toLowerCase().contains('underline')) {
-      attributes.add(Attribute.underline);
-    }
-
-    return attributes;
+  Delta _markdownToDelta(String markdown) {
+    final html = md.markdownToHtml(
+      markdown,
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+      encodeHtml: false,
+    );
+    final delta = HtmlToDelta().convert(
+      html,
+      transformTableAsEmbed: false,
+    );
+    return _flattenUnsupportedEmbeds(_normalizeColorAttributes(delta));
   }
 
   static String _stripInlineMarkdown(String input) {
@@ -165,12 +266,130 @@ class MarkdownRichTextService {
         .trim();
   }
 
-  static String? _cssDeclaration(String style, String name) {
-    final match = RegExp(
-      '$name\\s*:\\s*([^;]+)',
-      caseSensitive: false,
-    ).firstMatch(style);
-    return match?.group(1)?.trim();
+  static Delta _normalizeColorAttributes(Delta delta) {
+    final normalized = Delta();
+
+    for (final operation in delta.toList()) {
+      final rawAttributes = operation.attributes;
+      if (rawAttributes == null || rawAttributes.isEmpty) {
+        normalized.push(operation);
+        continue;
+      }
+
+      final attributes = Map<String, dynamic>.from(rawAttributes);
+      final color = _quillColorFromCss(attributes['color'] as String?);
+      if (color != null) {
+        attributes['color'] = color;
+      }
+
+      final background =
+          _quillColorFromCss(attributes['background'] as String?);
+      if (background != null) {
+        attributes['background'] = background;
+      }
+
+      normalized.insert(operation.data, attributes.isEmpty ? null : attributes);
+    }
+
+    return normalized;
+  }
+
+  static Delta _flattenUnsupportedEmbeds(Delta delta) {
+    final normalized = Delta();
+
+    for (final operation in delta.toList()) {
+      final data = operation.data;
+      if (data is! Map) {
+        normalized.push(operation);
+        continue;
+      }
+
+      final resolved = _resolveEmbed(data);
+      if (resolved == null) {
+        normalized.insert('[Unsupported content]\n');
+        continue;
+      }
+      if (_isSupportedEmbedType(resolved.type)) {
+        normalized.push(operation);
+        continue;
+      }
+
+      normalized.insert(_unsupportedEmbedText(resolved.type, resolved.value));
+    }
+
+    return normalized;
+  }
+
+  static ({String type, Object? value})? _resolveEmbed(
+    Map<dynamic, dynamic> data,
+  ) {
+    final embedKeys = data.keys.toList(growable: false);
+    if (embedKeys.isEmpty) {
+      return null;
+    }
+
+    final embedType = '${embedKeys.first}';
+    final embedValue = data[embedKeys.first];
+    if (embedType != BlockEmbed.customType || embedValue is! String) {
+      return (type: embedType, value: embedValue);
+    }
+
+    try {
+      final decoded = jsonDecode(embedValue);
+      if (decoded is! Map) {
+        return (type: embedType, value: embedValue);
+      }
+      final customKeys = decoded.keys.toList(growable: false);
+      if (customKeys.isEmpty) {
+        return (type: embedType, value: embedValue);
+      }
+      final customType = '${customKeys.first}';
+      return (type: customType, value: decoded[customKeys.first]);
+    } catch (_) {
+      return (type: embedType, value: embedValue);
+    }
+  }
+
+  static bool _isSupportedEmbedType(String embedType) {
+    return embedType == TypeSyncKanbanEmbed.kanbanType ||
+        embedType == TypeSyncTableEmbed.tableType ||
+        embedType == 'x-embed-table';
+  }
+
+  static String _unsupportedEmbedText(String embedType, Object? embedValue) {
+    final rawValue = embedValue?.toString().trim() ?? '';
+    final label = rawValue.isEmpty
+        ? ''
+        : path.basename(Uri.tryParse(rawValue)?.path ?? rawValue).trim();
+
+    return switch (embedType) {
+      BlockEmbed.imageType =>
+        label.isEmpty ? '[Image attachment]\n' : '[Image attachment: $label]\n',
+      BlockEmbed.videoType =>
+        label.isEmpty ? '[Video attachment]\n' : '[Video attachment: $label]\n',
+      BlockEmbed.formulaType =>
+        rawValue.isEmpty ? '[Formula]\n' : '$rawValue\n',
+      _ => '[Unsupported content]\n',
+    };
+  }
+
+  static String? _extractAnytypeFrontMatter(String rawMarkdown) {
+    final normalized = rawMarkdown.replaceAll('\r\n', '\n');
+    final match = RegExp(r'^\ufeff?---\s*\n([\s\S]*?)\n---\s*(?:\n|$)')
+        .firstMatch(normalized);
+    return match?.group(1);
+  }
+
+  static String _unquoteYamlScalar(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length >= 2) {
+      final first = trimmed[0];
+      final last = trimmed[trimmed.length - 1];
+      if ((first == '"' && last == '"') || (first == "'" && last == "'")) {
+        return trimmed.substring(1, trimmed.length - 1);
+      }
+    }
+    return trimmed;
   }
 
   static String? _quillColorFromCss(String? value) {
@@ -180,21 +399,23 @@ class MarkdownRichTextService {
 
     final normalized = value.trim().toLowerCase();
     const named = <String, String>{
-      'black': 'FF000000',
-      'white': 'FFFFFFFF',
-      'red': 'FFFF0000',
-      'green': 'FF008000',
-      'blue': 'FF0000FF',
-      'yellow': 'FFFFFF00',
-      'orange': 'FFFFA500',
-      'amber': 'FFFFC107',
-      'pink': 'FFFFC0CB',
-      'purple': 'FF800080',
-      'teal': 'FF008080',
-      'cyan': 'FF00BCD4',
-      'sky': 'FF87CEEB',
-      'grey': 'FF9E9E9E',
-      'gray': 'FF9E9E9E',
+      'black': '#000000',
+      'white': '#FFFFFF',
+      'red': '#FF0000',
+      'green': '#008000',
+      'blue': '#0000FF',
+      'yellow': '#FFFF00',
+      'lime': '#CDFFCC',
+      'orange': '#FFA500',
+      'amber': '#FFC107',
+      'pink': '#FFC0CB',
+      'purple': '#800080',
+      'teal': '#008080',
+      'cyan': '#00BCD4',
+      'sky': '#87CEEB',
+      'ice': '#D8F6FF',
+      'grey': '#9E9E9E',
+      'gray': '#9E9E9E',
     };
 
     if (named.containsKey(normalized)) {
@@ -205,13 +426,13 @@ class MarkdownRichTextService {
       final hex = normalized.substring(1);
       if (hex.length == 3) {
         final expanded = hex.split('').map((char) => '$char$char').join();
-        return 'FF${expanded.toUpperCase()}';
+        return '#${expanded.toUpperCase()}';
       }
       if (hex.length == 6) {
-        return 'FF${hex.toUpperCase()}';
+        return '#${hex.toUpperCase()}';
       }
       if (hex.length == 8) {
-        return hex.toUpperCase();
+        return '#${hex.toUpperCase()}';
       }
     }
 
@@ -226,16 +447,19 @@ class MarkdownRichTextService {
       final alpha = alphaGroup == null
           ? 255
           : (double.parse(alphaGroup).clamp(0, 1) * 255).round();
-      return _argbHex(alpha, red, green, blue);
+      return _hexColor(alpha, red, green, blue);
     }
 
     return null;
   }
 
-  static String _argbHex(int alpha, int red, int green, int blue) {
+  static String _hexColor(int alpha, int red, int green, int blue) {
     String hex(int value) =>
-        value.clamp(0, 255).toRadixString(16).padLeft(2, '0');
-    return '${hex(alpha)}${hex(red)}${hex(green)}${hex(blue)}'.toUpperCase();
+        value.clamp(0, 255).toRadixString(16).padLeft(2, '0').toUpperCase();
+    if (alpha >= 255) {
+      return '#${hex(red)}${hex(green)}${hex(blue)}';
+    }
+    return '#${hex(alpha)}${hex(red)}${hex(green)}${hex(blue)}';
   }
 
   static String _rewriteMarkdownTargets(
@@ -267,52 +491,40 @@ class MarkdownRichTextService {
     return _normalizeMarkdownTarget(rawTarget);
   }
 
-  static String _inferUnderlinedLabels(String markdown) {
-    final lines = markdown.split('\n');
-    final output = <String>[];
-
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final trimmed = _trimLooseIndent(line);
-      if (_shouldUnderlineLabel(lines, i, trimmed)) {
-        final leading = line.substring(0, line.length - line.trimLeft().length);
-        output.add('$leading<u>$trimmed</u>');
-      } else {
-        output.add(line);
-      }
-    }
-
-    return output.join('\n');
+  static String? quillColorFromCss(String? value) {
+    return _quillColorFromCss(value);
   }
 
-  static bool _shouldUnderlineLabel(
-    List<String> lines,
-    int index,
-    String trimmed,
-  ) {
-    if (trimmed.isEmpty ||
-        !trimmed.endsWith(':') ||
-        trimmed.startsWith('#') ||
-        trimmed.startsWith('- ') ||
-        trimmed.startsWith('* ') ||
-        trimmed.startsWith('|') ||
-        trimmed.startsWith('<u>')) {
-      return false;
-    }
+  static String _leadingIndent(String line) {
+    final match =
+        RegExp(r'^[\s\u2000-\u200A\u202F\u205F\u3000]+').firstMatch(line);
+    return match?.group(0) ?? '';
+  }
 
-    for (int i = index + 1; i < lines.length; i++) {
-      final next = lines[i];
-      final nextTrimmed = _trimLooseIndent(next);
-      if (nextTrimmed.isEmpty) {
-        continue;
+  static String _indentAsTextPrefix(String indent) {
+    final buffer = StringBuffer();
+    for (final rune in indent.runes) {
+      if (rune == 0x09) {
+        buffer.write('\t');
+      } else if (rune == 0x20) {
+        buffer.write(' ');
+      } else {
+        buffer.write('\u00A0');
       }
-      return next != nextTrimmed ||
-          nextTrimmed.startsWith('|') ||
-          nextTrimmed.startsWith('- ') ||
-          RegExp(r'^\d+\.\s').hasMatch(nextTrimmed);
     }
+    return buffer.toString();
+  }
 
-    return false;
+  static String _rewriteStandaloneMarkdownLine(String line) {
+    final trimmed = line.trimLeft();
+    final leading = line.substring(0, line.length - trimmed.length);
+    if (trimmed.startsWith('• ')) {
+      return '$leading- ${trimmed.substring(2)}';
+    }
+    if (RegExp(r'^\d+\.$').hasMatch(trimmed)) {
+      return '$leading${trimmed.replaceFirst('.', r'\.')}';
+    }
+    return line;
   }
 
   static List<_MarkdownBlock> _splitIntoBlocks(String markdown) {
@@ -335,7 +547,7 @@ class MarkdownRichTextService {
 
         while (index < lines.length) {
           final trimmed = _trimLooseIndent(lines[index]);
-          if (trimmed.isEmpty || !_looksLikeTableRow(trimmed)) {
+          if (trimmed.isEmpty || !_looksLikeMarkdownTableBodyRow(trimmed)) {
             break;
           }
           tableLines.add(trimmed);
@@ -343,6 +555,21 @@ class MarkdownRichTextService {
         }
 
         blocks.add(_MarkdownTableBlock(tableLines.join('\n')));
+        continue;
+      }
+
+      if (_isBlankMarkdownSeparator(lines[index])) {
+        if (buffer.isNotEmpty) {
+          blocks.add(_MarkdownTextBlock(buffer.join('\n')));
+          buffer.clear();
+        }
+        var blankCount = 0;
+        while (
+            index < lines.length && _isBlankMarkdownSeparator(lines[index])) {
+          blankCount++;
+          index++;
+        }
+        blocks.add(_MarkdownBlankBlock(blankCount));
         continue;
       }
 
@@ -355,6 +582,10 @@ class MarkdownRichTextService {
     }
 
     return blocks;
+  }
+
+  static bool _isBlankMarkdownSeparator(String line) {
+    return _trimLooseIndent(line).isEmpty;
   }
 
   static bool _isMarkdownTableStart(List<String> lines, int index) {
@@ -370,9 +601,17 @@ class MarkdownRichTextService {
     return line.contains('|') && line.replaceAll('|', '').trim().isNotEmpty;
   }
 
+  static bool _looksLikeMarkdownTableBodyRow(String line) {
+    if (!line.contains('|')) {
+      return false;
+    }
+    final trimmed = line.trim();
+    return trimmed.startsWith('|') || trimmed.endsWith('|');
+  }
+
   static bool _looksLikeTableDivider(String line) {
     return RegExp(
-      r'^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$',
+      r'^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$',
     ).hasMatch(line);
   }
 
@@ -428,4 +667,10 @@ class _MarkdownTableBlock extends _MarkdownBlock {
   final String markdown;
 
   const _MarkdownTableBlock(this.markdown);
+}
+
+class _MarkdownBlankBlock extends _MarkdownBlock {
+  final int count;
+
+  const _MarkdownBlankBlock(this.count);
 }

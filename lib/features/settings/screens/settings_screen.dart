@@ -20,6 +20,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/changelog_service.dart';
+import '../../../core/services/app_version_service.dart';
 import '../../../core/services/local_folder_sync_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/diagnostics_service.dart';
@@ -27,6 +28,7 @@ import '../../../core/services/anytype_import_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
+import '../../../core/providers/tags_provider.dart';
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
@@ -45,6 +47,7 @@ class SettingsScreen extends StatelessWidget {
     final syncService = context.watch<SyncService>();
     final localSyncService = context.watch<LocalFolderSyncService>();
     final diagnosticsService = context.watch<DiagnosticsService>();
+    final appVersionFuture = AppVersionService.instance.load();
 
     return Scaffold(
       appBar: AppBar(
@@ -249,11 +252,21 @@ class SettingsScreen extends StatelessWidget {
           // About Section
           const _SectionHeader(title: 'About'),
 
-          _SettingsTile(
-            icon: Icons.info_outline,
-            title: 'Version',
-            subtitle: '$kCurrentAppVersion ($kCurrentBuildNumber)',
-            onTap: () => _showVersionDetails(context),
+          FutureBuilder<AppVersionInfo>(
+            future: appVersionFuture,
+            builder: (context, snapshot) {
+              final versionInfo = snapshot.data ??
+                  const AppVersionInfo(
+                    version: kCurrentAppVersion,
+                    buildNumber: kCurrentBuildNumber,
+                  );
+              return _SettingsTile(
+                icon: Icons.info_outline,
+                title: 'Version',
+                subtitle: versionInfo.displayLabel,
+                onTap: () => _showVersionDetails(context),
+              );
+            },
           ),
 
           _SettingsTile(
@@ -293,6 +306,7 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _showChangelog(BuildContext context) async {
     const changelogService = ChangelogService();
+    final viewDataFuture = _loadChangelogViewData(changelogService);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -300,16 +314,30 @@ class SettingsScreen extends StatelessWidget {
         return SafeArea(
           child: FractionallySizedBox(
             heightFactor: 0.9,
-            child: FutureBuilder<AppChangelog>(
-              future: changelogService.load(),
+            child: FutureBuilder<
+                ({AppVersionInfo versionInfo, AppChangelog changelog})>(
+              future: viewDataFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final changelog =
-                    snapshot.data ?? AppChangelog.fallback(kCurrentAppVersion);
-                final releases = changelog.releases;
+                final data = snapshot.data ??
+                    (
+                      versionInfo: const AppVersionInfo(
+                        version: kCurrentAppVersion,
+                        buildNumber: kCurrentBuildNumber,
+                      ),
+                      changelog: AppChangelog.fallback(kCurrentAppVersion),
+                    );
+                final currentRelease = _findReleaseForVersion(
+                  data.changelog,
+                  data.versionInfo.version,
+                );
+                final releases = _prioritizeReleaseForVersion(
+                  data.changelog.releases,
+                  data.versionInfo.version,
+                );
 
                 return Column(
                   children: [
@@ -331,13 +359,35 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                     const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          currentRelease != null
+                              ? 'Installed version: v${data.versionInfo.version}'
+                              : 'Installed version: v${data.versionInfo.version} (no matching release entry yet)',
+                          style:
+                              Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                        ),
+                      ),
+                    ),
                     Expanded(
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                         itemCount: releases.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
-                          return _ReleaseNotesCard(release: releases[index]);
+                          final release = releases[index];
+                          return _ReleaseNotesCard(
+                            release: release,
+                            isCurrentVersion:
+                                currentRelease?.version == release.version,
+                          );
                         },
                       ),
                     ),
@@ -353,7 +403,10 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _showVersionDetails(BuildContext context) async {
     const changelogService = ChangelogService();
+    final versionInfo = await AppVersionService.instance.load();
     final changelog = await changelogService.load();
+    final currentRelease =
+        _findReleaseForVersion(changelog, versionInfo.version);
     if (!context.mounted) {
       return;
     }
@@ -367,10 +420,14 @@ class SettingsScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('App version: $kCurrentAppVersion'),
-              const Text('Build: $kCurrentBuildNumber'),
+              Text('App version: ${versionInfo.version}'),
+              Text('Build: ${versionInfo.buildNumber}'),
               const SizedBox(height: 8),
-              Text('Latest changelog: ${changelog.latestVersion}'),
+              Text(
+                'Changelog entry: ${currentRelease?.version ?? 'Not available for this build'}',
+              ),
+              if (currentRelease?.version != changelog.latestVersion)
+                Text('Newest changelog entry: ${changelog.latestVersion}'),
             ],
           ),
           actions: [
@@ -389,6 +446,48 @@ class SettingsScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<({AppVersionInfo versionInfo, AppChangelog changelog})>
+      _loadChangelogViewData(ChangelogService changelogService) async {
+    final versionInfo = await AppVersionService.instance.load();
+    final changelog = await changelogService.load();
+    return (versionInfo: versionInfo, changelog: changelog);
+  }
+
+  ChangelogRelease? _findReleaseForVersion(
+    AppChangelog changelog,
+    String version,
+  ) {
+    final normalizedTarget = VersionCompatibility.normalize(version);
+    for (final release in changelog.releases) {
+      if (VersionCompatibility.normalize(release.version) == normalizedTarget) {
+        return release;
+      }
+    }
+    return null;
+  }
+
+  List<ChangelogRelease> _prioritizeReleaseForVersion(
+    List<ChangelogRelease> releases,
+    String version,
+  ) {
+    final normalizedTarget = VersionCompatibility.normalize(version);
+    final matching = <ChangelogRelease>[];
+    final remaining = <ChangelogRelease>[];
+
+    for (final release in releases) {
+      if (VersionCompatibility.normalize(release.version) == normalizedTarget) {
+        matching.add(release);
+      } else {
+        remaining.add(release);
+      }
+    }
+
+    return <ChangelogRelease>[
+      ...matching,
+      ...remaining,
+    ];
   }
 
   Future<void> _toggleLocalWorkspaceMode(
@@ -638,6 +737,7 @@ class SettingsScreen extends StatelessWidget {
     final authService = context.read<AuthService>();
     final notesProvider = context.read<NotesProvider>();
     final foldersProvider = context.read<FoldersProvider>();
+    final tagsProvider = context.read<TagsProvider>();
     final storageService = context.read<StorageService>();
     final workspaceId = authService.storageUserId;
     final noteUserId = authService.userId ?? workspaceId;
@@ -685,6 +785,7 @@ class SettingsScreen extends StatelessWidget {
             authService.isLoggedIn && authService.effectiveSyncEnabled,
         cloudUserId: authService.userId,
         storageService: storageService,
+        tagsProvider: tagsProvider,
       );
     } finally {
       if (context.mounted) {
@@ -707,6 +808,9 @@ class SettingsScreen extends StatelessWidget {
     }
     if (result.importedAttachments > 0) {
       summary.write(' with ${result.importedAttachments} attachments');
+    }
+    if (result.importedTags > 0) {
+      summary.write(' and ${result.importedTags} tags');
     }
     if (result.failedEntries.isNotEmpty) {
       summary.write('. ${result.failedEntries.length} items failed');
@@ -1707,13 +1811,26 @@ class _SectionHeader extends StatelessWidget {
 
 class _ReleaseNotesCard extends StatelessWidget {
   final ChangelogRelease release;
+  final bool isCurrentVersion;
 
-  const _ReleaseNotesCard({required this.release});
+  const _ReleaseNotesCard({
+    required this.release,
+    this.isCurrentVersion = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Card(
+      shape: isCurrentVersion
+          ? RoundedRectangleBorder(
+              side: BorderSide(
+                color: colors.primary.withValues(alpha: 0.7),
+                width: 1.4,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
@@ -1722,13 +1839,43 @@ class _ReleaseNotesCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    release.version.isNotEmpty
-                        ? 'v${release.version}'
-                        : 'Unknown version',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          release.version.isNotEmpty
+                              ? 'v${release.version}'
+                              : 'Unknown version',
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
+                      ),
+                      if (isCurrentVersion) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.primaryContainer,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Installed',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: colors.onPrimaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (release.date.isNotEmpty)

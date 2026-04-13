@@ -13,6 +13,8 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
+import '../models/typesync_kanban_embed.dart';
+import '../models/typesync_table_embed.dart';
 import '../services/diagnostics_service.dart';
 import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
@@ -90,10 +92,14 @@ class NotesProvider extends ChangeNotifier {
     );
   }
 
-  /// Search notes with structured filters (`in:*`, `has:*`, etc).
+  /// Search notes with structured filters (`in:*`, `has:*`, `tag:*`, etc).
+  ///
+  /// The [tagNameResolver] callback maps a tag ID to its display name so that
+  /// `tag:homework` filters work even though notes only store tag IDs.
   List<Note> searchNotesWithQuery(
     SearchQuery query, {
     String? folderId,
+    String? Function(String tagId)? tagNameResolver,
   }) {
     final queryTokens = query.textTokens;
 
@@ -102,6 +108,9 @@ class NotesProvider extends ChangeNotifier {
       if (folderId != null && note.folderId != folderId) return false;
       if (!_matchesInFilters(note, query.inFilters)) return false;
       if (!_matchesHasFilters(note, query.hasFilters)) return false;
+      if (!_matchesTagFilters(note, query.tagFilters, tagNameResolver)) {
+        return false;
+      }
       if (queryTokens.isEmpty) return true;
       return queryTokens.every(
         (token) => _matchesTokenInNote(note, token, query.inFilters),
@@ -198,10 +207,100 @@ class NotesProvider extends ChangeNotifier {
         case 'pdf':
           if (!_noteHasPdfAsset(note)) return false;
           break;
+        case 'table':
+          if (!_noteHasStructuredEmbed(note, TypeSyncTableEmbed.tableType)) {
+            return false;
+          }
+          break;
+        case 'kanban':
+          if (!_noteHasStructuredEmbed(note, TypeSyncKanbanEmbed.kanbanType)) {
+            return false;
+          }
+          break;
       }
     }
 
     return true;
+  }
+
+  /// Check whether [note] matches all `tag:name` filters.
+  ///
+  /// Each tag filter value is matched case-insensitively against the resolved
+  /// tag names of the note. If no [tagNameResolver] is provided the filter
+  /// matches when the note has **any** tag (i.e. it degrades gracefully).
+  bool _matchesTagFilters(
+    Note note,
+    List<String> tagFilters,
+    String? Function(String tagId)? tagNameResolver,
+  ) {
+    if (tagFilters.isEmpty) return true;
+    if (note.tags.isEmpty) return false;
+
+    for (final filter in tagFilters) {
+      final lowerFilter = filter.toLowerCase();
+      final matched = note.tags.any((tagId) {
+        if (tagNameResolver == null) return true;
+        final name = tagNameResolver(tagId);
+        return name != null && name.toLowerCase().contains(lowerFilter);
+      });
+      if (!matched) return false;
+    }
+    return true;
+  }
+
+  bool _noteHasStructuredEmbed(Note note, String embedType) {
+    if (note.content.isEmpty) {
+      return false;
+    }
+
+    try {
+      final decoded = jsonDecode(note.content);
+      if (decoded is List<dynamic>) {
+        return _operationsContainEmbedType(decoded, embedType);
+      }
+      if (decoded is Map<String, dynamic> && decoded['ops'] is List<dynamic>) {
+        return _operationsContainEmbedType(
+          decoded['ops'] as List<dynamic>,
+          embedType,
+        );
+      }
+    } catch (_) {
+      return note.content.contains(embedType);
+    }
+
+    return false;
+  }
+
+  bool _operationsContainEmbedType(List<dynamic> operations, String embedType) {
+    for (final operation in operations) {
+      if (operation is! Map) {
+        continue;
+      }
+
+      final insertValue = operation['insert'];
+      if (insertValue is! Map) {
+        continue;
+      }
+
+      if (insertValue.containsKey(embedType)) {
+        return true;
+      }
+
+      final customValue = insertValue['custom'];
+      if (customValue is String) {
+        try {
+          final decodedCustom = jsonDecode(customValue);
+          if (decodedCustom is Map<String, dynamic> &&
+              decodedCustom.containsKey(embedType)) {
+            return true;
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+
+    return false;
   }
 
   bool _matchesTokenInNote(
@@ -441,7 +540,7 @@ class NotesProvider extends ChangeNotifier {
   /// Create a new note
   Future<Note?> createNote({
     required String userId,
-    String title = 'No name',
+    String? title,
     String content = emptyDocumentJson,
     String? folderId,
     NoteType type = NoteType.text,

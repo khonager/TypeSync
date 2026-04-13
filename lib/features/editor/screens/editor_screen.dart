@@ -30,6 +30,7 @@ import '../../../core/utils/web_download_stub.dart'
 import '../../../core/models/note.dart';
 import '../../../core/models/typesync_kanban_embed.dart';
 import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
@@ -171,8 +172,9 @@ class _EditorScreenState extends State<EditorScreen>
         // Parse content as Delta if it's JSON, otherwise treat as plain text
         try {
           if (_note!.content.isNotEmpty && _note!.content.startsWith('[')) {
-            final jsonData = jsonDecode(_note!.content) as List<dynamic>;
-            final document = Document.fromJson(jsonData);
+            final loadResult = _loadDocumentFromStoredContent(_note!.content);
+            final document = loadResult.document;
+            _lastSavedContent = loadResult.normalizedContent;
             _quillController = QuillController(
               document: document,
               selection: const TextSelection.collapsed(offset: 0),
@@ -180,6 +182,7 @@ class _EditorScreenState extends State<EditorScreen>
           } else {
             // Plain text content
             final document = Document()..insert(0, _note!.content);
+            _lastSavedContent = _note!.content;
             _quillController = QuillController(
               document: document,
               selection: const TextSelection.collapsed(offset: 0),
@@ -188,6 +191,7 @@ class _EditorScreenState extends State<EditorScreen>
         } catch (e) {
           // If parsing fails, create empty document with content as plain text
           final document = Document()..insert(0, _note!.content);
+          _lastSavedContent = _note!.content;
           _quillController = QuillController(
             document: document,
             selection: const TextSelection.collapsed(offset: 0),
@@ -202,7 +206,7 @@ class _EditorScreenState extends State<EditorScreen>
     // Create new note if none exists
     if (_note == null) {
       _quillController = QuillController.basic();
-      _titleController.text = 'No name';
+      _titleController.text = DateTime.now().toIso8601String().substring(0, 16);
 
       final authService = context.read<AuthService>();
       if (authService.userId != null) {
@@ -381,12 +385,153 @@ class _EditorScreenState extends State<EditorScreen>
     return offset.clamp(0, maxOffset).toInt();
   }
 
+  ({Document document, String normalizedContent})
+      _loadDocumentFromStoredContent(
+    String content,
+  ) {
+    final normalizedContent = _normalizedStoredContent(content);
+    final document = Document.fromJson(
+      jsonDecode(normalizedContent) as List<dynamic>,
+    );
+    return (document: document, normalizedContent: normalizedContent);
+  }
+
+  String _normalizedStoredContent(String content) {
+    if (content.isEmpty || !content.trimLeft().startsWith('[')) {
+      return content;
+    }
+
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is! List<dynamic>) {
+        return content;
+      }
+      final normalized = _sanitizeDeltaOperations(decoded);
+      return jsonEncode(normalized);
+    } catch (_) {
+      return content;
+    }
+  }
+
+  List<dynamic> _sanitizeDeltaOperations(List<dynamic> operations) {
+    final sanitized = <Map<String, dynamic>>[];
+
+    for (final rawOperation in operations) {
+      if (rawOperation is! Map) {
+        continue;
+      }
+
+      final operation = Map<String, dynamic>.from(rawOperation);
+      final insert = operation['insert'];
+      if (insert is! Map) {
+        sanitized.add(operation);
+        continue;
+      }
+
+      final replacement = _unsupportedEmbedReplacement(insert);
+      if (replacement != null) {
+        sanitized.addAll(replacement);
+        continue;
+      }
+
+      sanitized.add(operation);
+    }
+
+    if (sanitized.isEmpty) {
+      return const [
+        {'insert': '\n'},
+      ];
+    }
+
+    final lastInsert = sanitized.last['insert'];
+    if (lastInsert is! String || !lastInsert.endsWith('\n')) {
+      sanitized.add(const {'insert': '\n'});
+    }
+
+    return sanitized;
+  }
+
+  List<Map<String, dynamic>>? _unsupportedEmbedReplacement(
+    Map<dynamic, dynamic> insert,
+  ) {
+    final resolved = _resolveEmbed(insert);
+    if (resolved == null) {
+      return const [
+        {'insert': '[Unsupported content]\n'},
+      ];
+    }
+
+    if (_isSupportedEmbedType(resolved.type)) {
+      return null;
+    }
+
+    return [
+      {'insert': _unsupportedEmbedText(resolved.type, resolved.value)},
+    ];
+  }
+
+  ({String type, Object? value})? _resolveEmbed(Map<dynamic, dynamic> insert) {
+    final keys = insert.keys.toList(growable: false);
+    if (keys.isEmpty) {
+      return null;
+    }
+
+    final embedType = '${keys.first}';
+    final embedValue = insert[keys.first];
+    if (embedType != BlockEmbed.customType || embedValue is! String) {
+      return (type: embedType, value: embedValue);
+    }
+
+    try {
+      final decoded = jsonDecode(embedValue);
+      if (decoded is! Map) {
+        return (type: embedType, value: embedValue);
+      }
+      final customKeys = decoded.keys.toList(growable: false);
+      if (customKeys.isEmpty) {
+        return (type: embedType, value: embedValue);
+      }
+      final customType = '${customKeys.first}';
+      return (type: customType, value: decoded[customKeys.first]);
+    } catch (_) {
+      return (type: embedType, value: embedValue);
+    }
+  }
+
+  bool _isSupportedEmbedType(String embedType) {
+    return embedType == TypeSyncKanbanEmbed.kanbanType ||
+        embedType == TypeSyncTableEmbed.tableType ||
+        embedType == 'x-embed-table';
+  }
+
+  String _unsupportedEmbedText(String embedType, Object? embedValue) {
+    final rawValue = embedValue?.toString().trim() ?? '';
+    final uri = Uri.tryParse(rawValue);
+    final uriPath = uri?.path;
+    final label = rawValue.isEmpty
+        ? ''
+        : p
+            .basename((uriPath?.isNotEmpty ?? false) ? uriPath! : rawValue)
+            .trim();
+
+    return switch (embedType) {
+      BlockEmbed.imageType =>
+        label.isEmpty ? '[Image attachment]\n' : '[Image attachment: $label]\n',
+      BlockEmbed.videoType =>
+        label.isEmpty ? '[Video attachment]\n' : '[Video attachment: $label]\n',
+      BlockEmbed.formulaType =>
+        rawValue.isEmpty ? '[Formula]\n' : '$rawValue\n',
+      _ => '[Unsupported content]\n',
+    };
+  }
+
   String? _minimumVersionRequiredByCurrentDocument() {
     final operations = _quillController.document.toDelta().toJson();
     for (final operation in operations) {
       final insert = operation['insert'];
       if (insert is! Map) continue;
-      if (insert.containsKey(TypeSyncKanbanEmbed.kanbanType)) {
+      final resolved = _resolveEmbed(insert);
+      if (resolved?.type == TypeSyncKanbanEmbed.kanbanType) {
         return TypeSyncKanbanEmbed.minimumSupportedAppVersion;
       }
     }
@@ -528,7 +673,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (providerNote.updatedAt.isAfter(_note!.updatedAt) ||
           providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
-        final providerContent = providerNote.content;
+        final providerContent = _normalizedStoredContent(providerNote.content);
         final localContent =
             jsonEncode(_quillController.document.toDelta().toJson());
 
@@ -1685,7 +1830,10 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       if (_isPdfAttachment(extension, mimeType ?? dataMimeType)) {
-        return _buildInlinePdfPreview(bytes);
+        return _buildInlinePdfPreview(
+          bytes,
+          identity: attachment.id,
+        );
       }
 
       if (_isSvgAttachment(extension, mimeType ?? dataMimeType)) {
@@ -1716,9 +1864,13 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isRemoteAttachmentPath(attachment.path)) {
       if (_isPdfAttachment(extension, mimeType)) {
         if (kIsWeb) {
-          return RemotePdfEmbed(url: attachment.path);
+          return RemotePdfEmbed(
+            key: ValueKey('remote-pdf-${attachment.path}'),
+            url: attachment.path,
+          );
         }
         return FutureBuilder<Uint8List?>(
+          key: ValueKey('remote-pdf-future-${attachment.path}'),
           future: _cachedAttachmentBytes(attachment.path),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1727,7 +1879,10 @@ class _EditorScreenState extends State<EditorScreen>
             if (!snapshot.hasData) {
               return _buildAttachmentUnavailable(attachment);
             }
-            return _buildInlinePdfPreview(snapshot.data!);
+            return _buildInlinePdfPreview(
+              snapshot.data!,
+              identity: attachment.path,
+            );
           },
         );
       }
@@ -1808,7 +1963,10 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (_isPdfAttachment(extension, mimeType)) {
-      return PdfViewerWidget(pdfFile: file);
+      return PdfViewerWidget(
+        key: ValueKey('local-pdf-${attachment.path}'),
+        pdfFile: file,
+      );
     }
 
     if (_isSvgAttachment(extension, mimeType)) {
@@ -2110,8 +2268,14 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Widget _buildInlinePdfPreview(Uint8List bytes) {
-    return InlinePdfPreview(pdfBytes: bytes);
+  Widget _buildInlinePdfPreview(
+    Uint8List bytes, {
+    Object? identity,
+  }) {
+    return InlinePdfPreview(
+      key: identity == null ? null : ValueKey('inline-pdf-$identity'),
+      pdfBytes: bytes,
+    );
   }
 
   void _showConflictDialog() {
@@ -2350,7 +2514,27 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _showTagDialog() {
-    // TODO: Implement tag dialog
+    if (_note == null) return;
+
+    final tagsProvider = context.read<TagsProvider>();
+    final notesProvider = context.read<NotesProvider>();
+    final authService = context.read<AuthService>();
+    final userId = authService.storageUserId;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return _TagDialogContent(
+          note: _note!,
+          tagsProvider: tagsProvider,
+          notesProvider: notesProvider,
+          userId: userId,
+          onUpdated: () {
+            if (mounted) setState(() {});
+          },
+        );
+      },
+    );
   }
 
   void _showColorPicker() {
@@ -2943,8 +3127,9 @@ class _EditorScreenState extends State<EditorScreen>
     if (!mounted) return;
 
     try {
+      final normalizedContent = _normalizedStoredContent(providerNote.content);
       final delta =
-          Delta.fromJson(jsonDecode(providerNote.content) as List<dynamic>);
+          Delta.fromJson(jsonDecode(normalizedContent) as List<dynamic>);
 
       setState(() {
         _isUpdatingFromExternal = true;
@@ -2960,7 +3145,7 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         _note = providerNote;
-        _lastSavedContent = providerNote.content;
+        _lastSavedContent = normalizedContent;
         _characterCount = providerNote.characterCount;
         _lineCount = providerNote.lineCount;
         _titleController.text = providerNote.title;
@@ -3037,5 +3222,208 @@ class _ColorOption extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Dialog for adding / removing tags on a note.
+class _TagDialogContent extends StatefulWidget {
+  const _TagDialogContent({
+    required this.note,
+    required this.tagsProvider,
+    required this.notesProvider,
+    required this.userId,
+    required this.onUpdated,
+  });
+
+  final Note note;
+  final TagsProvider tagsProvider;
+  final NotesProvider notesProvider;
+  final String? userId;
+  final VoidCallback onUpdated;
+
+  @override
+  State<_TagDialogContent> createState() => _TagDialogContentState();
+}
+
+class _TagDialogContentState extends State<_TagDialogContent> {
+  final TextEditingController _controller = TextEditingController();
+  late List<String> _currentTagIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTagIds = List<String>.from(widget.note.tags);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addTag(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || widget.userId == null) return;
+
+    final tag = await widget.tagsProvider.findOrCreateTag(
+      userId: widget.userId!,
+      name: trimmed,
+    );
+    if (tag == null) return;
+
+    if (!_currentTagIds.contains(tag.id)) {
+      await widget.notesProvider.addTag(widget.note.id, tag.id);
+      setState(() {
+        _currentTagIds.add(tag.id);
+      });
+      widget.onUpdated();
+    }
+    _controller.clear();
+  }
+
+  Future<void> _removeTag(String tagId) async {
+    await widget.notesProvider.removeTag(widget.note.id, tagId);
+    setState(() {
+      _currentTagIds.remove(tagId);
+    });
+    widget.onUpdated();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allTags = widget.tagsProvider.tags;
+    final assignedTags =
+        allTags.where((t) => _currentTagIds.contains(t.id)).toList();
+    final unassignedTags =
+        allTags.where((t) => !_currentTagIds.contains(t.id)).toList();
+
+    // Filter unassigned tags by the current text input
+    final query = _controller.text.trim().toLowerCase();
+    final filteredUnassigned = query.isEmpty
+        ? unassignedTags
+        : unassignedTags
+            .where((t) => t.name.toLowerCase().contains(query))
+            .toList();
+
+    final showCreateOption =
+        query.isNotEmpty && !allTags.any((t) => t.name.toLowerCase() == query);
+
+    return AlertDialog(
+      title: const Text('Tags'),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Text field for adding new tags
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: 'Add a tag...',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => _addTag(_controller.text),
+                ),
+                border: const OutlineInputBorder(),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onSubmitted: _addTag,
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+
+            // Current tags on this note
+            if (assignedTags.isNotEmpty) ...[
+              Text(
+                'Current tags',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: assignedTags.map((tag) {
+                  return Chip(
+                    label: Text(tag.name),
+                    backgroundColor: _parseColor(tag.color),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () => _removeTag(tag.id),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // "Create new" option
+            if (showCreateOption)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.add_circle_outline, size: 20),
+                title: Text('Create "$query"'),
+                onTap: () => _addTag(_controller.text),
+              ),
+
+            // Existing unassigned tags to pick from
+            if (filteredUnassigned.isNotEmpty) ...[
+              Text(
+                'Available tags',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: filteredUnassigned.map((tag) {
+                      return ActionChip(
+                        label: Text(tag.name),
+                        backgroundColor:
+                            _parseColor(tag.color)?.withValues(alpha: 0.3),
+                        onPressed: () async {
+                          await widget.notesProvider
+                              .addTag(widget.note.id, tag.id);
+                          setState(() {
+                            _currentTagIds.add(tag.id);
+                          });
+                          widget.onUpdated();
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+
+  Color? _parseColor(String hex) {
+    try {
+      final colorHex = hex.replaceFirst('#', '');
+      if (colorHex.length == 6) {
+        return Color(int.parse('FF$colorHex', radix: 16));
+      }
+      if (colorHex.length == 8) {
+        return Color(int.parse(colorHex, radix: 16));
+      }
+    } catch (_) {}
+    return null;
   }
 }

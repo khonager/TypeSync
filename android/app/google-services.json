@@ -9,6 +9,25 @@
       "client_info": {
         "mobilesdk_app_id": "1:461465199276:android:5c90b9333e07c88ebd3509",
         "android_client_info": {
+          "package_name": "com.khonager.typesync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXZ7gn9i6QGzpDJrbU7SG071F4bSNRnCs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:461465199276:android:43f89e04963a4357bd3509",
+        "android_client_info": {
           "package_name": "de.khonager.typesync"
         }
       },

@@ -200,7 +200,7 @@ class Note extends Equatable {
   factory Note.create({
     required String id,
     required String userId,
-    String title = 'No name',
+    String? title,
     String content = '',
     NoteType type = NoteType.text,
     String? folderId,
@@ -208,7 +208,7 @@ class Note extends Equatable {
     final now = DateTime.now();
     return Note(
       id: id,
-      title: title,
+      title: title ?? now.toIso8601String().substring(0, 16),
       content: content,
       type: type,
       folderId: folderId,
@@ -328,7 +328,12 @@ class Note extends Equatable {
 
     return Note(
       id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? 'No name',
+      title: json['title'] as String? ??
+          (json['createdAt'] != null
+              ? DateTime.parse(json['createdAt'] as String)
+                  .toIso8601String()
+                  .substring(0, 16)
+              : DateTime.now().toIso8601String().substring(0, 16)),
       content: json['content'] as String? ?? '',
       type: NoteType.values[typeIndex],
       folderId: json['folderId'] as String?,

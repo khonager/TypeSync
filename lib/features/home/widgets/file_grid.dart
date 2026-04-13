@@ -30,6 +30,7 @@ String _formatBytes(int bytes) {
 /// Grid view for files/notes
 class FileGrid extends StatelessWidget {
   final List<Note> notes;
+  final Map<String, String> noteLocationLabels;
   final void Function(String) onNoteTap;
   final void Function(String) onNoteLongPress;
   final bool useLongPressDrag;
@@ -41,6 +42,7 @@ class FileGrid extends StatelessWidget {
     required this.notes,
     required this.onNoteTap,
     required this.onNoteLongPress,
+    this.noteLocationLabels = const {},
     this.useLongPressDrag = false,
     this.onDragStarted,
     this.onDragPositionChanged,
@@ -50,17 +52,20 @@ class FileGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasLocationLabels = noteLocationLabels.isNotEmpty;
+
     return SliverGrid(
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 120,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.78,
+        childAspectRatio: hasLocationLabels ? 0.66 : 0.78,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileGridItem(
           key: ValueKey('${notes[index].id}-${notes[index].backgroundColor}'),
           note: notes[index],
+          locationLabel: noteLocationLabels[notes[index].id],
           onTap: () => onNoteTap(notes[index].id),
           onLongPress: () => onNoteLongPress(notes[index].id),
           useLongPressDrag: useLongPressDrag,
@@ -77,6 +82,7 @@ class FileGrid extends StatelessWidget {
 /// Individual file item in grid
 class FileGridItem extends StatelessWidget {
   final Note note;
+  final String? locationLabel;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final bool useLongPressDrag;
@@ -88,6 +94,7 @@ class FileGridItem extends StatelessWidget {
     required this.note,
     required this.onTap,
     required this.onLongPress,
+    this.locationLabel,
     this.useLongPressDrag = false,
     this.onDragStarted,
     this.onDragPositionChanged,
@@ -252,6 +259,19 @@ class FileGridItem extends StatelessWidget {
                 ),
             textAlign: TextAlign.center,
           ),
+          if (locationLabel != null && locationLabel!.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              locationLabel!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: textColor.withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
@@ -261,6 +281,7 @@ class FileGridItem extends StatelessWidget {
 /// List view for files/notes
 class FileList extends StatelessWidget {
   final List<Note> notes;
+  final Map<String, String> noteLocationLabels;
   final void Function(String) onNoteTap;
   final void Function(String) onNoteLongPress;
 
@@ -268,6 +289,7 @@ class FileList extends StatelessWidget {
     required this.notes,
     required this.onNoteTap,
     required this.onNoteLongPress,
+    this.noteLocationLabels = const {},
     super.key,
   });
 
@@ -277,6 +299,7 @@ class FileList extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) => FileListItem(
           note: notes[index],
+          locationLabel: noteLocationLabels[notes[index].id],
           onTap: () => onNoteTap(notes[index].id),
           onLongPress: () => onNoteLongPress(notes[index].id),
         ),
@@ -289,6 +312,7 @@ class FileList extends StatelessWidget {
 /// Individual file item in list
 class FileListItem extends StatelessWidget {
   final Note note;
+  final String? locationLabel;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -296,6 +320,7 @@ class FileListItem extends StatelessWidget {
     required this.note,
     required this.onTap,
     required this.onLongPress,
+    this.locationLabel,
     super.key,
   });
 
@@ -403,6 +428,19 @@ class FileListItem extends StatelessWidget {
                               color: textColor.withValues(alpha: 0.7),
                             ),
                       ),
+                      if (locationLabel != null &&
+                          locationLabel!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          locationLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: textColor.withValues(alpha: 0.7),
+                                  ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

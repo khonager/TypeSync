@@ -547,19 +547,19 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.format_bold,
         tooltip: 'Bold',
         isActive: _hasFormat(Attribute.bold),
-        onTap: () => widget.controller.formatSelection(Attribute.bold),
+        onTap: () => _toggleAttribute(Attribute.bold),
       ),
       _ToolbarButton(
         icon: Icons.format_italic,
         tooltip: 'Italic',
         isActive: _hasFormat(Attribute.italic),
-        onTap: () => widget.controller.formatSelection(Attribute.italic),
+        onTap: () => _toggleAttribute(Attribute.italic),
       ),
       _ToolbarButton(
         icon: Icons.format_underlined,
         tooltip: 'Underline',
         isActive: _hasFormat(Attribute.underline),
-        onTap: () => widget.controller.formatSelection(Attribute.underline),
+        onTap: () => _toggleAttribute(Attribute.underline),
       ),
       _ToolbarButton(
         icon: Icons.format_color_text,
@@ -608,13 +608,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.check_box,
         tooltip: 'Checklist',
         isActive: _hasFormat(Attribute.checked),
-        onTap: () => widget.controller.formatSelection(Attribute.checked),
+        onTap: () => _toggleAttribute(Attribute.checked),
       ),
       _ToolbarButton(
         icon: Icons.format_list_numbered,
         tooltip: 'Numbered list',
         isActive: _hasFormat(Attribute.ol),
-        onTap: () => widget.controller.formatSelection(Attribute.ol),
+        onTap: () => _toggleAttribute(Attribute.ol),
       ),
       _ToolbarButton(
         icon: Icons.code,
@@ -631,19 +631,19 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.format_bold,
         tooltip: 'Bold',
         isActive: _hasFormat(Attribute.bold),
-        onTap: () => widget.controller.formatSelection(Attribute.bold),
+        onTap: () => _toggleAttribute(Attribute.bold),
       ),
       _ToolbarButton(
         icon: Icons.format_italic,
         tooltip: 'Italic',
         isActive: _hasFormat(Attribute.italic),
-        onTap: () => widget.controller.formatSelection(Attribute.italic),
+        onTap: () => _toggleAttribute(Attribute.italic),
       ),
       _ToolbarButton(
         icon: Icons.format_underlined,
         tooltip: 'Underline',
         isActive: _hasFormat(Attribute.underline),
-        onTap: () => widget.controller.formatSelection(Attribute.underline),
+        onTap: () => _toggleAttribute(Attribute.underline),
       ),
       _ToolbarButton(
         icon: Icons.format_color_text,
@@ -689,13 +689,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.check_box,
         tooltip: 'Checklist',
         isActive: _hasFormat(Attribute.checked),
-        onTap: () => widget.controller.formatSelection(Attribute.checked),
+        onTap: () => _toggleAttribute(Attribute.checked),
       ),
       _ToolbarButton(
         icon: Icons.format_list_numbered,
         tooltip: 'Numbered list',
         isActive: _hasFormat(Attribute.ol),
-        onTap: () => widget.controller.formatSelection(Attribute.ol),
+        onTap: () => _toggleAttribute(Attribute.ol),
       ),
       _ToolbarButton(
         icon: Icons.code,
@@ -708,21 +708,32 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   bool _hasFormat(Attribute<dynamic> attribute) {
     try {
-      final format = widget.controller.getSelectionStyle();
-      return format.containsKey(attribute.key);
+      final attributes = widget.controller.getSelectionStyle().attributes;
+      final current = attributes[attribute.key];
+      if (current == null) return false;
+
+      if (attribute.key == Attribute.list.key ||
+          attribute.key == Attribute.header.key ||
+          attribute.key == Attribute.script.key ||
+          attribute.key == Attribute.align.key) {
+        return current.value == attribute.value;
+      }
+
+      return true;
     } catch (_) {
       return false;
     }
   }
 
+  void _toggleAttribute(Attribute<dynamic> attribute) {
+    widget.controller.skipRequestKeyboard = !attribute.isInline;
+    widget.controller.formatSelection(
+      _hasFormat(attribute) ? Attribute.clone(attribute, null) : attribute,
+    );
+  }
+
   void _toggleCodeBlock() {
-    final selection = widget.controller.selection;
-    if (selection.isCollapsed) {
-      widget.controller.document.insert(selection.start, '\n');
-      widget.controller.formatSelection(Attribute.codeBlock);
-      return;
-    }
-    widget.controller.formatSelection(Attribute.codeBlock);
+    _toggleAttribute(Attribute.codeBlock);
   }
 
   void _setAlignment(TextAlign align) {

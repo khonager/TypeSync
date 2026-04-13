@@ -1,0 +1,89 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight Release
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: de.khonager.typesync
+
+      groups:
+        - app_store_credentials
+
+      vars:
+        BUNDLE_ID: "de.khonager.typesync"
+        APP_STORE_APP_ID: "6762024261"
+
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Flutter build ipa
+        script: |
+          flutter build ipa --release \
+            --no-tree-shake-icons \
+            --build-name=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//') \
+            --build-number=$(grep '^version:' pubspec.yaml | sed 's/.*+//') \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: false
+        submit_to_app_store: false
+
+  ios-development:
+    name: iOS Development Build
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+
+    environment:
+      groups:
+        - app_store_credentials
+
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: Build iOS without signing
+        script: |
+          flutter build ios --release --no-codesign
+
+    artifacts:
+      - build/ios/iphoneos/*.app

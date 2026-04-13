@@ -26,6 +26,7 @@ import 'core/services/diagnostics_service.dart';
 import 'core/services/plain_text_quill_clipboard_service.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
+import 'core/providers/tags_provider.dart';
 import 'core/providers/timetable_provider.dart';
 import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
@@ -44,11 +45,7 @@ void main() async {
 
   // Initialize Firebase for cloud sync and authentication
   try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
+    await _initializeFirebase();
   } catch (e) {
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
@@ -104,6 +101,46 @@ void main() async {
   runApp(const TypeSyncApp());
 }
 
+Future<void> _initializeFirebase() async {
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    return;
+  }
+
+  if (defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS) {
+    try {
+      // Prefer the native default app on Apple platforms when a bundled
+      // GoogleService-Info.plist exists.
+      await Firebase.initializeApp();
+      return;
+    } on FirebaseException catch (e) {
+      final code = e.code.toLowerCase();
+      final message = e.message?.toLowerCase() ?? '';
+      final missingNativeApp = code == 'no-app' ||
+          code == 'core/no-app' ||
+          message.contains('no firebase app') ||
+          message.contains('no app');
+
+      if (!missingNativeApp) {
+        rethrow;
+      }
+
+      // Fall back to Dart-provided options when the native plist is absent.
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      return;
+    }
+  }
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+}
+
 /// Root widget that sets up all providers for the application
 ///
 /// Uses MultiProvider to inject services and state management
@@ -143,6 +180,9 @@ class TypeSyncApp extends StatelessWidget {
 
         // Folders provider for managing folder structure
         ChangeNotifierProvider(create: (_) => FoldersProvider()),
+
+        // Tags provider for managing note tags
+        ChangeNotifierProvider(create: (_) => TagsProvider()),
 
         // Timetable provider for managing class schedule
         ChangeNotifierProvider(create: (_) => TimetableProvider()),

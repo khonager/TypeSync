@@ -3,6 +3,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter_quill/flutter_quill.dart';
+
 import '../models/typesync_kanban_embed.dart';
 import '../models/typesync_table_embed.dart';
 
@@ -84,6 +86,16 @@ class RichTextPlainTextService {
 
   String _extractEmbedText(String key, String value) {
     try {
+      if (key == BlockEmbed.customType) {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic> && decoded.length == 1) {
+          final nestedKey = decoded.keys.first;
+          final nestedValue = decoded[nestedKey];
+          if (nestedValue is String) {
+            return _extractEmbedText(nestedKey, nestedValue);
+          }
+        }
+      }
       if (key == TypeSyncTableEmbed.tableType) {
         return TypeSyncTableEmbed.parseData(value).toPlainText();
       }

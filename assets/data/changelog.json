@@ -1,7 +1,31 @@
 {
   "schemaVersion": 2,
-  "latestVersion": "1.1.16",
+  "latestVersion": "1.1.17",
   "releases": [
+    {
+      "version": "1.1.17",
+      "date": "2026-04-11",
+      "title": "Apple Platform Hardening + Import Upgrades",
+      "important": [
+        "Apple-platform startup and login flow were hardened for release readiness, including safer Firebase initialization and iOS-specific widget fallback behavior."
+      ],
+      "newFeatures": [
+        "Added broader Anytype import support for native export objects, including object-type folder mapping and native block conversion into TypeSync notes.",
+        "Added shared email validation across sign-in, registration, and email-link flows with a clearer typo hint for common `.con` mistakes.",
+        "Added Codemagic-based release automation plus required app metadata/assets for ownership verification and store publishing setup.",
+        "Added Apple Firebase app configuration files and project wiring for the updated app setup."
+      ],
+      "fixesImprovements": [
+        "Fixed Upcoming widget data disappearing by reinitializing calendar, homework, and timetable providers against the active storage user and closing stale per-user boxes when needed.",
+        "Fixed iOS startup instability by avoiding unsupported iOS home widget bridge calls and by falling back cleanly when native Firebase app config is missing.",
+        "Improved auth failure diagnostics and surfaced a clearer invalid-credentials message during sign-in.",
+        "Fixed editor text formatting untoggle behavior and added unit coverage for the regression.",
+        "Refreshed app icons and publishing-related assets for release compatibility."
+      ],
+      "notes": [
+        "These notes summarize the work shipped after the first `1.1.16` baseline commit (`9d61207` on 2026-04-09)."
+      ]
+    },
     {
       "version": "1.1.16",
       "date": "2026-04-09",

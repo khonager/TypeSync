@@ -15,6 +15,7 @@ import '../models/note.dart';
 import '../models/folder.dart';
 import '../models/calendar_event.dart';
 import '../models/homework.dart';
+import '../models/tag.dart';
 import '../models/timetable_entry.dart';
 import 'diagnostics_service.dart';
 
@@ -832,6 +833,35 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Sync a single tag to Firebase
+  Future<bool> syncTag(Tag tag) async {
+    if (!_isOnline || !_syncEnabled) return false;
+
+    try {
+      _setStatus(SyncStatus.syncing);
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final fdFirestore = _firedartFirestore;
+        if (fdFirestore == null) return false;
+        await fdFirestore.collection('tags').document(tag.id).set(tag.toJson());
+      } else {
+        final firestore = _firebaseFirestore;
+        if (firestore == null) return false;
+        await firestore
+            .collection('tags')
+            .doc(tag.id)
+            .set(tag.toJson(), SetOptions(merge: true));
+      }
+
+      _setStatus(SyncStatus.synced);
+      _lastSyncTime = DateTime.now();
+      return true;
+    } catch (e) {
+      _setError('Failed to sync tag: $e');
+      return false;
+    }
+  }
+
   /// Delete a note from Firebase (soft delete)
   Future<bool> deleteNote(String noteId) async {
     if (!_isOnline || !_syncEnabled) return false;
@@ -1074,6 +1104,7 @@ class SyncService extends ChangeNotifier {
   Future<bool> syncDirtyItems({
     List<Note>? dirtyNotes,
     List<Folder>? dirtyFolders,
+    List<Tag>? dirtyTags,
     List<CalendarEvent>? dirtyEvents,
     List<Homework>? dirtyHomework,
     List<TimetableEntry>? dirtyEntries,
@@ -1087,11 +1118,17 @@ class SyncService extends ChangeNotifier {
 
     final hasNotes = syncableNotes.isNotEmpty;
     final hasFolders = dirtyFolders != null && dirtyFolders.isNotEmpty;
+    final hasTags = dirtyTags != null && dirtyTags.isNotEmpty;
     final hasEvents = dirtyEvents != null && dirtyEvents.isNotEmpty;
     final hasHomework = dirtyHomework != null && dirtyHomework.isNotEmpty;
     final hasEntries = dirtyEntries != null && dirtyEntries.isNotEmpty;
 
-    if (!hasNotes && !hasFolders && !hasEvents && !hasHomework && !hasEntries) {
+    if (!hasNotes &&
+        !hasFolders &&
+        !hasTags &&
+        !hasEvents &&
+        !hasHomework &&
+        !hasEntries) {
       return true;
     }
 
@@ -1127,6 +1164,16 @@ class SyncService extends ChangeNotifier {
                     folder
                         .copyWith(isDirty: false, syncedAt: DateTime.now())
                         .toJson(),
+                  ),
+            );
+          }
+        }
+
+        if (hasTags) {
+          for (final tag in dirtyTags) {
+            futures.add(
+              fdFirestore.collection('tags').document(tag.id).set(
+                    tag.copyWith(isDirty: false).toJson(),
                   ),
             );
           }
@@ -1198,6 +1245,17 @@ class SyncService extends ChangeNotifier {
               folder
                   .copyWith(isDirty: false, syncedAt: DateTime.now())
                   .toJson(),
+              SetOptions(merge: true),
+            );
+          }
+        }
+
+        if (hasTags) {
+          for (final tag in dirtyTags) {
+            final ref = firestore.collection('tags').doc(tag.id);
+            batch.set(
+              ref,
+              tag.copyWith(isDirty: false).toJson(),
               SetOptions(merge: true),
             );
           }
