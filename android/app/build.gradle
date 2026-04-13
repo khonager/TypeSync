@@ -58,7 +58,8 @@ android {
 
     defaultConfig {
         applicationId "de.khonager.typesync"
-        minSdkVersion flutter.minSdkVersion
+        // Firebase Auth 23.x requires Android API 23+.
+        minSdkVersion 23
         targetSdk flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
