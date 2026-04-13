@@ -26,6 +26,7 @@ import 'core/services/diagnostics_service.dart';
 import 'core/services/plain_text_quill_clipboard_service.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
+import 'core/providers/tags_provider.dart';
 import 'core/providers/timetable_provider.dart';
 import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
@@ -179,6 +180,9 @@ class TypeSyncApp extends StatelessWidget {
 
         // Folders provider for managing folder structure
         ChangeNotifierProvider(create: (_) => FoldersProvider()),
+
+        // Tags provider for managing note tags
+        ChangeNotifierProvider(create: (_) => TagsProvider()),
 
         // Timetable provider for managing class schedule
         ChangeNotifierProvider(create: (_) => TimetableProvider()),

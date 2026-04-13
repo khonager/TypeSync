@@ -736,6 +736,7 @@ class SettingsScreen extends StatelessWidget {
     final authService = context.read<AuthService>();
     final notesProvider = context.read<NotesProvider>();
     final foldersProvider = context.read<FoldersProvider>();
+    final tagsProvider = context.read<TagsProvider>();
     final storageService = context.read<StorageService>();
     final workspaceId = authService.storageUserId;
     final noteUserId = authService.userId ?? workspaceId;
@@ -783,6 +784,7 @@ class SettingsScreen extends StatelessWidget {
             authService.isLoggedIn && authService.effectiveSyncEnabled,
         cloudUserId: authService.userId,
         storageService: storageService,
+        tagsProvider: tagsProvider,
       );
     } finally {
       if (context.mounted) {
@@ -805,6 +807,9 @@ class SettingsScreen extends StatelessWidget {
     }
     if (result.importedAttachments > 0) {
       summary.write(' with ${result.importedAttachments} attachments');
+    }
+    if (result.importedTags > 0) {
+      summary.write(' and ${result.importedTags} tags');
     }
     if (result.failedEntries.isNotEmpty) {
       summary.write('. ${result.failedEntries.length} items failed');

@@ -14,6 +14,7 @@ import '../models/typesync_kanban_embed.dart';
 import '../models/typesync_table_embed.dart';
 import '../providers/folders_provider.dart';
 import '../providers/notes_provider.dart';
+import '../providers/tags_provider.dart';
 import 'diagnostics_service.dart';
 import 'local_file_service.dart';
 import 'markdown_rich_text_service.dart';
@@ -23,6 +24,7 @@ class AnytypeImportResult {
   final int importedNotes;
   final int importedFolders;
   final int importedAttachments;
+  final int importedTags;
   final List<String> skippedEntries;
   final List<String> failedEntries;
 
@@ -30,6 +32,7 @@ class AnytypeImportResult {
     required this.importedNotes,
     required this.importedFolders,
     required this.importedAttachments,
+    this.importedTags = 0,
     this.skippedEntries = const [],
     this.failedEntries = const [],
   });
@@ -75,6 +78,7 @@ class AnytypeImportService {
     required bool useCloudStorage,
     required String? cloudUserId,
     StorageService? storageService,
+    TagsProvider? tagsProvider,
   }) async {
     final markdownFiles = await _collectMarkdownFiles(exportDirectory);
     final skippedEntries = <String>[];
@@ -87,12 +91,14 @@ class AnytypeImportService {
         noteUserId: noteUserId,
         notesProvider: notesProvider,
         foldersProvider: foldersProvider,
+        tagsProvider: tagsProvider,
       );
     }
 
     var importedNotes = 0;
     var importedFolders = 0;
     var importedAttachments = 0;
+    var importedTags = 0;
 
     for (final markdownFile in markdownFiles) {
       final relativeFilePath =
@@ -135,6 +141,23 @@ class AnytypeImportService {
             'Failed to create note for $relativeFilePath',
           );
           continue;
+        }
+
+        // Extract tags from front matter and attach to note
+        if (tagsProvider != null) {
+          final tagNames = extractTagsFromMarkdownMetadata(
+            rawMarkdown: rawMarkdown,
+          );
+          for (final tagName in tagNames) {
+            final tag = await tagsProvider.findOrCreateTag(
+              userId: noteUserId,
+              name: tagName,
+            );
+            if (tag != null) {
+              await notesProvider.addTag(note.id, tag.id);
+              importedTags++;
+            }
+          }
         }
 
         final attachments = await _importLinkedAttachments(
@@ -188,6 +211,7 @@ class AnytypeImportService {
       importedNotes: importedNotes,
       importedFolders: importedFolders,
       importedAttachments: importedAttachments,
+      importedTags: importedTags,
       skippedEntries: skippedEntries,
       failedEntries: failedEntries,
     );
@@ -198,6 +222,7 @@ class AnytypeImportService {
     required String noteUserId,
     required NotesProvider notesProvider,
     required FoldersProvider foldersProvider,
+    TagsProvider? tagsProvider,
   }) async {
     final objectFiles = await _collectNativeObjectFiles(exportDirectory);
     if (objectFiles.isEmpty) {
@@ -259,6 +284,23 @@ class AnytypeImportService {
         if (note == null) {
           failedEntries.add(relativeFilePath);
           continue;
+        }
+
+        // Extract tags from native object relations
+        if (tagsProvider != null) {
+          final nativeTagNames = _extractNativeTagNames(
+            data,
+            nativeContext,
+          );
+          for (final tagName in nativeTagNames) {
+            final tag = await tagsProvider.findOrCreateTag(
+              userId: noteUserId,
+              name: tagName,
+            );
+            if (tag != null) {
+              await notesProvider.addTag(note.id, tag.id);
+            }
+          }
         }
 
         importedNotes++;
@@ -699,6 +741,19 @@ class AnytypeImportService {
       return '';
     }
 
+    // Primary: use "Object type" / "Type" (e.g. "Lernfeld 4") as the folder
+    // unless it's a generic Anytype type like "Page" or "Note".
+    final objectType = _sanitizeFolderCandidate(
+      _firstFrontMatterValueForKeys(
+        frontMatterValues,
+        const ['Object type', 'Type'],
+      ),
+    );
+    if (objectType != null && !_isGenericAnytypeObjectType(objectType)) {
+      return objectType;
+    }
+
+    // Fallback: try preferred relation keys
     const preferredKeys = <String>[
       'Folder',
       'Folders',
@@ -720,8 +775,6 @@ class AnytypeImportService {
       'Collections',
       'Set',
       'Sets',
-      'Tag',
-      'Tags',
     ];
     final preferredValue = _firstFrontMatterValueForKeys(
       frontMatterValues,
@@ -751,6 +804,7 @@ class AnytypeImportService {
       'cover',
       'icon',
       'layout',
+      'tags',
     };
 
     for (final entry in frontMatterValues.entries) {
@@ -766,16 +820,62 @@ class AnytypeImportService {
       }
     }
 
-    final objectType = _sanitizeFolderCandidate(
-      _firstFrontMatterValueForKeys(
-        frontMatterValues,
-        const ['Object type', 'Type'],
-      ),
+    return '';
+  }
+
+  /// Extract tag names from Anytype Markdown front matter.
+  ///
+  /// Looks for `Tags` / `Tag` keys in the YAML front matter and returns
+  /// all non-empty values as a list of tag names.
+  static List<String> extractTagsFromMarkdownMetadata({
+    required String rawMarkdown,
+  }) {
+    final frontMatterValues =
+        MarkdownRichTextService.extractAnytypeFrontMatterValues(
+      rawMarkdown: rawMarkdown,
     );
-    if (objectType == null || _isGenericAnytypeObjectType(objectType)) {
-      return '';
+    if (frontMatterValues.isEmpty) {
+      return const [];
     }
-    return objectType;
+
+    final tagNames = <String>[];
+    for (final key in const ['Tags', 'Tag']) {
+      final values = frontMatterValues[key];
+      if (values == null) continue;
+      for (final value in values) {
+        final trimmed = value.trim();
+        if (trimmed.isNotEmpty) {
+          tagNames.add(trimmed);
+        }
+      }
+    }
+    return tagNames;
+  }
+
+  /// Extract tag names from a native Anytype object's relation data.
+  static List<String> _extractNativeTagNames(
+    Map<String, dynamic> data,
+    _NativeImportContext context,
+  ) {
+    final details = _mapValue(data['details']);
+    if (details == null) return const [];
+
+    final tagNames = <String>[];
+
+    // Look for the 'tag' relation which contains option IDs
+    final tagOptionIds = details['tag'];
+    if (tagOptionIds is List) {
+      for (final optionId in tagOptionIds) {
+        final id = _stringValue(optionId);
+        if (id == null) continue;
+        final name = context.relationOptionNamesById[id];
+        if (name != null && name.trim().isNotEmpty) {
+          tagNames.add(name.trim());
+        }
+      }
+    }
+
+    return tagNames;
   }
 
   static String _relativePath(String targetPath, Directory exportDirectory) {

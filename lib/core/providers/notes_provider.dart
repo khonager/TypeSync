@@ -92,10 +92,14 @@ class NotesProvider extends ChangeNotifier {
     );
   }
 
-  /// Search notes with structured filters (`in:*`, `has:*`, etc).
+  /// Search notes with structured filters (`in:*`, `has:*`, `tag:*`, etc).
+  ///
+  /// The [tagNameResolver] callback maps a tag ID to its display name so that
+  /// `tag:homework` filters work even though notes only store tag IDs.
   List<Note> searchNotesWithQuery(
     SearchQuery query, {
     String? folderId,
+    String? Function(String tagId)? tagNameResolver,
   }) {
     final queryTokens = query.textTokens;
 
@@ -104,6 +108,9 @@ class NotesProvider extends ChangeNotifier {
       if (folderId != null && note.folderId != folderId) return false;
       if (!_matchesInFilters(note, query.inFilters)) return false;
       if (!_matchesHasFilters(note, query.hasFilters)) return false;
+      if (!_matchesTagFilters(note, query.tagFilters, tagNameResolver)) {
+        return false;
+      }
       if (queryTokens.isEmpty) return true;
       return queryTokens.every(
         (token) => _matchesTokenInNote(note, token, query.inFilters),
@@ -213,6 +220,31 @@ class NotesProvider extends ChangeNotifier {
       }
     }
 
+    return true;
+  }
+
+  /// Check whether [note] matches all `tag:name` filters.
+  ///
+  /// Each tag filter value is matched case-insensitively against the resolved
+  /// tag names of the note. If no [tagNameResolver] is provided the filter
+  /// matches when the note has **any** tag (i.e. it degrades gracefully).
+  bool _matchesTagFilters(
+    Note note,
+    List<String> tagFilters,
+    String? Function(String tagId)? tagNameResolver,
+  ) {
+    if (tagFilters.isEmpty) return true;
+    if (note.tags.isEmpty) return false;
+
+    for (final filter in tagFilters) {
+      final lowerFilter = filter.toLowerCase();
+      final matched = note.tags.any((tagId) {
+        if (tagNameResolver == null) return true;
+        final name = tagNameResolver(tagId);
+        return name != null && name.toLowerCase().contains(lowerFilter);
+      });
+      if (!matched) return false;
+    }
     return true;
   }
 

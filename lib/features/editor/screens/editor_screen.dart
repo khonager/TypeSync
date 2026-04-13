@@ -30,6 +30,7 @@ import '../../../core/utils/web_download_stub.dart'
 import '../../../core/models/note.dart';
 import '../../../core/models/typesync_kanban_embed.dart';
 import '../../../core/providers/notes_provider.dart';
+import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
@@ -2513,7 +2514,27 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _showTagDialog() {
-    // TODO: Implement tag dialog
+    if (_note == null) return;
+
+    final tagsProvider = context.read<TagsProvider>();
+    final notesProvider = context.read<NotesProvider>();
+    final authService = context.read<AuthService>();
+    final userId = authService.storageUserId;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return _TagDialogContent(
+          note: _note!,
+          tagsProvider: tagsProvider,
+          notesProvider: notesProvider,
+          userId: userId,
+          onUpdated: () {
+            if (mounted) setState(() {});
+          },
+        );
+      },
+    );
   }
 
   void _showColorPicker() {
@@ -3201,5 +3222,208 @@ class _ColorOption extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Dialog for adding / removing tags on a note.
+class _TagDialogContent extends StatefulWidget {
+  const _TagDialogContent({
+    required this.note,
+    required this.tagsProvider,
+    required this.notesProvider,
+    required this.userId,
+    required this.onUpdated,
+  });
+
+  final Note note;
+  final TagsProvider tagsProvider;
+  final NotesProvider notesProvider;
+  final String? userId;
+  final VoidCallback onUpdated;
+
+  @override
+  State<_TagDialogContent> createState() => _TagDialogContentState();
+}
+
+class _TagDialogContentState extends State<_TagDialogContent> {
+  final TextEditingController _controller = TextEditingController();
+  late List<String> _currentTagIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTagIds = List<String>.from(widget.note.tags);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addTag(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || widget.userId == null) return;
+
+    final tag = await widget.tagsProvider.findOrCreateTag(
+      userId: widget.userId!,
+      name: trimmed,
+    );
+    if (tag == null) return;
+
+    if (!_currentTagIds.contains(tag.id)) {
+      await widget.notesProvider.addTag(widget.note.id, tag.id);
+      setState(() {
+        _currentTagIds.add(tag.id);
+      });
+      widget.onUpdated();
+    }
+    _controller.clear();
+  }
+
+  Future<void> _removeTag(String tagId) async {
+    await widget.notesProvider.removeTag(widget.note.id, tagId);
+    setState(() {
+      _currentTagIds.remove(tagId);
+    });
+    widget.onUpdated();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allTags = widget.tagsProvider.tags;
+    final assignedTags =
+        allTags.where((t) => _currentTagIds.contains(t.id)).toList();
+    final unassignedTags =
+        allTags.where((t) => !_currentTagIds.contains(t.id)).toList();
+
+    // Filter unassigned tags by the current text input
+    final query = _controller.text.trim().toLowerCase();
+    final filteredUnassigned = query.isEmpty
+        ? unassignedTags
+        : unassignedTags
+            .where((t) => t.name.toLowerCase().contains(query))
+            .toList();
+
+    final showCreateOption = query.isNotEmpty &&
+        !allTags.any((t) => t.name.toLowerCase() == query);
+
+    return AlertDialog(
+      title: const Text('Tags'),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Text field for adding new tags
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: 'Add a tag...',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => _addTag(_controller.text),
+                ),
+                border: const OutlineInputBorder(),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onSubmitted: _addTag,
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+
+            // Current tags on this note
+            if (assignedTags.isNotEmpty) ...[
+              Text(
+                'Current tags',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: assignedTags.map((tag) {
+                  return Chip(
+                    label: Text(tag.name),
+                    backgroundColor: _parseColor(tag.color),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () => _removeTag(tag.id),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // "Create new" option
+            if (showCreateOption)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.add_circle_outline, size: 20),
+                title: Text('Create "$query"'),
+                onTap: () => _addTag(_controller.text),
+              ),
+
+            // Existing unassigned tags to pick from
+            if (filteredUnassigned.isNotEmpty) ...[
+              Text(
+                'Available tags',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: filteredUnassigned.map((tag) {
+                      return ActionChip(
+                        label: Text(tag.name),
+                        backgroundColor:
+                            _parseColor(tag.color)?.withValues(alpha: 0.3),
+                        onPressed: () async {
+                          await widget.notesProvider
+                              .addTag(widget.note.id, tag.id);
+                          setState(() {
+                            _currentTagIds.add(tag.id);
+                          });
+                          widget.onUpdated();
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+
+  Color? _parseColor(String hex) {
+    try {
+      final colorHex = hex.replaceFirst('#', '');
+      if (colorHex.length == 6) {
+        return Color(int.parse('FF$colorHex', radix: 16));
+      }
+      if (colorHex.length == 8) {
+        return Color(int.parse(colorHex, radix: 16));
+      }
+    } catch (_) {}
+    return null;
   }
 }

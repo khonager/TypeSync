@@ -7,12 +7,14 @@ library;
 /// - `is:folder`, `is:file`
 /// - `in:text`, `in:title`, `in:attachment`, `in:pdf`, `in:txt`, `in:markdown`
 /// - `has:attachment`, `has:image`, `has:pdf`, `has:table`, `has:kanban`
+/// - `tag:name` — filter notes by tag name
 class SearchQuery {
   final String raw;
   final List<String> textTokens;
   final Set<String> inFilters;
   final Set<String> isFilters;
   final Set<String> hasFilters;
+  final List<String> tagFilters;
 
   const SearchQuery({
     required this.raw,
@@ -20,11 +22,15 @@ class SearchQuery {
     required this.inFilters,
     required this.isFilters,
     required this.hasFilters,
+    this.tagFilters = const [],
   });
 
   bool get hasText => textTokens.isNotEmpty;
   bool get hasAnyFilter =>
-      inFilters.isNotEmpty || isFilters.isNotEmpty || hasFilters.isNotEmpty;
+      inFilters.isNotEmpty ||
+      isFilters.isNotEmpty ||
+      hasFilters.isNotEmpty ||
+      tagFilters.isNotEmpty;
   bool get isActive => hasText || hasAnyFilter;
 
   String get plainTextQuery => textTokens.join(' ');
@@ -46,6 +52,7 @@ class SearchQuery {
     final inFilters = <String>{};
     final isFilters = <String>{};
     final hasFilters = <String>{};
+    final tagFilters = <String>[];
     final textTokens = <String>[];
 
     final matches = RegExp(r'"([^"]+)"|(\S+)').allMatches(input);
@@ -85,6 +92,9 @@ class SearchQuery {
           hasFilters.add(normalized);
           continue;
         }
+      } else if (prefix == 'tag') {
+        tagFilters.add(value);
+        continue;
       }
 
       textTokens.add(token.toLowerCase());
@@ -96,6 +106,7 @@ class SearchQuery {
       inFilters: inFilters,
       isFilters: isFilters,
       hasFilters: hasFilters,
+      tagFilters: tagFilters,
     );
   }
 
