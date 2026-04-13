@@ -28,6 +28,7 @@ import '../../../core/services/anytype_import_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
+import '../../../core/providers/tags_provider.dart';
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/providers/timetable_provider.dart';
