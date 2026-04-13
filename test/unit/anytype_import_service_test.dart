@@ -118,7 +118,7 @@ Object type:
   });
 
   group('AnytypeImportService.inferFolderPathFromMarkdownMetadata', () {
-    test('prefers relation values over generic object types', () {
+    test('ignores generic object types without inferring from tags', () {
       const rawMarkdown = '''
 ---
 Tags:
@@ -133,7 +133,7 @@ Object type:
         AnytypeImportService.inferFolderPathFromMarkdownMetadata(
           rawMarkdown: rawMarkdown,
         ),
-        'Deutsch',
+        '',
       );
     });
   });
