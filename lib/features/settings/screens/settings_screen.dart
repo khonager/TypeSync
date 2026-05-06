@@ -62,33 +62,6 @@ class SettingsScreen extends StatelessWidget {
           // Appearance Section
           const _SectionHeader(title: 'Appearance'),
 
-          // Dark mode toggle with long press for system sync
-          _SettingsTile(
-            icon: Icons.dark_mode_outlined,
-            title: 'Dark Mode',
-            subtitle: themeService.syncWithSystem
-                ? 'Synced with system'
-                : (themeService.isDarkMode ? 'On' : 'Off'),
-            trailing: Switch(
-              value: themeService.isDarkMode,
-              onChanged: (_) => themeService.toggleTheme(),
-            ),
-            onTap: () => themeService.toggleTheme(),
-            onLongPress: () {
-              themeService.toggleSystemSync();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    themeService.syncWithSystem
-                        ? 'Theme synced with system'
-                        : 'Manual theme mode',
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-          ),
-
           // Accent color
           _SettingsTile(
             icon: Icons.palette_outlined,
@@ -2038,7 +2011,6 @@ class _SettingsTile extends StatelessWidget {
   final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
   final Color? titleColor;
 
   const _SettingsTile({
@@ -2047,7 +2019,6 @@ class _SettingsTile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
-    this.onLongPress,
     this.titleColor,
   });
 
@@ -2063,7 +2034,6 @@ class _SettingsTile extends StatelessWidget {
       trailing:
           trailing ?? (onTap != null ? const Icon(Icons.chevron_right) : null),
       onTap: onTap,
-      onLongPress: onLongPress,
     );
   }
 }

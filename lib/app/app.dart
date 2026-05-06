@@ -28,10 +28,10 @@ class TypeSyncAppContent extends StatelessWidget {
           title: 'TypeSync',
           debugShowCheckedModeBanner: false,
 
-          // Theme configuration based on user preference or system setting
-          theme: AppTheme.lightTheme(themeService.accentColor),
+          // TypeSync is intentionally dark-only.
+          theme: AppTheme.darkTheme(themeService.accentColor),
           darkTheme: AppTheme.darkTheme(themeService.accentColor),
-          themeMode: themeService.themeMode,
+          themeMode: ThemeMode.dark,
 
           // Set AuthWrapper as the home
           home: const AuthWrapper(),
