@@ -17,7 +17,7 @@ enum _ToolbarAnchorEdge { floating, top, bottom, left, right }
 /// Rich text editing toolbar
 ///
 /// Provides quick access to common formatting options:
-/// - Text formatting (bold, italic, underline)
+/// - Text formatting (bold, italic, underline, strikethrough)
 /// - Text color and marker
 /// - Alignment
 /// - Lists (checklist, numbered with auto-detection)
@@ -562,6 +562,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
         onTap: () => _toggleAttribute(Attribute.underline),
       ),
       _ToolbarButton(
+        icon: Icons.format_strikethrough,
+        tooltip: 'Strikethrough',
+        isActive: _hasFormat(Attribute.strikeThrough),
+        onTap: () => _toggleAttribute(Attribute.strikeThrough),
+      ),
+      _ToolbarButton(
         icon: Icons.format_color_text,
         tooltip: 'Text color',
         onTap: _showColorPicker,
@@ -644,6 +650,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
         tooltip: 'Underline',
         isActive: _hasFormat(Attribute.underline),
         onTap: () => _toggleAttribute(Attribute.underline),
+      ),
+      _ToolbarButton(
+        icon: Icons.format_strikethrough,
+        tooltip: 'Strikethrough',
+        isActive: _hasFormat(Attribute.strikeThrough),
+        onTap: () => _toggleAttribute(Attribute.strikeThrough),
       ),
       _ToolbarButton(
         icon: Icons.format_color_text,
