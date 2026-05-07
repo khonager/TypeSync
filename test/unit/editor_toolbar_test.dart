@@ -94,5 +94,37 @@ void main() {
         isFalse,
       );
     });
+
+    testWidgets('toggles strikethrough on and back off at a collapsed cursor', (
+      tester,
+    ) async {
+      final controller = QuillController.basic();
+      controller.updateSelection(
+        const TextSelection.collapsed(offset: 0),
+        ChangeSource.local,
+      );
+
+      await pumpToolbar(tester, controller);
+
+      await tester.tap(find.byIcon(Icons.format_strikethrough));
+      await tester.pump();
+      expect(
+        controller
+            .getSelectionStyle()
+            .attributes
+            .containsKey(Attribute.strikeThrough.key),
+        isTrue,
+      );
+
+      await tester.tap(find.byIcon(Icons.format_strikethrough));
+      await tester.pump();
+      expect(
+        controller
+            .getSelectionStyle()
+            .attributes
+            .containsKey(Attribute.strikeThrough.key),
+        isFalse,
+      );
+    });
   });
 }
