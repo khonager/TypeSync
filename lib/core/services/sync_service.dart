@@ -1347,7 +1347,18 @@ class SyncService extends ChangeNotifier {
           'SyncService',
           'Restarting sync listeners for user $_currentUserId',
         );
+        final previousGeneration = _listenerGeneration;
         startListening(_currentUserId!);
+
+        // If listeners were already active and fully initialized, startListening
+        // intentionally reuses them. In that case we should treat refresh as
+        // successful instead of timing out while waiting for a new cloud event.
+        if (_listenerGeneration == previousGeneration &&
+            _listenersActive &&
+            _initialWorkspaceSnapshotReady) {
+          _markRefreshSucceeded('Manual refresh reused healthy listeners');
+          _setStatus(SyncStatus.synced);
+        }
       } else {
         _diagnostics.warning(
           'SyncService',

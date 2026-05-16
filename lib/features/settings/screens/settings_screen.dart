@@ -62,33 +62,6 @@ class SettingsScreen extends StatelessWidget {
           // Appearance Section
           const _SectionHeader(title: 'Appearance'),
 
-          // Dark mode toggle with long press for system sync
-          _SettingsTile(
-            icon: Icons.dark_mode_outlined,
-            title: 'Dark Mode',
-            subtitle: themeService.syncWithSystem
-                ? 'Synced with system'
-                : (themeService.isDarkMode ? 'On' : 'Off'),
-            trailing: Switch(
-              value: themeService.isDarkMode,
-              onChanged: (_) => themeService.toggleTheme(),
-            ),
-            onTap: () => themeService.toggleTheme(),
-            onLongPress: () {
-              themeService.toggleSystemSync();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    themeService.syncWithSystem
-                        ? 'Theme synced with system'
-                        : 'Manual theme mode',
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-          ),
-
           // Accent color
           _SettingsTile(
             icon: Icons.palette_outlined,
@@ -245,6 +218,17 @@ class SettingsScreen extends StatelessWidget {
             title: 'Import from Anytype',
             subtitle: 'Choose a Markdown export folder',
             onTap: () => _importFromAnytype(context),
+          ),
+
+          const Divider(),
+
+          const _SectionHeader(title: 'Editor'),
+
+          _SettingsTile(
+            icon: Icons.keyboard_command_key_outlined,
+            title: 'Keyboard Shortcuts',
+            subtitle: 'View editor shortcuts and markdown triggers',
+            onTap: () => _showKeyboardShortcuts(context),
           ),
 
           const Divider(),
@@ -918,6 +902,166 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _showKeyboardShortcuts(BuildContext context) {
+    final modifierLabel = _primaryShortcutModifierLabel();
+    final shortcuts = _keyboardShortcutEntries(modifierLabel);
+    final markdownShortcuts = _markdownShortcutEntries();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.82,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Keyboard Shortcuts',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    children: [
+                      Text(
+                        'Editor shortcuts',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'These work while editing a note on desktop and web.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Column(
+                          children: shortcuts
+                              .map(
+                                (shortcut) => _ShortcutListTile(
+                                  shortcut: shortcut.shortcut,
+                                  description: shortcut.description,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Markdown-style auto-format',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'These trigger as you type inside the editor.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Column(
+                          children: markdownShortcuts
+                              .map(
+                                (shortcut) => _ShortcutListTile(
+                                  shortcut: shortcut.shortcut,
+                                  description: shortcut.description,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _primaryShortcutModifierLabel() {
+    if (!kIsWeb && Platform.isMacOS) {
+      return 'Cmd';
+    }
+    return 'Ctrl';
+  }
+
+  List<_ShortcutEntry> _keyboardShortcutEntries(String modifierLabel) {
+    return [
+      _ShortcutEntry('$modifierLabel+S', 'Save note now'),
+      _ShortcutEntry('$modifierLabel+Z', 'Undo'),
+      _ShortcutEntry('$modifierLabel+Y', 'Redo'),
+      _ShortcutEntry('$modifierLabel+B', 'Bold'),
+      _ShortcutEntry('$modifierLabel+I', 'Italic'),
+      _ShortcutEntry('$modifierLabel+U', 'Underline'),
+      _ShortcutEntry('$modifierLabel+Shift+S', 'Strikethrough'),
+      _ShortcutEntry('$modifierLabel+`', 'Inline code'),
+      _ShortcutEntry('$modifierLabel+Shift+~', 'Code block'),
+      _ShortcutEntry('$modifierLabel+Shift+B', 'Block quote'),
+      _ShortcutEntry('$modifierLabel+K', 'Add or edit link'),
+      _ShortcutEntry('$modifierLabel+Shift+L', 'Bulleted list'),
+      _ShortcutEntry('$modifierLabel+Shift+O', 'Numbered list'),
+      _ShortcutEntry('$modifierLabel+Shift+C', 'Checklist'),
+      _ShortcutEntry('$modifierLabel+M', 'Indent block'),
+      _ShortcutEntry('$modifierLabel+Shift+M', 'Outdent block'),
+      _ShortcutEntry('$modifierLabel+1', 'Heading 1'),
+      _ShortcutEntry('$modifierLabel+2', 'Heading 2'),
+      _ShortcutEntry('$modifierLabel+3', 'Heading 3'),
+      _ShortcutEntry('$modifierLabel+4', 'Heading 4'),
+      _ShortcutEntry('$modifierLabel+5', 'Heading 5'),
+      _ShortcutEntry('$modifierLabel+6', 'Heading 6'),
+      _ShortcutEntry('$modifierLabel+0', 'Clear heading / paragraph'),
+      _ShortcutEntry('$modifierLabel+F', 'Open editor search'),
+      const _ShortcutEntry('Esc', 'Hide the text selection toolbar'),
+      _ShortcutEntry(
+        '$modifierLabel+Up / $modifierLabel+Down',
+        'Scroll the editor',
+      ),
+      _ShortcutEntry(
+        '$modifierLabel+Page Up / $modifierLabel+Page Down',
+        'Page through the editor',
+      ),
+    ];
+  }
+
+  List<_ShortcutEntry> _markdownShortcutEntries() {
+    return const [
+      _ShortcutEntry('**text**', 'Convert wrapped text to bold'),
+      _ShortcutEntry('__text__', 'Convert wrapped text to bold'),
+      _ShortcutEntry('*text*', 'Convert wrapped text to italic'),
+      _ShortcutEntry('~text~', 'Convert wrapped text to strikethrough'),
+      _ShortcutEntry('`text`', 'Convert wrapped text to inline code'),
+      _ShortcutEntry('- then Space', 'Start a bulleted list'),
+      _ShortcutEntry('1. then Space', 'Start a numbered list'),
+      _ShortcutEntry('# then Space', 'Start a heading'),
+      _ShortcutEntry('## then Space', 'Start a heading'),
+      _ShortcutEntry('### then Space', 'Start a heading'),
+    ];
   }
 
   Future<void> _confirmResetLocalCache(BuildContext context) async {
@@ -2032,13 +2176,52 @@ class _ReleaseNotesCard extends StatelessWidget {
   }
 }
 
+class _ShortcutEntry {
+  final String shortcut;
+  final String description;
+
+  const _ShortcutEntry(this.shortcut, this.description);
+}
+
+class _ShortcutListTile extends StatelessWidget {
+  final String shortcut;
+  final String description;
+
+  const _ShortcutListTile({
+    required this.shortcut,
+    required this.description,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ListTile(
+      dense: true,
+      title: Text(description),
+      subtitle: Text(shortcut),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          shortcut,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
   final Color? titleColor;
 
   const _SettingsTile({
@@ -2047,7 +2230,6 @@ class _SettingsTile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
-    this.onLongPress,
     this.titleColor,
   });
 
@@ -2063,7 +2245,6 @@ class _SettingsTile extends StatelessWidget {
       trailing:
           trailing ?? (onTap != null ? const Icon(Icons.chevron_right) : null),
       onTap: onTap,
-      onLongPress: onLongPress,
     );
   }
 }

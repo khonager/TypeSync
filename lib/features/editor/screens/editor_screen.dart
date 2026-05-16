@@ -7,8 +7,8 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill/quill_delta.dart';
@@ -585,6 +585,11 @@ class _EditorScreenState extends State<EditorScreen>
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveNote);
   }
 
+  Future<void> _saveNoteFromShortcut() async {
+    _saveTimer?.cancel();
+    await _saveNote();
+  }
+
   Future<void> _saveNote() async {
     if (_note == null || _note!.hasConflict) return;
 
@@ -709,72 +714,83 @@ class _EditorScreenState extends State<EditorScreen>
           minimum: requiredVersion,
         );
 
-    return PopScope(
-      canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        final titleHasFocus = FocusScope.of(context).focusedChild != null &&
-            FocusManager.instance.primaryFocus?.context?.widget is EditableText;
-        if (_focusNode.hasFocus || titleHasFocus) {
-          FocusScope.of(context).unfocus();
-        }
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+          unawaited(_saveNoteFromShortcut());
+        },
+        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () {
+          unawaited(_saveNoteFromShortcut());
+        },
       },
-      child: Scaffold(
-        backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(
-          backgroundColor:
-              bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: Center(
-            child: TextField(
-              controller: _titleController,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: 'Title',
-                contentPadding: EdgeInsets.zero,
-                filled: false,
+      child: PopScope(
+        canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          final titleHasFocus = FocusScope.of(context).focusedChild != null &&
+              FocusManager.instance.primaryFocus?.context?.widget
+                  is EditableText;
+          if (_focusNode.hasFocus || titleHasFocus) {
+            FocusScope.of(context).unfocus();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            backgroundColor:
+                bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Center(
+              child: TextField(
+                controller: _titleController,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  hintText: 'Title',
+                  contentPadding: EdgeInsets.zero,
+                  filled: false,
+                ),
+                onChanged: _updateTitle,
               ),
-              onChanged: _updateTitle,
             ),
+            actions: [
+              // Stats display (Lines/Char counter)
+              EditorStats(
+                lineCount: _lineCount,
+                characterCount: _characterCount,
+              ),
+              // Sync status indicator
+              const SyncStatusIndicator(),
+              // More options
+              IconButton(
+                icon: const Icon(Icons.more_vert),
+                onPressed: _showMoreOptions,
+              ),
+            ],
           ),
-          actions: [
-            // Stats display (Lines/Char counter)
-            EditorStats(
-              lineCount: _lineCount,
-              characterCount: _characterCount,
-            ),
-            // Sync status indicator
-            const SyncStatusIndicator(),
-            // More options
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: _showMoreOptions,
-            ),
-          ],
-        ),
-        body: Column(
-          children: isUnsupportedVersion
-              ? [
-                  Expanded(
-                    child: _buildUnsupportedVersionNotice(
-                      requiredVersion: requiredVersion,
-                      currentVersion: currentVersion,
+          body: Column(
+            children: isUnsupportedVersion
+                ? [
+                    Expanded(
+                      child: _buildUnsupportedVersionNotice(
+                        requiredVersion: requiredVersion,
+                        currentVersion: currentVersion,
+                      ),
                     ),
-                  ),
-                ]
-              : [
-                  if (_note?.hasConflict == true) _buildConflictBanner(),
-                  if (_toolbarPlacement == EditorToolbarPlacement.top)
-                    _buildToolbar(),
-                  _buildEditorWorkspace(bgColor),
-                  if (_toolbarPlacement == EditorToolbarPlacement.bottom)
-                    _buildToolbar(),
-                ],
+                  ]
+                : [
+                    if (_note?.hasConflict == true) _buildConflictBanner(),
+                    if (_toolbarPlacement == EditorToolbarPlacement.top)
+                      _buildToolbar(),
+                    _buildEditorWorkspace(bgColor),
+                    if (_toolbarPlacement == EditorToolbarPlacement.bottom)
+                      _buildToolbar(),
+                  ],
+          ),
         ),
       ),
     );

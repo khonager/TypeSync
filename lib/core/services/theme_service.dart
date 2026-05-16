@@ -5,7 +5,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'sync_service.dart';
@@ -25,7 +24,6 @@ class ThemeService extends ChangeNotifier {
   // Theme state
   ThemeMode _themeMode = ThemeMode.dark;
   Color _accentColor = const Color(0xFF64D2FF);
-  bool _syncWithSystem = false;
   HomeUpcomingVisibilityMode _homeUpcomingVisibilityMode =
       HomeUpcomingVisibilityMode.onlyWithItems;
 
@@ -39,7 +37,6 @@ class ThemeService extends ChangeNotifier {
   // Keys for SharedPreferences
   static const String _themeModeKey = 'theme_mode';
   static const String _accentColorKey = 'accent_color';
-  static const String _syncWithSystemKey = 'sync_with_system';
   static const String _homeUpcomingVisibilityModeKey =
       'home_upcoming_visibility_mode';
 
@@ -59,22 +56,15 @@ class ThemeService extends ChangeNotifier {
   // GETTERS
   // ===========================================
 
-  ThemeMode get themeMode => _syncWithSystem ? ThemeMode.system : _themeMode;
+  ThemeMode get themeMode => ThemeMode.dark;
   Color get accentColor => _accentColor;
-  bool get isDarkMode => _themeMode == ThemeMode.dark;
-  bool get syncWithSystem => _syncWithSystem;
+  bool get isDarkMode => true;
+  bool get syncWithSystem => false;
   HomeUpcomingVisibilityMode get homeUpcomingVisibilityMode =>
       _homeUpcomingVisibilityMode;
 
   /// Get the actual brightness based on current settings
-  Brightness get currentBrightness {
-    if (_syncWithSystem) {
-      final brightness =
-          SchedulerBinding.instance.platformDispatcher.platformBrightness;
-      return brightness;
-    }
-    return _themeMode == ThemeMode.dark ? Brightness.dark : Brightness.light;
-  }
+  Brightness get currentBrightness => Brightness.dark;
 
   // ===========================================
   // CONSTRUCTOR
@@ -90,40 +80,27 @@ class ThemeService extends ChangeNotifier {
 
   /// Toggle between light and dark mode
   void toggleTheme() {
-    _themeMode =
-        _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    _syncWithSystem = false;
-    _savePreferences();
-    notifyListeners();
+    _enforceDarkMode();
   }
 
   /// Set theme mode directly
   void setThemeMode(ThemeMode mode) {
-    _themeMode = mode;
-    _syncWithSystem = false;
-    _savePreferences();
-    notifyListeners();
+    _enforceDarkMode();
   }
 
   /// Enable system theme sync (hold to activate)
   void enableSystemSync() {
-    _syncWithSystem = true;
-    _savePreferences();
-    notifyListeners();
+    _enforceDarkMode();
   }
 
   /// Disable system theme sync
   void disableSystemSync() {
-    _syncWithSystem = false;
-    _savePreferences();
-    notifyListeners();
+    _enforceDarkMode();
   }
 
   /// Toggle system sync
   void toggleSystemSync() {
-    _syncWithSystem = !_syncWithSystem;
-    _savePreferences();
-    notifyListeners();
+    _enforceDarkMode();
   }
 
   /// Set accent color
@@ -173,17 +150,6 @@ class ThemeService extends ChangeNotifier {
   void handleCloudSettings(Map<String, dynamic> settings) {
     bool changed = false;
 
-    if (settings.containsKey('themeMode')) {
-      final modeIndex = settings['themeMode'] as int;
-      if (modeIndex < ThemeMode.values.length) {
-        final newMode = ThemeMode.values[modeIndex];
-        if (_themeMode != newMode) {
-          _themeMode = newMode;
-          changed = true;
-        }
-      }
-    }
-
     if (settings.containsKey('accentColor')) {
       final colorValue = settings['accentColor'] as int;
       final newColor = Color(colorValue);
@@ -193,15 +159,8 @@ class ThemeService extends ChangeNotifier {
       }
     }
 
-    if (settings.containsKey('syncWithSystem')) {
-      final newSync = settings['syncWithSystem'] as bool;
-      if (_syncWithSystem != newSync) {
-        _syncWithSystem = newSync;
-        changed = true;
-      }
-    }
-
     if (changed) {
+      _themeMode = ThemeMode.dark;
       _savePreferences(syncToCloud: false);
       notifyListeners();
     }
@@ -215,7 +174,7 @@ class ThemeService extends ChangeNotifier {
       // Load theme mode
       final themeModeIndex = prefs.getInt(_themeModeKey);
       if (themeModeIndex != null && themeModeIndex < ThemeMode.values.length) {
-        _themeMode = ThemeMode.values[themeModeIndex];
+        _themeMode = ThemeMode.dark;
       }
 
       // Load accent color
@@ -223,9 +182,6 @@ class ThemeService extends ChangeNotifier {
       if (accentColorValue != null) {
         _accentColor = Color(accentColorValue);
       }
-
-      // Load system sync preference
-      _syncWithSystem = prefs.getBool(_syncWithSystemKey) ?? false;
 
       // Load home upcoming visibility mode.
       final visibilityIndex = prefs.getInt(_homeUpcomingVisibilityModeKey);
@@ -236,6 +192,7 @@ class ThemeService extends ChangeNotifier {
             HomeUpcomingVisibilityMode.values[visibilityIndex];
       }
 
+      _themeMode = ThemeMode.dark;
       notifyListeners();
     } catch (e) {
       // Use defaults if loading fails
@@ -249,9 +206,10 @@ class ThemeService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final accentColorValue = colorToArgb32(_accentColor);
 
-      await prefs.setInt(_themeModeKey, _themeMode.index);
+      _themeMode = ThemeMode.dark;
+
+      await prefs.setInt(_themeModeKey, ThemeMode.dark.index);
       await prefs.setInt(_accentColorKey, accentColorValue);
-      await prefs.setBool(_syncWithSystemKey, _syncWithSystem);
       await prefs.setInt(
         _homeUpcomingVisibilityModeKey,
         _homeUpcomingVisibilityMode.index,
@@ -259,13 +217,23 @@ class ThemeService extends ChangeNotifier {
 
       if (syncToCloud && _syncService != null) {
         _syncService!.syncSettings({
-          'themeMode': _themeMode.index,
+          'themeMode': ThemeMode.dark.index,
           'accentColor': accentColorValue,
-          'syncWithSystem': _syncWithSystem,
+          'syncWithSystem': false,
         });
       }
     } catch (e) {
       debugPrint('Failed to save theme preferences: $e');
     }
+  }
+
+  void _enforceDarkMode() {
+    if (_themeMode == ThemeMode.dark) {
+      return;
+    }
+
+    _themeMode = ThemeMode.dark;
+    _savePreferences();
+    notifyListeners();
   }
 }

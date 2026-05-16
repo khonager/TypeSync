@@ -192,6 +192,10 @@ class FolderGridItem extends StatelessWidget {
     Color bgColor, {
     bool showBorder = false,
   }) {
+    final theme = Theme.of(context);
+    final labelColor = theme.colorScheme.onSurface;
+    final secondaryLabelColor = labelColor.withValues(alpha: 0.7);
+
     return GestureDetector(
       onTap: onTap,
       // Allow a stationary long-press to open the options sheet even when
@@ -243,11 +247,9 @@ class FolderGridItem extends StatelessWidget {
             folder.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: folder.backgroundColor != null
-                      ? AppColorPalette.getContrastingTextColor(bgColor)
-                      : null,
-                ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: labelColor,
+            ),
             textAlign: TextAlign.center,
           ),
           // Subtitle if present
@@ -256,10 +258,10 @@ class FolderGridItem extends StatelessWidget {
               folder.subtitle!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey,
-                    fontSize: 10,
-                  ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: secondaryLabelColor,
+                fontSize: 10,
+              ),
               textAlign: TextAlign.center,
             ),
         ],
