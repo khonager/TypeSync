@@ -1738,8 +1738,9 @@ class _EditorScreenState extends State<EditorScreen>
     for (final operation in _quillController.document.toDelta().toList()) {
       final insert = operation.data;
       if (insert is String) {
-        for (final rune in insert.runes) {
-          buffer.writeCharCode(rune);
+        final codeUnits = insert.codeUnits;
+        for (final codeUnit in codeUnits) {
+          buffer.writeCharCode(codeUnit);
           plainToDocumentOffsets.add(documentOffset);
           documentOffset += 1;
         }
@@ -1785,6 +1786,7 @@ class _EditorScreenState extends State<EditorScreen>
 
     final safeStart = match.startOffset.clamp(0, documentLength - 1);
     final safeEnd = match.endOffset.clamp(safeStart + 1, documentLength);
+    if (safeEnd <= safeStart) return;
     _quillController.updateSelection(
       TextSelection(baseOffset: safeStart, extentOffset: safeEnd),
       ChangeSource.local,
@@ -1856,18 +1858,41 @@ class _EditorScreenState extends State<EditorScreen>
   void _formatAllMatches(Attribute<dynamic> attribute) {
     if (_searchMatches.isEmpty) return;
 
+    final isInlineAttribute = attribute.scope == AttributeScope.inline;
+    var formattedCount = 0;
+
     for (final match in _searchMatches) {
+      final startOffset = match.startOffset;
+      var endOffset = match.endOffset;
+
+      if (isInlineAttribute) {
+        final matchedText = _quillController.document
+            .getPlainText(startOffset, endOffset - startOffset);
+        if (matchedText.isEmpty) {
+          continue;
+        }
+
+        if (matchedText.endsWith('\n')) {
+          endOffset -= 1;
+        }
+
+        if (endOffset <= startOffset) {
+          continue;
+        }
+      }
+
       _quillController.document.format(
-        match.startOffset,
-        match.length,
+        startOffset,
+        endOffset - startOffset,
         attribute,
       );
+      formattedCount += 1;
     }
 
     _focusNode.requestFocus();
-    if (mounted) {
+    if (mounted && formattedCount > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Updated ${_searchMatches.length} matches')),
+        SnackBar(content: Text('Updated $formattedCount matches')),
       );
     }
   }
