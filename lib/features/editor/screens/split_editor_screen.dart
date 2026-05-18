@@ -29,20 +29,29 @@ class SplitEditorScreen extends StatefulWidget {
   State<SplitEditorScreen> createState() => _SplitEditorScreenState();
 }
 
-class _SplitEditorScreenState extends State<SplitEditorScreen> {
+class _SplitEditorScreenState extends State<SplitEditorScreen>
+    with SingleTickerProviderStateMixin {
   late String _primaryNoteId;
   String? _secondaryNoteId;
   final ValueNotifier<double> _primaryPaneFraction = ValueNotifier<double>(0.5);
+  late final AnimationController _collapseController;
+  Animation<double>? _collapseAnimation;
+  bool _isClosingSplit = false;
 
   @override
   void initState() {
     super.initState();
     _primaryNoteId = widget.primaryNoteId;
     _secondaryNoteId = widget.secondaryNoteId;
+    _collapseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
   }
 
   @override
   void dispose() {
+    _collapseController.dispose();
     _primaryPaneFraction.dispose();
     super.dispose();
   }
@@ -101,14 +110,14 @@ class _SplitEditorScreenState extends State<SplitEditorScreen> {
           if (secondaryNote != null)
             IconButton(
               tooltip: 'Swap panes',
-              onPressed: _swapPanes,
+              onPressed: _isClosingSplit ? null : _swapPanes,
               icon: const Icon(Icons.swap_horiz),
             ),
           IconButton(
             tooltip: secondaryNote == null
                 ? 'Show browser'
                 : 'Close right note',
-            onPressed: _showSecondaryBrowser,
+            onPressed: _isClosingSplit ? null : _showSecondaryBrowser,
             icon: const Icon(Icons.folder_copy_outlined),
           ),
         ],
@@ -130,28 +139,34 @@ class _SplitEditorScreenState extends State<SplitEditorScreen> {
             valueListenable: _primaryPaneFraction,
             builder: (context, fraction, _) {
               const handleWidth = 18.0;
-              final availableWidth = (constraints.maxWidth - handleWidth).clamp(
+              final dividerWidth = _isClosingSplit ? 0.0 : handleWidth;
+              final availableWidth = (constraints.maxWidth - dividerWidth).clamp(
                 0.0,
                 double.infinity,
               );
-              final primaryWidth = (availableWidth * fraction).clamp(
-                320.0,
-                availableWidth - 320.0,
-              );
+              final primaryWidth = _isClosingSplit
+                  ? (availableWidth * fraction).clamp(0.0, availableWidth)
+                  : (availableWidth * fraction).clamp(
+                      320.0,
+                      availableWidth - 320.0,
+                    );
               final secondaryWidth = availableWidth - primaryWidth;
 
               return Row(
                 children: [
-                  SizedBox(width: primaryWidth, child: primaryPane),
-                  _ResizeHandle(
-                    onDrag: (delta) {
-                      if (availableWidth <= 0) return;
-                      final nextWidth = primaryWidth + delta;
-                      _primaryPaneFraction.value =
-                          (nextWidth / availableWidth).clamp(0.28, 0.72);
-                    },
-                  ),
-                  SizedBox(width: secondaryWidth, child: secondaryPane),
+                  if (primaryWidth > 0)
+                    SizedBox(width: primaryWidth, child: primaryPane),
+                  if (!_isClosingSplit)
+                    _ResizeHandle(
+                      onDrag: (delta) {
+                        if (availableWidth <= 0) return;
+                        final nextWidth = primaryWidth + delta;
+                        _primaryPaneFraction.value =
+                            (nextWidth / availableWidth).clamp(0.28, 0.72);
+                      },
+                    ),
+                  if (secondaryWidth > 0)
+                    SizedBox(width: secondaryWidth, child: secondaryPane),
                 ],
               );
             },
@@ -178,6 +193,7 @@ class _SplitEditorScreenState extends State<SplitEditorScreen> {
   }
 
   void _closeSplitClosing(Note note) {
+    if (_isClosingSplit) return;
     final noteToKeep =
         note.id == _primaryNoteId && _secondaryNoteId != null
             ? context.read<NotesProvider>().getNoteById(_secondaryNoteId!)
@@ -188,15 +204,45 @@ class _SplitEditorScreenState extends State<SplitEditorScreen> {
         : context.read<NotesProvider>().getNoteById(_primaryNoteId);
 
     final resolvedNote = fallbackNote ?? note;
+    final targetFraction = note.id == _primaryNoteId ? 0.0 : 1.0;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => EditorScreen(
-          noteId: resolvedNote.id,
-          folderId: resolvedNote.folderId,
-        ),
+    setState(() {
+      _isClosingSplit = true;
+    });
+
+    _collapseAnimation?.removeListener(_handleCollapseTick);
+    _collapseController.stop();
+    _collapseController.reset();
+    _collapseAnimation = Tween<double>(
+      begin: _primaryPaneFraction.value,
+      end: targetFraction,
+    ).animate(
+      CurvedAnimation(
+        parent: _collapseController,
+        curve: Curves.easeInOutCubic,
       ),
-    );
+    )..addListener(_handleCollapseTick);
+
+    _collapseController.forward().whenComplete(() {
+      if (!mounted) return;
+      _collapseAnimation?.removeListener(_handleCollapseTick);
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => EditorScreen(
+            noteId: resolvedNote.id,
+            folderId: resolvedNote.folderId,
+          ),
+        ),
+      );
+    });
+  }
+
+  void _handleCollapseTick() {
+    final value = _collapseAnimation?.value;
+    if (value == null) return;
+    _primaryPaneFraction.value = value;
   }
 }
 

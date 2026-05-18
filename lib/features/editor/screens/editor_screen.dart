@@ -804,29 +804,48 @@ class _EditorScreenState extends State<EditorScreen>
 
   Widget _buildEmbeddedHeader(Color? bgColor) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
-        border: Border(
-          bottom: BorderSide(
-            color: colors.outline.withValues(alpha: 0.2),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          if (widget.onClose != null)
-            IconButton(
-              tooltip: 'Back to browser',
-              onPressed: widget.onClose,
-              icon: const Icon(Icons.arrow_back_ios),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final showTitle = maxWidth >= 220;
+        final showSideBySide = maxWidth >= 260;
+        final showStats = maxWidth >= 360;
+        final showSync = maxWidth >= 420;
+
+        return ClipRect(
+          child: Container(
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+              border: Border(
+                bottom: BorderSide(
+                  color: colors.outline.withValues(alpha: 0.2),
+                ),
+              ),
             ),
-          Expanded(child: _buildTitleField()),
-          ..._buildHeaderActions(),
-        ],
-      ),
+            child: Row(
+              children: [
+                if (widget.onClose != null)
+                  IconButton(
+                    tooltip: 'Back to browser',
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.arrow_back_ios),
+                  ),
+                if (showTitle)
+                  Expanded(child: _buildTitleField())
+                else
+                  const Spacer(),
+                ..._buildHeaderActions(
+                  showSideBySide: showSideBySide,
+                  showStats: showStats,
+                  showSync: showSync,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -845,7 +864,11 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  List<Widget> _buildHeaderActions() {
+  List<Widget> _buildHeaderActions({
+    bool showSideBySide = true,
+    bool showStats = true,
+    bool showSync = true,
+  }) {
     final sideBySideLabel =
         widget.isSideBySideOpen ? 'Close side by side' : 'Open side by side';
     final sideBySideIcon = widget.isSideBySideOpen
@@ -853,17 +876,18 @@ class _EditorScreenState extends State<EditorScreen>
         : Icons.splitscreen_outlined;
 
     return [
-      if (widget.onSideBySideAction != null)
+      if (showSideBySide && widget.onSideBySideAction != null)
         IconButton(
           tooltip: sideBySideLabel,
           onPressed: widget.onSideBySideAction,
           icon: Icon(sideBySideIcon),
         ),
-      EditorStats(
-        lineCount: _lineCount,
-        characterCount: _characterCount,
-      ),
-      const SyncStatusIndicator(),
+      if (showStats)
+        EditorStats(
+          lineCount: _lineCount,
+          characterCount: _characterCount,
+        ),
+      if (showSync) const SyncStatusIndicator(),
       IconButton(
         icon: const Icon(Icons.more_vert),
         onPressed: _showMoreOptions,
