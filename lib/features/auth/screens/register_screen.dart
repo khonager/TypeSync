@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/email_validation.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/expandable_error.dart';
 
@@ -74,11 +75,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Create Account'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: SafeArea(
         child: SingleChildScrollView(

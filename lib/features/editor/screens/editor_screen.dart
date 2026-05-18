@@ -41,6 +41,7 @@ import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
@@ -791,6 +792,7 @@ class _EditorScreenState extends State<EditorScreen>
   PreferredSizeWidget _buildAppBar(Color? bgColor) {
     return AppBar(
       backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+      flexibleSpace: desktopWindowDragArea(),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios),
         onPressed: () => Navigator.pop(context),
@@ -798,7 +800,10 @@ class _EditorScreenState extends State<EditorScreen>
       title: Center(
         child: _buildTitleField(),
       ),
-      actions: _buildHeaderActions(),
+      actions: withDesktopWindowControls(
+        _buildHeaderActions(),
+        enabled: !widget.embedded,
+      ),
     );
   }
 

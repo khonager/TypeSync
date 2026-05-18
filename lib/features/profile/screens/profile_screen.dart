@@ -21,6 +21,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../../home/widgets/home_bottom_bar.dart';
 
 /// User profile screen
@@ -306,11 +307,13 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       return Scaffold(
         appBar: AppBar(
+          flexibleSpace: desktopWindowDragArea(),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios),
             onPressed: () => Navigator.pop(context),
           ),
           title: const Text('Sign In'),
+          actions: withDesktopWindowControls(const []),
         ),
         body: body,
       );
@@ -635,11 +638,13 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Profile'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: body,
     );

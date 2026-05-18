@@ -33,12 +33,15 @@ import 'core/providers/sync_provider.dart';
 import 'core/providers/homework_provider.dart';
 import 'core/providers/calendar_provider.dart';
 import 'core/services/hive_token_store.dart';
+import 'core/widgets/desktop_window_frame.dart';
 import 'firebase_options.dart';
 
 /// Main entry point for the TypeSync application
 void main() async {
   // Ensure Flutter bindings are initialized before any async operations
   WidgetsFlutterBinding.ensureInitialized();
+
+  await configureDesktopWindowFrame();
 
   // Initialize Hive for local storage (offline-first approach)
   await Hive.initFlutter();

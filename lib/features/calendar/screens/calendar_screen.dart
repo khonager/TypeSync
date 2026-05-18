@@ -11,6 +11,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/calendar_event.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 enum CalendarViewMode {
   month,
@@ -96,12 +97,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Calendar'),
-        actions: [
+        actions: withDesktopWindowControls([
           IconButton(
             icon: const Icon(Icons.today),
             onPressed: () {
@@ -113,7 +115,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               });
             },
           ),
-        ],
+        ]),
       ),
       body: Consumer<CalendarProvider>(
         builder: (context, calendarProvider, _) {

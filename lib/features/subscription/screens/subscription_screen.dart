@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/user.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
@@ -112,11 +113,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Storage Plans'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

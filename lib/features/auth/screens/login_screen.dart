@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/email_validation.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import 'magic_link_dialog.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/expandable_error.dart';
@@ -62,172 +63,195 @@ class _LoginScreenState extends State<LoginScreen> {
     final authService = context.watch<AuthService>();
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo/Icon (Enter key icon as per requirements)
-                  Container(
-                    width: 80,
-                    height: 80,
-                    margin: const EdgeInsets.only(bottom: 32),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.keyboard_return,
-                        size: 40,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-
-                  // Title
-                  Text(
-                    'Welcome back',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sign in to continue',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey,
+      body: Column(
+        children: [
+          if (supportsCustomDesktopWindowFrame)
+            const DesktopWindowHeader(
+              title: Text('typesync'),
+            ),
+          Expanded(
+            child: SafeArea(
+              top: !supportsCustomDesktopWindowFrame,
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Logo/Icon (Enter key icon as per requirements)
+                        Container(
+                          width: 80,
+                          height: 80,
+                          margin: const EdgeInsets.only(bottom: 32),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.keyboard_return,
+                              size: 40,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
                         ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
 
-                  // Error message (expandable)
-                  if (authService.hasError)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: ExpandableError(
-                        message:
-                            authService.errorMessage ?? 'An error occurred',
-                        onDismiss: authService.clearError,
-                      ),
-                    ),
+                        // Title
+                        Text(
+                          'Welcome back',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sign in to continue',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey,
+                                  ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 32),
 
-                  // Email field
-                  AuthTextField(
-                    controller: _emailController,
-                    label: 'Email',
-                    hint: 'Enter your email',
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    prefixIcon: Icons.email_outlined,
-                    validator: validateEmailAddress,
-                  ),
-                  const SizedBox(height: 16),
+                        // Error message (expandable)
+                        if (authService.hasError)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: ExpandableError(
+                              message: authService.errorMessage ??
+                                  'An error occurred',
+                              onDismiss: authService.clearError,
+                            ),
+                          ),
 
-                  // Password field
-                  AuthTextField(
-                    controller: _passwordController,
-                    label: 'Password',
-                    hint: 'Enter your password',
-                    obscureText: _obscurePassword,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _handleLogin(),
-                    prefixIcon: Icons.lock_outline,
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Password is required';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 8),
+                        // Email field
+                        AuthTextField(
+                          controller: _emailController,
+                          label: 'Email',
+                          hint: 'Enter your email',
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          prefixIcon: Icons.email_outlined,
+                          validator: validateEmailAddress,
+                        ),
+                        const SizedBox(height: 16),
 
-                  // Forgot password
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _showForgotPassword,
-                      child: const Text('Forgot password?'),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Login button
-                  ElevatedButton(
-                    onPressed: authService.isLoading ? null : _handleLogin,
-                    child: authService.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Sign In'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: authService.isLoading
-                        ? null
-                        : () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => const MagicLinkDialog(),
-                            );
+                        // Password field
+                        AuthTextField(
+                          controller: _passwordController,
+                          label: 'Password',
+                          hint: 'Enter your password',
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _handleLogin(),
+                          prefixIcon: Icons.lock_outline,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            onPressed: () {
+                              setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              );
+                            },
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Password is required';
+                            }
+                            return null;
                           },
-                    child: const Text('Email me a sign-in link'),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Register link
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Don't have an account? ",
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          AppRouter.navigateTo(context, AppRouter.register);
-                        },
-                        child: const Text('Sign Up'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Guest mode button
-                  OutlinedButton(
-                    onPressed: authService.isLoading ? null : _handleGuestMode,
-                    child: const Text('Continue as Guest'),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Use the app locally without an account',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey,
                         ),
-                    textAlign: TextAlign.center,
+                        const SizedBox(height: 8),
+
+                        // Forgot password
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _showForgotPassword,
+                            child: const Text('Forgot password?'),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Login button
+                        ElevatedButton(
+                          onPressed:
+                              authService.isLoading ? null : _handleLogin,
+                          child: authService.isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Sign In'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: authService.isLoading
+                              ? null
+                              : () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) =>
+                                        const MagicLinkDialog(),
+                                  );
+                                },
+                          child: const Text('Email me a sign-in link'),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Register link
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Don't have an account? ",
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                AppRouter.navigateTo(
+                                  context,
+                                  AppRouter.register,
+                                );
+                              },
+                              child: const Text('Sign Up'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Guest mode button
+                        OutlinedButton(
+                          onPressed:
+                              authService.isLoading ? null : _handleGuestMode,
+                          child: const Text('Continue as Guest'),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Use the app locally without an account',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey,
+                                  ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

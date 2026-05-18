@@ -9,6 +9,7 @@ import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
 import '../../../core/utils/search_query.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../../home/widgets/file_grid.dart';
 import '../../home/widgets/folder_grid.dart';
 import 'editor_screen.dart';
@@ -105,8 +106,9 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         title: const Text('Side by Side'),
-        actions: [
+        actions: withDesktopWindowControls([
           if (secondaryNote != null)
             IconButton(
               tooltip: 'Swap panes',
@@ -114,13 +116,12 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
               icon: const Icon(Icons.swap_horiz),
             ),
           IconButton(
-            tooltip: secondaryNote == null
-                ? 'Show browser'
-                : 'Close right note',
+            tooltip:
+                secondaryNote == null ? 'Show browser' : 'Close right note',
             onPressed: _isClosingSplit ? null : _showSecondaryBrowser,
             icon: const Icon(Icons.folder_copy_outlined),
           ),
-        ],
+        ]),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -140,7 +141,8 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
             builder: (context, fraction, _) {
               const handleWidth = 18.0;
               final dividerWidth = _isClosingSplit ? 0.0 : handleWidth;
-              final availableWidth = (constraints.maxWidth - dividerWidth).clamp(
+              final availableWidth =
+                  (constraints.maxWidth - dividerWidth).clamp(
                 0.0,
                 double.infinity,
               );
@@ -194,10 +196,9 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
 
   void _closeSplitClosing(Note note) {
     if (_isClosingSplit) return;
-    final noteToKeep =
-        note.id == _primaryNoteId && _secondaryNoteId != null
-            ? context.read<NotesProvider>().getNoteById(_secondaryNoteId!)
-            : context.read<NotesProvider>().getNoteById(_primaryNoteId);
+    final noteToKeep = note.id == _primaryNoteId && _secondaryNoteId != null
+        ? context.read<NotesProvider>().getNoteById(_secondaryNoteId!)
+        : context.read<NotesProvider>().getNoteById(_primaryNoteId);
 
     final fallbackNote = note.id == _primaryNoteId
         ? noteToKeep
@@ -389,9 +390,8 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
           if (showFolderResults && folders.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: _SectionLabel(
-                label: isSearchActive
-                    ? 'Folders (${folders.length})'
-                    : 'Folders',
+                label:
+                    isSearchActive ? 'Folders (${folders.length})' : 'Folders',
               ),
             ),
             SliverPadding(

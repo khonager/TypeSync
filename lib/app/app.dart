@@ -11,6 +11,7 @@ import '../core/services/theme_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
+import '../core/widgets/desktop_window_frame.dart';
 import 'home_widget_sync_coordinator.dart';
 import 'service_orchestrator.dart';
 
@@ -53,7 +54,7 @@ class TypeSyncAppContent extends StatelessWidget {
           // Global error handling for navigation
           builder: (context, child) {
             // Apply global text scaling limits for accessibility
-            return MediaQuery(
+            Widget content = MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(
                   MediaQuery.of(context).textScaler.scale(1.0).clamp(0.8, 1.4),
@@ -61,6 +62,12 @@ class TypeSyncAppContent extends StatelessWidget {
               ),
               child: child ?? const SizedBox.shrink(),
             );
+
+            if (supportsCustomDesktopWindowFrame) {
+              content = DesktopWindowFrameShell(child: content);
+            }
+
+            return content;
           },
         ),
       ),
