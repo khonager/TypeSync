@@ -2277,6 +2277,17 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.splitscreen_outlined),
+              title: const Text('Open side by side'),
+              onTap: () {
+                Navigator.pop(bottomSheetContext);
+                AppRouter.openSplitEditor(
+                  context,
+                  primaryNoteId: noteId,
+                );
+              },
+            ),
+            ListTile(
               leading: Icon(
                 note?.isFavorite == true ? Icons.star : Icons.star_outline,
               ),

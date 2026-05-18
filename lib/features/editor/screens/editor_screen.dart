@@ -62,12 +62,18 @@ class EditorScreen extends StatefulWidget {
   final String? noteId;
   final String? folderId;
   final String? searchQuery;
+  final bool embedded;
+  final VoidCallback? onClose;
+  final VoidCallback? onOpenSideBySide;
 
   const EditorScreen({
     super.key,
     this.noteId,
     this.folderId,
     this.searchQuery,
+    this.embedded = false,
+    this.onClose,
+    this.onOpenSideBySide,
   });
 
   @override
@@ -664,9 +670,10 @@ class _EditorScreenState extends State<EditorScreen>
 
   Widget _buildEditor(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      if (widget.embedded) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     // React to external changes from provider
     final notesProvider = context.watch<NotesProvider>();
@@ -714,6 +721,26 @@ class _EditorScreenState extends State<EditorScreen>
           minimum: requiredVersion,
         );
 
+    final editorBody = Column(
+      children: isUnsupportedVersion
+          ? [
+              Expanded(
+                child: _buildUnsupportedVersionNotice(
+                  requiredVersion: requiredVersion,
+                  currentVersion: currentVersion,
+                ),
+              ),
+            ]
+          : [
+              if (_note?.hasConflict == true) _buildConflictBanner(),
+              if (_toolbarPlacement == EditorToolbarPlacement.top)
+                _buildToolbar(),
+              _buildEditorWorkspace(bgColor),
+              if (_toolbarPlacement == EditorToolbarPlacement.bottom)
+                _buildToolbar(),
+            ],
+    );
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
@@ -734,66 +761,104 @@ class _EditorScreenState extends State<EditorScreen>
             FocusScope.of(context).unfocus();
           }
         },
-        child: Scaffold(
-          backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-          appBar: AppBar(
-            backgroundColor:
-                bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Center(
-              child: TextField(
-                controller: _titleController,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Title',
-                  contentPadding: EdgeInsets.zero,
-                  filled: false,
+        child: widget.embedded
+            ? DecoratedBox(
+                decoration: BoxDecoration(
+                  color:
+                      bgColor ?? Theme.of(context).scaffoldBackgroundColor,
                 ),
-                onChanged: _updateTitle,
-              ),
-            ),
-            actions: [
-              // Stats display (Lines/Char counter)
-              EditorStats(
-                lineCount: _lineCount,
-                characterCount: _characterCount,
-              ),
-              // Sync status indicator
-              const SyncStatusIndicator(),
-              // More options
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: _showMoreOptions,
-              ),
-            ],
-          ),
-          body: Column(
-            children: isUnsupportedVersion
-                ? [
-                    Expanded(
-                      child: _buildUnsupportedVersionNotice(
-                        requiredVersion: requiredVersion,
-                        currentVersion: currentVersion,
-                      ),
-                    ),
-                  ]
-                : [
-                    if (_note?.hasConflict == true) _buildConflictBanner(),
-                    if (_toolbarPlacement == EditorToolbarPlacement.top)
-                      _buildToolbar(),
-                    _buildEditorWorkspace(bgColor),
-                    if (_toolbarPlacement == EditorToolbarPlacement.bottom)
-                      _buildToolbar(),
+                child: Column(
+                  children: [
+                    _buildEmbeddedHeader(bgColor),
+                    Expanded(child: editorBody),
                   ],
+                ),
+              )
+            : Scaffold(
+                backgroundColor:
+                    bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+                appBar: _buildAppBar(bgColor),
+                body: editorBody,
+              ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(Color? bgColor) {
+    return AppBar(
+      backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Center(
+        child: _buildTitleField(),
+      ),
+      actions: _buildHeaderActions(),
+    );
+  }
+
+  Widget _buildEmbeddedHeader(Color? bgColor) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+        border: Border(
+          bottom: BorderSide(
+            color: colors.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
+      child: Row(
+        children: [
+          if (widget.onClose != null)
+            IconButton(
+              tooltip: 'Close pane',
+              onPressed: widget.onClose,
+              icon: const Icon(Icons.close),
+            ),
+          Expanded(child: _buildTitleField()),
+          ..._buildHeaderActions(),
+        ],
+      ),
     );
+  }
+
+  Widget _buildTitleField() {
+    return TextField(
+      controller: _titleController,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.titleMedium,
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        hintText: 'Title',
+        contentPadding: EdgeInsets.zero,
+        filled: false,
+      ),
+      onChanged: _updateTitle,
+    );
+  }
+
+  List<Widget> _buildHeaderActions() {
+    return [
+      if (widget.onOpenSideBySide != null)
+        IconButton(
+          tooltip: 'Open side by side',
+          onPressed: widget.onOpenSideBySide,
+          icon: const Icon(Icons.splitscreen_outlined),
+        ),
+      EditorStats(
+        lineCount: _lineCount,
+        characterCount: _characterCount,
+      ),
+      const SyncStatusIndicator(),
+      IconButton(
+        icon: const Icon(Icons.more_vert),
+        onPressed: _showMoreOptions,
+      ),
+    ];
   }
 
   Widget _buildToolbar() {
@@ -2343,6 +2408,22 @@ class _EditorScreenState extends State<EditorScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.splitscreen_outlined),
+              title: const Text('Open side by side'),
+              onTap: () {
+                Navigator.pop(context);
+                if (_note == null) return;
+                if (widget.onOpenSideBySide != null) {
+                  widget.onOpenSideBySide!.call();
+                  return;
+                }
+                AppRouter.openSplitEditor(
+                  this.context,
+                  primaryNoteId: _note!.id,
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.attach_file),
               title: const Text('Attach file'),

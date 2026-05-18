@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/home/screens/home_screen.dart';
 import '../../features/editor/screens/editor_screen.dart';
+import '../../features/editor/screens/split_editor_screen.dart';
 import '../../features/auth/screens/email_link_sign_in_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
@@ -37,6 +38,9 @@ class AppRouter {
 
   /// Login screen
   static const String login = '/login';
+
+  /// Split editor screen
+  static const String splitEditor = '/split-editor';
 
   /// Registration screen
   static const String register = '/register';
@@ -120,6 +124,23 @@ class AppRouter {
           noteId: noteId,
           folderId: folderId,
           searchQuery: searchQuery,
+        ),
+      ),
+    );
+  }
+
+  /// Open two notes side by side in a single window.
+  static Future<void> openSplitEditor(
+    BuildContext context, {
+    required String primaryNoteId,
+    String? secondaryNoteId,
+  }) {
+    return Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SplitEditorScreen(
+          primaryNoteId: primaryNoteId,
+          secondaryNoteId: secondaryNoteId,
         ),
       ),
     );
