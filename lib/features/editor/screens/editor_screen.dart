@@ -128,6 +128,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Current note being edited
   Note? _note;
+  Note? _pendingExternalNote;
 
   // Auto-save timer
   Timer? _saveTimer;
@@ -297,6 +298,11 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _onEditorFocusChanged() {
     if (_focusNode.hasFocus) {
+      final pendingExternalNote = _pendingExternalNote;
+      if (pendingExternalNote != null) {
+        _pendingExternalNote = null;
+        _updateContentFromProvider(pendingExternalNote);
+      }
       _didUserFocusEditor = true;
       _scheduleCaretOffsetPersist();
       return;
@@ -732,13 +738,26 @@ class _EditorScreenState extends State<EditorScreen>
         if (providerContent != localContent &&
             providerContent != _lastSavedContent) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _updateContentFromProvider(providerNote);
+            if (!mounted) return;
+            if (_focusNode.hasFocus) {
+              _updateContentFromProvider(providerNote);
+              return;
+            }
+
+            setState(() {
+              _pendingExternalNote = providerNote;
+              _note = providerNote;
+              _characterCount = providerNote.characterCount;
+              _lineCount = providerNote.lineCount;
+              _titleController.text = providerNote.title;
+            });
           });
         } else {
           // Content matches or is our own save. Just sync metadata silently.
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               setState(() {
+                _pendingExternalNote = null;
                 _note = providerNote;
                 _lastSavedContent = providerContent;
               });
@@ -3696,17 +3715,20 @@ class _EditorScreenState extends State<EditorScreen>
       final normalizedContent = _normalizedStoredContent(providerNote.content);
       final delta =
           Delta.fromJson(jsonDecode(normalizedContent) as List<dynamic>);
+      final hadFocus = _focusNode.hasFocus;
+      final selection = _quillController.selection;
+      final priorScrollOffset =
+          _scrollController.hasClients ? _scrollController.offset : null;
 
       setState(() {
         _isUpdatingFromExternal = true;
 
-        // Preserve selection if possible
-        final selection = _quillController.selection;
-
         _quillController.document = Document.fromDelta(delta);
 
-        // Try to restore selection
-        if (selection.end <= _quillController.document.length) {
+        // Only restore the caret in the actively edited pane. When the note is
+        // open twice side by side, restoring selection in the passive pane
+        // causes Quill to scroll that pane to the remote caret on every save.
+        if (hadFocus && selection.end <= _quillController.document.length) {
           _quillController.updateSelection(selection, ChangeSource.local);
         }
 
@@ -3718,15 +3740,34 @@ class _EditorScreenState extends State<EditorScreen>
 
         _isUpdatingFromExternal = false;
       });
+
+      if (!hadFocus && priorScrollOffset != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+          final position = _scrollController.position;
+          final clampedOffset = priorScrollOffset.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          );
+          if ((_scrollController.offset - clampedOffset).abs() > 1) {
+            _scrollController.jumpTo(clampedOffset.toDouble());
+          }
+        });
+      }
     } catch (e) {
       final document = Document()..insert(0, providerNote.content);
+      final hadFocus = _focusNode.hasFocus;
+      final priorScrollOffset =
+          _scrollController.hasClients ? _scrollController.offset : null;
       setState(() {
         _isUpdatingFromExternal = true;
         _quillController.document = document;
-        _quillController.updateSelection(
-          const TextSelection.collapsed(offset: 0),
-          ChangeSource.local,
-        );
+        if (hadFocus) {
+          _quillController.updateSelection(
+            const TextSelection.collapsed(offset: 0),
+            ChangeSource.local,
+          );
+        }
         _note = providerNote;
         _lastSavedContent = providerNote.content;
         _characterCount = providerNote.characterCount;
@@ -3734,6 +3775,19 @@ class _EditorScreenState extends State<EditorScreen>
         _titleController.text = providerNote.title;
         _isUpdatingFromExternal = false;
       });
+      if (!hadFocus && priorScrollOffset != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+          final position = _scrollController.position;
+          final clampedOffset = priorScrollOffset.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          );
+          if ((_scrollController.offset - clampedOffset).abs() > 1) {
+            _scrollController.jumpTo(clampedOffset.toDouble());
+          }
+        });
+      }
       debugPrint('Error updating from external source: $e');
     }
   }
