@@ -469,6 +469,12 @@ class _EditorScreenState extends State<EditorScreen>
       final operation = Map<String, dynamic>.from(rawOperation);
       final insert = operation['insert'];
       if (insert is! Map) {
+        final normalizedStringOperations =
+            _normalizeStringOperationForQuill(operation);
+        if (normalizedStringOperations != null) {
+          sanitized.addAll(normalizedStringOperations);
+          continue;
+        }
         sanitized.add(operation);
         continue;
       }
@@ -494,6 +500,51 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     return sanitized;
+  }
+
+  List<Map<String, dynamic>>? _normalizeStringOperationForQuill(
+    Map<String, dynamic> operation,
+  ) {
+    final insert = operation['insert'];
+    if (insert is! String || !insert.contains('\n')) {
+      return null;
+    }
+
+    final rawAttributes = operation['attributes'];
+    if (rawAttributes is! Map || rawAttributes.isEmpty) {
+      return null;
+    }
+
+    final attributes = Map<String, dynamic>.from(rawAttributes);
+    final lineAttributes = <String, dynamic>{};
+    for (final entry in attributes.entries) {
+      final attribute = Attribute.fromKeyValue(entry.key, entry.value);
+      if (attribute?.scope == AttributeScope.block ||
+          attribute?.scope == AttributeScope.ignore) {
+        lineAttributes[entry.key] = entry.value;
+      }
+    }
+
+    final segments = insert.split('\n');
+    final normalized = <Map<String, dynamic>>[];
+    for (var index = 0; index < segments.length; index++) {
+      final segment = segments[index];
+      if (segment.isNotEmpty) {
+        normalized.add({
+          'insert': segment,
+          'attributes': attributes,
+        });
+      }
+
+      if (index < segments.length - 1) {
+        normalized.add({
+          'insert': '\n',
+          if (lineAttributes.isNotEmpty) 'attributes': lineAttributes,
+        });
+      }
+    }
+
+    return normalized;
   }
 
   List<Map<String, dynamic>>? _unsupportedEmbedReplacement(
@@ -641,7 +692,9 @@ class _EditorScreenState extends State<EditorScreen>
     final notesProvider = context.read<NotesProvider>();
 
     // Get content as JSON string
-    final content = jsonEncode(_quillController.document.toDelta().toJson());
+    final content = jsonEncode(
+      _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
+    );
     _lastSavedContent = content;
 
     await notesProvider.updateNoteContent(
@@ -730,8 +783,11 @@ class _EditorScreenState extends State<EditorScreen>
           providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
         final providerContent = _normalizedStoredContent(providerNote.content);
-        final localContent =
-            jsonEncode(_quillController.document.toDelta().toJson());
+        final localContent = jsonEncode(
+          _sanitizeDeltaOperations(
+            _quillController.document.toDelta().toJson(),
+          ),
+        );
 
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
@@ -3717,20 +3773,14 @@ class _EditorScreenState extends State<EditorScreen>
           Delta.fromJson(jsonDecode(normalizedContent) as List<dynamic>);
       final hadFocus = _focusNode.hasFocus;
       final selection = _quillController.selection;
-      final priorScrollOffset =
-          _scrollController.hasClients ? _scrollController.offset : null;
+      final nextDocument = Document.fromDelta(delta);
 
       setState(() {
         _isUpdatingFromExternal = true;
-
-        _quillController.document = Document.fromDelta(delta);
-
-        // Only restore the caret in the actively edited pane. When the note is
-        // open twice side by side, restoring selection in the passive pane
-        // causes Quill to scroll that pane to the remote caret on every save.
-        if (hadFocus && selection.end <= _quillController.document.length) {
-          _quillController.updateSelection(selection, ChangeSource.local);
-        }
+        _replaceQuillControllerDocument(
+          nextDocument,
+          preferredSelection: hadFocus ? selection : null,
+        );
 
         _note = providerNote;
         _lastSavedContent = normalizedContent;
@@ -3740,34 +3790,16 @@ class _EditorScreenState extends State<EditorScreen>
 
         _isUpdatingFromExternal = false;
       });
-
-      if (!hadFocus && priorScrollOffset != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_scrollController.hasClients) return;
-          final position = _scrollController.position;
-          final clampedOffset = priorScrollOffset.clamp(
-            position.minScrollExtent,
-            position.maxScrollExtent,
-          );
-          if ((_scrollController.offset - clampedOffset).abs() > 1) {
-            _scrollController.jumpTo(clampedOffset.toDouble());
-          }
-        });
-      }
     } catch (e) {
       final document = Document()..insert(0, providerNote.content);
       final hadFocus = _focusNode.hasFocus;
-      final priorScrollOffset =
-          _scrollController.hasClients ? _scrollController.offset : null;
+      final selection = _quillController.selection;
       setState(() {
         _isUpdatingFromExternal = true;
-        _quillController.document = document;
-        if (hadFocus) {
-          _quillController.updateSelection(
-            const TextSelection.collapsed(offset: 0),
-            ChangeSource.local,
-          );
-        }
+        _replaceQuillControllerDocument(
+          document,
+          preferredSelection: hadFocus ? selection : null,
+        );
         _note = providerNote;
         _lastSavedContent = providerNote.content;
         _characterCount = providerNote.characterCount;
@@ -3775,21 +3807,47 @@ class _EditorScreenState extends State<EditorScreen>
         _titleController.text = providerNote.title;
         _isUpdatingFromExternal = false;
       });
-      if (!hadFocus && priorScrollOffset != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_scrollController.hasClients) return;
-          final position = _scrollController.position;
-          final clampedOffset = priorScrollOffset.clamp(
-            position.minScrollExtent,
-            position.maxScrollExtent,
-          );
-          if ((_scrollController.offset - clampedOffset).abs() > 1) {
-            _scrollController.jumpTo(clampedOffset.toDouble());
-          }
-        });
-      }
       debugPrint('Error updating from external source: $e');
     }
+  }
+
+  void _replaceQuillControllerDocument(
+    Document document, {
+    TextSelection? preferredSelection,
+  }) {
+    final previousController = _quillController;
+    final nextController = QuillController(
+      document: document,
+      selection: _selectionWithinDocument(
+        document,
+        preferredSelection ?? previousController.selection,
+      ),
+    );
+    nextController.addListener(_onContentChanged);
+    previousController.removeListener(_onContentChanged);
+    _quillController = nextController;
+    previousController.dispose();
+  }
+
+  TextSelection _selectionWithinDocument(
+    Document document,
+    TextSelection selection,
+  ) {
+    final maxOffset = document.length > 0 ? document.length - 1 : 0;
+
+    int clampOffset(int value) {
+      if (value < 0) return 0;
+      return value.clamp(0, maxOffset).toInt();
+    }
+
+    if (!selection.isValid) {
+      return TextSelection.collapsed(offset: clampOffset(0));
+    }
+
+    return TextSelection(
+      baseOffset: clampOffset(selection.baseOffset),
+      extentOffset: clampOffset(selection.extentOffset),
+    );
   }
 }
 
