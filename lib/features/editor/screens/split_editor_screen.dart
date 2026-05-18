@@ -8,10 +8,15 @@ import '../../../core/models/note.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
+import '../../../core/routes/app_router.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../core/utils/search_query.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 import '../../home/widgets/file_grid.dart';
 import '../../home/widgets/folder_grid.dart';
+import '../../home/widgets/home_bottom_bar.dart';
+import '../../profile/screens/profile_screen.dart';
 import 'editor_screen.dart';
 
 class SplitEditorScreen extends StatefulWidget {
@@ -78,17 +83,14 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
       key: ValueKey('split-primary-${primaryNote.id}'),
       noteId: primaryNote.id,
       embedded: true,
-      onClose: () => _closeSplitClosing(primaryNote),
-      onSideBySideAction: () => _closeSplitClosing(primaryNote),
+      onClose: () => _closeSplitClosing(closingPrimary: true),
+      onSideBySideAction: () => _closeSplitClosing(closingPrimary: true),
       isSideBySideOpen: true,
     );
 
     final secondaryPane = secondaryNote == null
         ? _SecondaryBrowserPane(
             initialFolderId: widget.initialSecondaryFolderId,
-            excludedNoteIds: {
-              _primaryNoteId,
-            },
             onNoteSelected: (noteId) {
               setState(() {
                 _secondaryNoteId = noteId;
@@ -96,11 +98,13 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
             },
           )
         : EditorScreen(
-            key: ValueKey('split-secondary-${secondaryNote.id}'),
+            key: ValueKey(
+              'split-secondary-${secondaryNote.id}-$_secondaryNoteId',
+            ),
             noteId: secondaryNote.id,
             embedded: true,
-            onClose: () => _closeSplitClosing(secondaryNote),
-            onSideBySideAction: () => _closeSplitClosing(secondaryNote),
+            onClose: () => _closeSplitClosing(closingPrimary: false),
+            onSideBySideAction: () => _closeSplitClosing(closingPrimary: false),
             isSideBySideOpen: true,
           );
 
@@ -194,18 +198,21 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
     });
   }
 
-  void _closeSplitClosing(Note note) {
+  void _closeSplitClosing({required bool closingPrimary}) {
     if (_isClosingSplit) return;
-    final noteToKeep = note.id == _primaryNoteId && _secondaryNoteId != null
-        ? context.read<NotesProvider>().getNoteById(_secondaryNoteId!)
-        : context.read<NotesProvider>().getNoteById(_primaryNoteId);
-
-    final fallbackNote = note.id == _primaryNoteId
-        ? noteToKeep
-        : context.read<NotesProvider>().getNoteById(_primaryNoteId);
-
-    final resolvedNote = fallbackNote ?? note;
-    final targetFraction = note.id == _primaryNoteId ? 0.0 : 1.0;
+    final notesProvider = context.read<NotesProvider>();
+    final primaryNote = notesProvider.getNoteById(_primaryNoteId);
+    final secondaryNote = _secondaryNoteId == null
+        ? null
+        : notesProvider.getNoteById(_secondaryNoteId!);
+    final resolvedNote = closingPrimary
+        ? (secondaryNote ?? primaryNote)
+        : (primaryNote ?? secondaryNote);
+    if (resolvedNote == null) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    final targetFraction = closingPrimary ? 0.0 : 1.0;
 
     setState(() {
       _isClosingSplit = true;
@@ -285,12 +292,10 @@ class _ResizeHandle extends StatelessWidget {
 class _SecondaryBrowserPane extends StatefulWidget {
   const _SecondaryBrowserPane({
     required this.onNoteSelected,
-    required this.excludedNoteIds,
     this.initialFolderId,
   });
 
   final ValueChanged<String> onNoteSelected;
-  final Set<String> excludedNoteIds;
   final String? initialFolderId;
 
   @override
@@ -302,6 +307,7 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
   String _searchQuery = '';
   String? _currentFolderId;
   bool _isGridView = true;
+  HomeBottomBarTab _selectedTab = HomeBottomBarTab.files;
 
   @override
   void initState() {
@@ -317,6 +323,44 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
 
   @override
   Widget build(BuildContext context) {
+    if (_selectedTab == HomeBottomBarTab.profile) {
+      return Scaffold(
+        body: Column(
+          children: [
+            _buildTopBar(
+              title: _profileTitle(context.read<AuthService>()),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.schedule_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.timetable),
+                  tooltip: 'Timetable',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () =>
+                      AppRouter.navigateTo(context, AppRouter.settings),
+                  tooltip: 'Settings',
+                ),
+              ],
+            ),
+            const Expanded(child: ProfileScreen(embedded: true)),
+          ],
+        ),
+        bottomNavigationBar: HomeBottomBar(
+          currentFolderId: _currentFolderId,
+          onAddTap: _showCreateOptions,
+          selectedTab: _selectedTab,
+          onFilesTap: () {
+            setState(() {
+              _selectedTab = HomeBottomBarTab.files;
+            });
+          },
+          onProfileTap: () {},
+        ),
+      );
+    }
+
     final foldersProvider = context.watch<FoldersProvider>();
     final notesProvider = context.watch<NotesProvider>();
     final tagsProvider = context.watch<TagsProvider>();
@@ -343,7 +387,6 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
                 parsedSearchQuery,
                 tagNameResolver: (id) => tagsProvider.getTagById(id)?.name,
               )
-              .where((note) => !widget.excludedNoteIds.contains(note.id))
               .toList()
           : <Note>[];
     } else {
@@ -352,10 +395,7 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
       folders = _currentFolderId == null
           ? foldersProvider.rootFolders
           : foldersProvider.getSubfolders(_currentFolderId!);
-      notes = notesProvider
-          .getNotesInFolder(_currentFolderId)
-          .where((note) => !widget.excludedNoteIds.contains(note.id))
-          .toList();
+      notes = notesProvider.getNotesInFolder(_currentFolderId);
     }
 
     final folderStats = _buildFolderStats(
@@ -372,94 +412,117 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
         ? parsedSearchQuery.plainTextQuery
         : null;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-      ),
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _buildPaneHeader(
-              currentFolderName: currentFolder?.name,
-              isSearchActive: isSearchActive,
+    return Scaffold(
+      body: Column(
+        children: [
+          _buildPaneHeader(
+            currentFolderName: currentFolder?.name,
+            isSearchActive: isSearchActive,
+          ),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+              ),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildSearchBar()),
+                  if (_currentFolderId != null && !isSearchActive)
+                    SliverToBoxAdapter(
+                      child: _buildBreadcrumb(foldersProvider),
+                    ),
+                  if (showFolderResults && folders.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: _SectionLabel(
+                        label: isSearchActive
+                            ? 'Folders (${folders.length})'
+                            : 'Folders',
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: _isGridView
+                          ? FolderGrid(
+                              folders: folders,
+                              folderStats: folderStats,
+                              onFolderTap: (folderId) {
+                                if (isSearchActive) {
+                                  _clearSearchQuery();
+                                }
+                                setState(() {
+                                  _currentFolderId = folderId;
+                                });
+                              },
+                              onFolderLongPress: (_) {},
+                            )
+                          : FolderList(
+                              folders: folders,
+                              folderStats: folderStats,
+                              onFolderTap: (folderId) {
+                                if (isSearchActive) {
+                                  _clearSearchQuery();
+                                }
+                                setState(() {
+                                  _currentFolderId = folderId;
+                                });
+                              },
+                              onFolderLongPress: (_) {},
+                            ),
+                    ),
+                  ],
+                  if (showFileResults && notes.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: _SectionLabel(
+                        label: isSearchActive
+                            ? 'Files (${notes.length})'
+                            : 'Files',
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: _isGridView
+                          ? FileGrid(
+                              notes: notes,
+                              noteLocationLabels: noteLocationLabels,
+                              onNoteTap: (_) => widget.onNoteSelected(_),
+                              onNoteLongPress: (_) {},
+                            )
+                          : FileList(
+                              notes: notes,
+                              noteLocationLabels: noteLocationLabels,
+                              onNoteTap: (noteId) =>
+                                  widget.onNoteSelected(noteId),
+                              onNoteLongPress: (_) {},
+                            ),
+                    ),
+                  ],
+                  if (folders.isEmpty && notes.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyBrowserState(isSearchActive: isSearchActive),
+                    )
+                  else
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 24),
+                    ),
+                  if (noteOpenSearchQuery != null)
+                    const SliverToBoxAdapter(child: SizedBox.shrink()),
+                ],
+              ),
             ),
           ),
-          SliverToBoxAdapter(child: _buildSearchBar()),
-          if (_currentFolderId != null && !isSearchActive)
-            SliverToBoxAdapter(child: _buildBreadcrumb(foldersProvider)),
-          if (showFolderResults && folders.isNotEmpty) ...[
-            SliverToBoxAdapter(
-              child: _SectionLabel(
-                label:
-                    isSearchActive ? 'Folders (${folders.length})' : 'Folders',
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: _isGridView
-                  ? FolderGrid(
-                      folders: folders,
-                      folderStats: folderStats,
-                      onFolderTap: (folderId) {
-                        if (isSearchActive) {
-                          _clearSearchQuery();
-                        }
-                        setState(() {
-                          _currentFolderId = folderId;
-                        });
-                      },
-                      onFolderLongPress: (_) {},
-                    )
-                  : FolderList(
-                      folders: folders,
-                      folderStats: folderStats,
-                      onFolderTap: (folderId) {
-                        if (isSearchActive) {
-                          _clearSearchQuery();
-                        }
-                        setState(() {
-                          _currentFolderId = folderId;
-                        });
-                      },
-                      onFolderLongPress: (_) {},
-                    ),
-            ),
-          ],
-          if (showFileResults && notes.isNotEmpty) ...[
-            SliverToBoxAdapter(
-              child: _SectionLabel(
-                label: isSearchActive ? 'Files (${notes.length})' : 'Files',
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: _isGridView
-                  ? FileGrid(
-                      notes: notes,
-                      noteLocationLabels: noteLocationLabels,
-                      onNoteTap: (_) => widget.onNoteSelected(_),
-                      onNoteLongPress: (_) {},
-                    )
-                  : FileList(
-                      notes: notes,
-                      noteLocationLabels: noteLocationLabels,
-                      onNoteTap: (noteId) => widget.onNoteSelected(noteId),
-                      onNoteLongPress: (_) {},
-                    ),
-            ),
-          ],
-          if (folders.isEmpty && notes.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyBrowserState(isSearchActive: isSearchActive),
-            )
-          else
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 24),
-            ),
-          if (noteOpenSearchQuery != null)
-            const SliverToBoxAdapter(child: SizedBox.shrink()),
         ],
+      ),
+      bottomNavigationBar: HomeBottomBar(
+        currentFolderId: _currentFolderId,
+        onAddTap: _showCreateOptions,
+        selectedTab: _selectedTab,
+        onFilesTap: () {},
+        onProfileTap: () {
+          setState(() {
+            _selectedTab = HomeBottomBarTab.profile;
+          });
+        },
       ),
     );
   }
@@ -468,10 +531,53 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
     required String? currentFolderName,
     required bool isSearchActive,
   }) {
-    final colors = Theme.of(context).colorScheme;
     final title = isSearchActive
         ? 'Search results'
         : (currentFolderName ?? 'Browse notes');
+    return _buildTopBar(
+      title: title,
+      leading: _currentFolderId != null && !isSearchActive
+          ? IconButton(
+              tooltip: 'Back to parent folder',
+              onPressed: _navigateBack,
+              icon: const Icon(Icons.arrow_back_ios),
+            )
+          : null,
+      actions: [
+        IconButton(
+          tooltip: _isGridView ? 'List view' : 'Grid view',
+          onPressed: () {
+            setState(() {
+              _isGridView = !_isGridView;
+            });
+          },
+          icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+        ),
+        IconButton(
+          icon: const Icon(Icons.schedule_outlined),
+          onPressed: () => AppRouter.navigateTo(context, AppRouter.timetable),
+          tooltip: 'Timetable',
+        ),
+        IconButton(
+          icon: const Icon(Icons.calendar_today_outlined),
+          onPressed: () => AppRouter.navigateTo(context, AppRouter.calendar),
+          tooltip: 'Calendar',
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => AppRouter.navigateTo(context, AppRouter.settings),
+          tooltip: 'Settings',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopBar({
+    required String title,
+    Widget? leading,
+    List<Widget> actions = const <Widget>[],
+  }) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -485,12 +591,7 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
       ),
       child: Row(
         children: [
-          if (_currentFolderId != null && !isSearchActive)
-            IconButton(
-              tooltip: 'Back to parent folder',
-              onPressed: _navigateBack,
-              icon: const Icon(Icons.arrow_back_ios),
-            ),
+          if (leading != null) leading,
           Expanded(
             child: Text(
               title,
@@ -499,15 +600,7 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-          IconButton(
-            tooltip: _isGridView ? 'List view' : 'Grid view',
-            onPressed: () {
-              setState(() {
-                _isGridView = !_isGridView;
-              });
-            },
-            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
-          ),
+          ...actions,
         ],
       ),
     );
@@ -611,6 +704,136 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
     setState(() {
       _searchQuery = '';
     });
+  }
+
+  String _profileTitle(AuthService authService) {
+    return authService.isGuestMode ? 'Sign In' : 'Profile';
+  }
+
+  void _showCreateOptions() {
+    if (_selectedTab != HomeBottomBarTab.files) {
+      setState(() {
+        _selectedTab = HomeBottomBarTab.files;
+      });
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Add',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.note_add),
+              title: const Text('Create File'),
+              subtitle: const Text('Create a new note/document'),
+              onTap: () {
+                Navigator.pop(context);
+                _createNewNote();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('Create Folder'),
+              subtitle: const Text('Create a new folder'),
+              onTap: () {
+                Navigator.pop(context);
+                _createNewFolder();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createNewNote() async {
+    final authService = context.read<AuthService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    final storageService = context.read<StorageService>();
+    if (storageService.isStorageFull) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage is full. Please upgrade to create notes.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final notesProvider = context.read<NotesProvider>();
+    final note = await notesProvider.createNote(
+      userId: userId,
+      folderId: _currentFolderId,
+    );
+    if (note == null || !mounted) return;
+
+    widget.onNoteSelected(note.id);
+  }
+
+  Future<void> _createNewFolder() async {
+    final controller = TextEditingController();
+    final folderName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Folder'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Folder name',
+          ),
+          onSubmitted: (value) {
+            Navigator.of(context).pop(value.trim());
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (folderName == null || folderName.isEmpty || !mounted) {
+      return;
+    }
+
+    final authService = context.read<AuthService>();
+    final userId = authService.userId;
+    if (userId == null) return;
+
+    final folder = await context.read<FoldersProvider>().createFolder(
+          userId: userId,
+          name: folderName,
+          parentId: _currentFolderId,
+        );
+
+    if (folder != null && mounted) {
+      setState(() {
+        _currentFolderId = folder.id;
+      });
+    }
   }
 
   Map<String, String> _buildNoteLocationLabels({
