@@ -63,6 +63,8 @@ class TypeSyncAppContent extends StatelessWidget {
               child: child ?? const SizedBox.shrink(),
             );
 
+            content = _BackGestureFocusDismissScope(child: content);
+
             if (supportsCustomDesktopWindowFrame) {
               content = DesktopWindowFrameShell(child: content);
             }
@@ -72,6 +74,64 @@ class TypeSyncAppContent extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _BackGestureFocusDismissScope extends StatefulWidget {
+  const _BackGestureFocusDismissScope({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  State<_BackGestureFocusDismissScope> createState() =>
+      _BackGestureFocusDismissScopeState();
+}
+
+class _BackGestureFocusDismissScopeState
+    extends State<_BackGestureFocusDismissScope> {
+  bool _hasFocusedEditableText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_handleFocusChange);
+    _hasFocusedEditableText = _isEditableTextFocused();
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_handleFocusChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_hasFocusedEditableText,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || !_hasFocusedEditableText) return;
+        FocusManager.instance.primaryFocus?.unfocus();
+      },
+      child: widget.child,
+    );
+  }
+
+  void _handleFocusChange() {
+    final hasFocusedEditableText = _isEditableTextFocused();
+    if (hasFocusedEditableText == _hasFocusedEditableText) return;
+    setState(() {
+      _hasFocusedEditableText = hasFocusedEditableText;
+    });
+  }
+
+  bool _isEditableTextFocused() {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) return false;
+    final focusedWidget = focusedContext.widget;
+    return focusedWidget is EditableText ||
+        focusedContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 }
 

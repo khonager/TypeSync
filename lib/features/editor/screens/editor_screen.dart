@@ -756,24 +756,11 @@ class _EditorScreenState extends State<EditorScreen>
               ],
             ),
           )
-        : PopScope(
-            canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
-            onPopInvokedWithResult: (didPop, result) {
-              if (didPop) return;
-              final titleHasFocus =
-                  FocusScope.of(context).focusedChild != null &&
-                      FocusManager.instance.primaryFocus?.context?.widget
-                          is EditableText;
-              if (_focusNode.hasFocus || titleHasFocus) {
-                FocusScope.of(context).unfocus();
-              }
-            },
-            child: Scaffold(
-              backgroundColor:
-                  bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-              appBar: _buildAppBar(bgColor),
-              body: editorBody,
-            ),
+        : Scaffold(
+            backgroundColor:
+                bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+            appBar: _buildAppBar(bgColor),
+            body: editorBody,
           );
 
     return CallbackShortcuts(
