@@ -85,12 +85,14 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorSearchMatch {
   const _EditorSearchMatch({
-    required this.offset,
-    required this.length,
+    required this.startOffset,
+    required this.endOffset,
   });
 
-  final int offset;
-  final int length;
+  final int startOffset;
+  final int endOffset;
+
+  int get length => endOffset - startOffset;
 }
 
 class _EditorScreenState extends State<EditorScreen>
@@ -1658,15 +1660,15 @@ class _EditorScreenState extends State<EditorScreen>
       if (previousMatch != null) {
         nextIndex = matches.indexWhere(
           (match) =>
-              match.offset == previousMatch.offset &&
-              match.length == previousMatch.length,
+              match.startOffset == previousMatch.startOffset &&
+              match.endOffset == previousMatch.endOffset,
         );
       }
 
       if (nextIndex == -1) {
         final selectionOffset = _currentSelectionSearchAnchor();
         nextIndex =
-            matches.indexWhere((match) => match.offset >= selectionOffset);
+            matches.indexWhere((match) => match.startOffset >= selectionOffset);
         nextIndex = nextIndex == -1 ? 0 : nextIndex;
       }
     }
@@ -1697,10 +1699,14 @@ class _EditorScreenState extends State<EditorScreen>
     final query = rawQuery.trim();
     if (query.isEmpty) return const <_EditorSearchMatch>[];
 
-    final plainText = _quillController.document.toPlainText();
-    if (plainText.isEmpty) return const <_EditorSearchMatch>[];
+    final indexedDocument = _buildIndexedSearchDocument();
+    if (indexedDocument.searchText.isEmpty) {
+      return const <_EditorSearchMatch>[];
+    }
 
-    final haystack = _matchCase ? plainText : plainText.toLowerCase();
+    final haystack = _matchCase
+        ? indexedDocument.searchText
+        : indexedDocument.searchText.toLowerCase();
     final needle = _matchCase ? query : query.toLowerCase();
     final matches = <_EditorSearchMatch>[];
     var start = 0;
@@ -1708,11 +1714,47 @@ class _EditorScreenState extends State<EditorScreen>
     while (start <= haystack.length - needle.length) {
       final index = haystack.indexOf(needle, start);
       if (index == -1) break;
-      matches.add(_EditorSearchMatch(offset: index, length: needle.length));
+      final startOffset = indexedDocument.plainToDocumentOffsets[index];
+      final endOffset =
+          indexedDocument.plainToDocumentOffsets[index + needle.length - 1] + 1;
+      matches.add(
+        _EditorSearchMatch(
+          startOffset: startOffset,
+          endOffset: endOffset,
+        ),
+      );
       start = index + needle.length;
     }
 
     return matches;
+  }
+
+  ({String searchText, List<int> plainToDocumentOffsets})
+      _buildIndexedSearchDocument() {
+    final buffer = StringBuffer();
+    final plainToDocumentOffsets = <int>[];
+    var documentOffset = 0;
+
+    for (final operation in _quillController.document.toDelta().toList()) {
+      final insert = operation.data;
+      if (insert is String) {
+        for (final rune in insert.runes) {
+          buffer.writeCharCode(rune);
+          plainToDocumentOffsets.add(documentOffset);
+          documentOffset += 1;
+        }
+        continue;
+      }
+
+      buffer.writeCharCode(0xFFFC);
+      plainToDocumentOffsets.add(documentOffset);
+      documentOffset += 1;
+    }
+
+    return (
+      searchText: buffer.toString(),
+      plainToDocumentOffsets: plainToDocumentOffsets,
+    );
   }
 
   void _goToNextSearchMatch() {
@@ -1741,9 +1783,8 @@ class _EditorScreenState extends State<EditorScreen>
     final documentLength = _quillController.document.length;
     if (documentLength <= 0) return;
 
-    final safeStart = match.offset.clamp(0, documentLength - 1);
-    final safeEnd =
-        (match.offset + match.length).clamp(safeStart, documentLength);
+    final safeStart = match.startOffset.clamp(0, documentLength - 1);
+    final safeEnd = match.endOffset.clamp(safeStart + 1, documentLength);
     _quillController.updateSelection(
       TextSelection(baseOffset: safeStart, extentOffset: safeEnd),
       ChangeSource.local,
@@ -1768,10 +1809,10 @@ class _EditorScreenState extends State<EditorScreen>
 
     final match = _searchMatches[_currentSearchMatchIndex];
     final replacement = _replaceController.text;
-    final replacementEnd = match.offset + replacement.length;
+    final replacementEnd = match.startOffset + replacement.length;
 
     _quillController.replaceText(
-      match.offset,
+      match.startOffset,
       match.length,
       replacement,
       TextSelection.collapsed(offset: replacementEnd),
@@ -1797,7 +1838,7 @@ class _EditorScreenState extends State<EditorScreen>
     final matches = List<_EditorSearchMatch>.from(_searchMatches);
     for (final match in matches.reversed) {
       _quillController.replaceText(
-        match.offset,
+        match.startOffset,
         match.length,
         replacement,
         const TextSelection.collapsed(offset: 0),
@@ -1816,7 +1857,11 @@ class _EditorScreenState extends State<EditorScreen>
     if (_searchMatches.isEmpty) return;
 
     for (final match in _searchMatches) {
-      _quillController.document.format(match.offset, match.length, attribute);
+      _quillController.document.format(
+        match.startOffset,
+        match.length,
+        attribute,
+      );
     }
 
     _focusNode.requestFocus();
@@ -1834,44 +1879,13 @@ class _EditorScreenState extends State<EditorScreen>
     final query = widget.searchQuery?.trim();
     if (query == null || query.isEmpty) return;
 
-    final matchOffset = _findBestSearchMatchOffset(query);
-    if (matchOffset == null) return;
+    final initialMatches = _findAllSearchMatches(query);
+    if (initialMatches.isEmpty) return;
+    final initialMatch = initialMatches.first;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(
-        _focusAndPulseSearchMatch(
-          _EditorSearchMatch(offset: matchOffset, length: query.length),
-        ),
-      );
+      unawaited(_focusAndPulseSearchMatch(initialMatch));
     });
-  }
-
-  int? _findBestSearchMatchOffset(String query) {
-    final plainText = _quillController.document.toPlainText().toLowerCase();
-    if (plainText.isEmpty) return null;
-
-    final normalizedQuery = query.toLowerCase().trim();
-    if (normalizedQuery.isNotEmpty) {
-      final phraseOffset = plainText.indexOf(normalizedQuery);
-      if (phraseOffset >= 0) {
-        return phraseOffset;
-      }
-    }
-
-    final queryTokens = normalizedQuery
-        .split(RegExp(r'\s+'))
-        .where((token) => token.isNotEmpty)
-        .toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-
-    for (final token in queryTokens) {
-      final tokenOffset = plainText.indexOf(token);
-      if (tokenOffset >= 0) {
-        return tokenOffset;
-      }
-    }
-
-    return null;
   }
 
   Future<void> _scrollToMatchAndPulse(
