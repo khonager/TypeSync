@@ -83,6 +83,18 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
+class _EditorSearchMatch {
+  const _EditorSearchMatch({
+    required this.startOffset,
+    required this.endOffset,
+  });
+
+  final int startOffset;
+  final int endOffset;
+
+  int get length => endOffset - startOffset;
+}
+
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
@@ -106,6 +118,10 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Title controller
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _findController = TextEditingController();
+  final TextEditingController _replaceController = TextEditingController();
+  final FocusNode _findFocusNode = FocusNode();
+  final FocusNode _replaceFocusNode = FocusNode();
 
   // Last saved content to prevent unnecessary reloads from provider
   String? _lastSavedContent;
@@ -143,6 +159,10 @@ class _EditorScreenState extends State<EditorScreen>
   Rect? _matchGlowRect;
   bool _showMatchGlow = false;
   bool _didAttemptInitialSearchJump = false;
+  bool _isSearchPanelVisible = false;
+  bool _matchCase = false;
+  List<_EditorSearchMatch> _searchMatches = const <_EditorSearchMatch>[];
+  int _currentSearchMatchIndex = -1;
   final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
   final Map<String, Future<String?>> _attachmentTextFutures = {};
 
@@ -160,6 +180,11 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    _isSearchPanelVisible = _openedFromSearch;
+    if (_openedFromSearch) {
+      _findController.text = widget.searchQuery!.trim();
+    }
+    _findController.addListener(_handleSearchQueryChanged);
     _focusNode.addListener(_onEditorFocusChanged);
     _matchGlowController = AnimationController(
       vsync: this,
@@ -261,8 +286,13 @@ class _EditorScreenState extends State<EditorScreen>
   void _onContentChanged() {
     if (_isUpdatingFromExternal) return;
     _updateStats();
+    _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
+  }
+
+  void _handleSearchQueryChanged() {
+    _refreshSearchMatches(navigateToCurrentMatch: _openedFromSearch);
   }
 
   void _onEditorFocusChanged() {
@@ -639,6 +669,11 @@ class _EditorScreenState extends State<EditorScreen>
     unawaited(_persistToolbarPreferences());
     _matchGlowStopTimer?.cancel();
     _matchGlowController.dispose();
+    _findController.removeListener(_handleSearchQueryChanged);
+    _findController.dispose();
+    _replaceController.dispose();
+    _findFocusNode.dispose();
+    _replaceFocusNode.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
     _focusNode.removeListener(_onEditorFocusChanged);
@@ -738,6 +773,7 @@ class _EditorScreenState extends State<EditorScreen>
               if (_note?.hasConflict == true) _buildConflictBanner(),
               if (_toolbarPlacement == EditorToolbarPlacement.top)
                 _buildToolbar(),
+              if (_isSearchPanelVisible) _buildSearchPanel(),
               _buildEditorWorkspace(bgColor),
               if (_toolbarPlacement == EditorToolbarPlacement.bottom)
                 _buildToolbar(),
@@ -765,6 +801,23 @@ class _EditorScreenState extends State<EditorScreen>
 
     return CallbackShortcuts(
       bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): () {
+          _openSearchPanel();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () {
+          _openSearchPanel();
+        },
+        const SingleActivator(LogicalKeyboardKey.keyH, control: true): () {
+          _openSearchPanel(focusReplace: true);
+        },
+        const SingleActivator(LogicalKeyboardKey.keyH, meta: true): () {
+          _openSearchPanel(focusReplace: true);
+        },
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (_isSearchPanelVisible) {
+            _closeSearchPanel();
+          }
+        },
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
           unawaited(_saveNoteFromShortcut());
         },
@@ -880,10 +933,146 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       if (showSync) const SyncStatusIndicator(),
       IconButton(
+        icon: const Icon(Icons.search),
+        tooltip: 'Search and replace',
+        onPressed: _openSearchPanel,
+      ),
+      IconButton(
         icon: const Icon(Icons.more_vert),
         onPressed: _showMoreOptions,
       ),
     ];
+  }
+
+  Widget _buildSearchPanel() {
+    final colors = Theme.of(context).colorScheme;
+    final hasMatches = _searchMatches.isNotEmpty;
+    final matchCountText = _findController.text.trim().isEmpty
+        ? 'Enter text to search'
+        : hasMatches
+            ? 'Match ${_currentSearchMatchIndex + 1} of ${_searchMatches.length}'
+            : 'No matches found';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colors.outline.withValues(alpha: 0.22)),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _findController,
+                    focusNode: _findFocusNode,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Find',
+                      prefixIcon: Icon(Icons.search),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _goToNextSearchMatch(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _replaceController,
+                    focusNode: _replaceFocusNode,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Replace with',
+                      prefixIcon: Icon(Icons.find_replace),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _replaceCurrentMatch(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilterChip(
+                  label: const Text('Match case'),
+                  selected: _matchCase,
+                  onSelected: (selected) {
+                    setState(() {
+                      _matchCase = selected;
+                    });
+                    _refreshSearchMatches();
+                  },
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Previous match',
+                  onPressed: hasMatches ? _goToPreviousSearchMatch : null,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                ),
+                IconButton(
+                  tooltip: 'Next match',
+                  onPressed: hasMatches ? _goToNextSearchMatch : null,
+                  icon: const Icon(Icons.keyboard_arrow_down),
+                ),
+                IconButton(
+                  tooltip: 'Close search',
+                  onPressed: _closeSearchPanel,
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  matchCountText,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: hasMatches
+                            ? colors.onSurface
+                            : colors.onSurfaceVariant,
+                      ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: hasMatches ? _replaceCurrentMatch : null,
+                  icon: const Icon(Icons.find_replace),
+                  label: const Text('Replace'),
+                ),
+                FilledButton.tonal(
+                  onPressed: hasMatches ? _replaceAllMatches : null,
+                  child: const Text('Replace all'),
+                ),
+                FilledButton.tonal(
+                  onPressed: hasMatches
+                      ? () => _formatAllMatches(Attribute.bold)
+                      : null,
+                  child: const Text('Bold all'),
+                ),
+                FilledButton.tonal(
+                  onPressed: hasMatches
+                      ? () => _formatAllMatches(Attribute.underline)
+                      : null,
+                  child: const Text('Underline all'),
+                ),
+                FilledButton.tonal(
+                  onPressed: hasMatches
+                      ? () => _formatAllMatches(
+                            const BackgroundAttribute('#FFF59D'),
+                          )
+                      : null,
+                  child: const Text('Highlight all'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildToolbar() {
@@ -1421,58 +1610,183 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  void _maybeNavigateToInitialSearchMatch() {
-    if (_didAttemptInitialSearchJump) return;
-    _didAttemptInitialSearchJump = true;
+  void _openSearchPanel({bool focusReplace = false}) {
+    if (!_isSearchPanelVisible) {
+      setState(() {
+        _isSearchPanelVisible = true;
+      });
+    } else {
+      setState(() {});
+    }
 
-    final query = widget.searchQuery?.trim();
-    if (query == null || query.isEmpty) return;
-
-    final matchOffset = _findBestSearchMatchOffset(query);
-    if (matchOffset == null) return;
-
+    _refreshSearchMatches(navigateToCurrentMatch: true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_focusAndPulseSearchMatch(matchOffset));
+      if (!mounted) return;
+      (focusReplace ? _replaceFocusNode : _findFocusNode).requestFocus();
+      if (!focusReplace) {
+        _findController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _findController.text.length,
+        );
+      }
     });
   }
 
-  int? _findBestSearchMatchOffset(String query) {
-    final plainText = _quillController.document.toPlainText().toLowerCase();
-    if (plainText.isEmpty) return null;
-
-    final normalizedQuery = query.toLowerCase().trim();
-    if (normalizedQuery.isNotEmpty) {
-      final phraseOffset = plainText.indexOf(normalizedQuery);
-      if (phraseOffset >= 0) {
-        return phraseOffset;
-      }
-    }
-
-    final queryTokens = normalizedQuery
-        .split(RegExp(r'\s+'))
-        .where((token) => token.isNotEmpty)
-        .toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-
-    for (final token in queryTokens) {
-      final tokenOffset = plainText.indexOf(token);
-      if (tokenOffset >= 0) {
-        return tokenOffset;
-      }
-    }
-
-    return null;
+  void _closeSearchPanel() {
+    setState(() {
+      _isSearchPanelVisible = false;
+    });
+    _focusNode.requestFocus();
   }
 
-  Future<void> _focusAndPulseSearchMatch(int matchOffset) async {
+  void _refreshSearchMatches({bool navigateToCurrentMatch = false}) {
+    if (!_isSearchPanelVisible && _findController.text.trim().isEmpty) {
+      if (_searchMatches.isEmpty && _currentSearchMatchIndex == -1) return;
+      setState(() {
+        _searchMatches = const <_EditorSearchMatch>[];
+        _currentSearchMatchIndex = -1;
+      });
+      return;
+    }
+
+    final matches = _findAllSearchMatches(_findController.text);
+    final previousMatch = (_currentSearchMatchIndex >= 0 &&
+            _currentSearchMatchIndex < _searchMatches.length)
+        ? _searchMatches[_currentSearchMatchIndex]
+        : null;
+
+    var nextIndex = -1;
+    if (matches.isNotEmpty) {
+      if (previousMatch != null) {
+        nextIndex = matches.indexWhere(
+          (match) =>
+              match.startOffset == previousMatch.startOffset &&
+              match.endOffset == previousMatch.endOffset,
+        );
+      }
+
+      if (nextIndex == -1) {
+        final selectionOffset = _currentSelectionSearchAnchor();
+        nextIndex =
+            matches.indexWhere((match) => match.startOffset >= selectionOffset);
+        nextIndex = nextIndex == -1 ? 0 : nextIndex;
+      }
+    }
+
+    final shouldNavigate = navigateToCurrentMatch &&
+        matches.isNotEmpty &&
+        nextIndex >= 0 &&
+        nextIndex < matches.length;
+
+    setState(() {
+      _searchMatches = matches;
+      _currentSearchMatchIndex = nextIndex;
+    });
+
+    if (shouldNavigate) {
+      unawaited(_focusAndPulseSearchMatch(matches[nextIndex]));
+    }
+  }
+
+  int _currentSelectionSearchAnchor() {
+    final selection = _quillController.selection;
+    if (!selection.isValid) return 0;
+    final rawOffset = selection.baseOffset >= 0 ? selection.baseOffset : 0;
+    return _safeDocumentOffset(rawOffset);
+  }
+
+  List<_EditorSearchMatch> _findAllSearchMatches(String rawQuery) {
+    final query = rawQuery.trim();
+    if (query.isEmpty) return const <_EditorSearchMatch>[];
+
+    final indexedDocument = _buildIndexedSearchDocument();
+    if (indexedDocument.searchText.isEmpty) {
+      return const <_EditorSearchMatch>[];
+    }
+
+    final haystack = _matchCase
+        ? indexedDocument.searchText
+        : indexedDocument.searchText.toLowerCase();
+    final needle = _matchCase ? query : query.toLowerCase();
+    final matches = <_EditorSearchMatch>[];
+    var start = 0;
+
+    while (start <= haystack.length - needle.length) {
+      final index = haystack.indexOf(needle, start);
+      if (index == -1) break;
+      final startOffset = indexedDocument.plainToDocumentOffsets[index];
+      final endOffset =
+          indexedDocument.plainToDocumentOffsets[index + needle.length - 1] + 1;
+      matches.add(
+        _EditorSearchMatch(
+          startOffset: startOffset,
+          endOffset: endOffset,
+        ),
+      );
+      start = index + needle.length;
+    }
+
+    return matches;
+  }
+
+  ({String searchText, List<int> plainToDocumentOffsets})
+      _buildIndexedSearchDocument() {
+    final buffer = StringBuffer();
+    final plainToDocumentOffsets = <int>[];
+    var documentOffset = 0;
+
+    for (final operation in _quillController.document.toDelta().toList()) {
+      final insert = operation.data;
+      if (insert is String) {
+        for (final rune in insert.runes) {
+          buffer.writeCharCode(rune);
+          plainToDocumentOffsets.add(documentOffset);
+          documentOffset += 1;
+        }
+        continue;
+      }
+
+      buffer.writeCharCode(0xFFFC);
+      plainToDocumentOffsets.add(documentOffset);
+      documentOffset += 1;
+    }
+
+    return (
+      searchText: buffer.toString(),
+      plainToDocumentOffsets: plainToDocumentOffsets,
+    );
+  }
+
+  void _goToNextSearchMatch() {
+    _goToSearchMatch(step: 1);
+  }
+
+  void _goToPreviousSearchMatch() {
+    _goToSearchMatch(step: -1);
+  }
+
+  void _goToSearchMatch({required int step}) {
+    if (_searchMatches.isEmpty) return;
+    final currentIndex =
+        _currentSearchMatchIndex >= 0 ? _currentSearchMatchIndex : 0;
+    final nextIndex =
+        (currentIndex + step + _searchMatches.length) % _searchMatches.length;
+    setState(() {
+      _currentSearchMatchIndex = nextIndex;
+    });
+    unawaited(_focusAndPulseSearchMatch(_searchMatches[nextIndex]));
+  }
+
+  Future<void> _focusAndPulseSearchMatch(_EditorSearchMatch match) async {
     if (!mounted) return;
 
     final documentLength = _quillController.document.length;
     if (documentLength <= 0) return;
 
-    final safeOffset = matchOffset.clamp(0, documentLength - 1);
+    final safeStart = match.startOffset.clamp(0, documentLength - 1);
+    final safeEnd = match.endOffset.clamp(safeStart + 1, documentLength);
     _quillController.updateSelection(
-      TextSelection.collapsed(offset: safeOffset),
+      TextSelection(baseOffset: safeStart, extentOffset: safeEnd),
       ChangeSource.local,
     );
 
@@ -1480,11 +1794,98 @@ class _EditorScreenState extends State<EditorScreen>
       if (!mounted) return;
       final editorState = _editorKey.currentState;
       if (editorState != null && _scrollController.hasClients) {
-        await _scrollToMatchAndPulse(editorState, safeOffset);
+        await _scrollToMatchAndPulse(editorState, safeStart);
         return;
       }
       await Future.delayed(const Duration(milliseconds: 60));
     }
+  }
+
+  void _replaceCurrentMatch() {
+    if (_currentSearchMatchIndex < 0 ||
+        _currentSearchMatchIndex >= _searchMatches.length) {
+      return;
+    }
+
+    final match = _searchMatches[_currentSearchMatchIndex];
+    final replacement = _replaceController.text;
+    final replacementEnd = match.startOffset + replacement.length;
+
+    _quillController.replaceText(
+      match.startOffset,
+      match.length,
+      replacement,
+      TextSelection.collapsed(offset: replacementEnd),
+    );
+
+    _refreshSearchMatches();
+    if (_searchMatches.isNotEmpty) {
+      final nextIndex = _currentSearchMatchIndex.clamp(
+        0,
+        _searchMatches.length - 1,
+      );
+      setState(() {
+        _currentSearchMatchIndex = nextIndex;
+      });
+      unawaited(_focusAndPulseSearchMatch(_searchMatches[nextIndex]));
+    }
+  }
+
+  void _replaceAllMatches() {
+    if (_searchMatches.isEmpty) return;
+
+    final replacement = _replaceController.text;
+    final matches = List<_EditorSearchMatch>.from(_searchMatches);
+    for (final match in matches.reversed) {
+      _quillController.replaceText(
+        match.startOffset,
+        match.length,
+        replacement,
+        const TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    _refreshSearchMatches();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Replaced ${matches.length} matches')),
+      );
+    }
+  }
+
+  void _formatAllMatches(Attribute<dynamic> attribute) {
+    if (_searchMatches.isEmpty) return;
+
+    for (final match in _searchMatches) {
+      _quillController.document.format(
+        match.startOffset,
+        match.length,
+        attribute,
+      );
+    }
+
+    _focusNode.requestFocus();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Updated ${_searchMatches.length} matches')),
+      );
+    }
+  }
+
+  void _maybeNavigateToInitialSearchMatch() {
+    if (_didAttemptInitialSearchJump) return;
+    _didAttemptInitialSearchJump = true;
+
+    final query = widget.searchQuery?.trim();
+    if (query == null || query.isEmpty) return;
+
+    final initialMatches = _findAllSearchMatches(query);
+    if (initialMatches.isEmpty) return;
+    final initialMatch = initialMatches.first;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_focusAndPulseSearchMatch(initialMatch));
+    });
   }
 
   Future<void> _scrollToMatchAndPulse(
@@ -2456,6 +2857,15 @@ class _EditorScreenState extends State<EditorScreen>
                   primaryNoteId: _note!.id,
                   initialSecondaryFolderId: _note!.folderId ?? widget.folderId,
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('Search and replace'),
+              subtitle: const Text('Find, replace, or format repeated text'),
+              onTap: () {
+                Navigator.pop(context);
+                _openSearchPanel();
               },
             ),
             ListTile(
