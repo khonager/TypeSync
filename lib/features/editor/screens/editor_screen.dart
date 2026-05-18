@@ -41,6 +41,7 @@ import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../../../core/widgets/remote_pdf_embed_stub.dart'
     if (dart.library.html) '../../../core/widgets/remote_pdf_embed_web.dart';
 import '../../home/widgets/sync_status_indicator.dart';
@@ -62,12 +63,20 @@ class EditorScreen extends StatefulWidget {
   final String? noteId;
   final String? folderId;
   final String? searchQuery;
+  final bool embedded;
+  final VoidCallback? onClose;
+  final VoidCallback? onSideBySideAction;
+  final bool isSideBySideOpen;
 
   const EditorScreen({
     super.key,
     this.noteId,
     this.folderId,
     this.searchQuery,
+    this.embedded = false,
+    this.onClose,
+    this.onSideBySideAction,
+    this.isSideBySideOpen = false,
   });
 
   @override
@@ -664,9 +673,10 @@ class _EditorScreenState extends State<EditorScreen>
 
   Widget _buildEditor(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      if (widget.embedded) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     // React to external changes from provider
     final notesProvider = context.watch<NotesProvider>();
@@ -714,6 +724,45 @@ class _EditorScreenState extends State<EditorScreen>
           minimum: requiredVersion,
         );
 
+    final editorBody = Column(
+      children: isUnsupportedVersion
+          ? [
+              Expanded(
+                child: _buildUnsupportedVersionNotice(
+                  requiredVersion: requiredVersion,
+                  currentVersion: currentVersion,
+                ),
+              ),
+            ]
+          : [
+              if (_note?.hasConflict == true) _buildConflictBanner(),
+              if (_toolbarPlacement == EditorToolbarPlacement.top)
+                _buildToolbar(),
+              _buildEditorWorkspace(bgColor),
+              if (_toolbarPlacement == EditorToolbarPlacement.bottom)
+                _buildToolbar(),
+            ],
+    );
+
+    final content = widget.embedded
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+            ),
+            child: Column(
+              children: [
+                _buildEmbeddedHeader(bgColor),
+                Expanded(child: editorBody),
+              ],
+            ),
+          )
+        : Scaffold(
+            backgroundColor:
+                bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+            appBar: _buildAppBar(bgColor),
+            body: editorBody,
+          );
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
@@ -723,77 +772,118 @@ class _EditorScreenState extends State<EditorScreen>
           unawaited(_saveNoteFromShortcut());
         },
       },
-      child: PopScope(
-        canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
-        onPopInvokedWithResult: (didPop, result) {
-          if (didPop) return;
-          final titleHasFocus = FocusScope.of(context).focusedChild != null &&
-              FocusManager.instance.primaryFocus?.context?.widget
-                  is EditableText;
-          if (_focusNode.hasFocus || titleHasFocus) {
-            FocusScope.of(context).unfocus();
-          }
-        },
-        child: Scaffold(
-          backgroundColor: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-          appBar: AppBar(
-            backgroundColor:
-                bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Center(
-              child: TextField(
-                controller: _titleController,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Title',
-                  contentPadding: EdgeInsets.zero,
-                  filled: false,
-                ),
-                onChanged: _updateTitle,
-              ),
-            ),
-            actions: [
-              // Stats display (Lines/Char counter)
-              EditorStats(
-                lineCount: _lineCount,
-                characterCount: _characterCount,
-              ),
-              // Sync status indicator
-              const SyncStatusIndicator(),
-              // More options
-              IconButton(
-                icon: const Icon(Icons.more_vert),
-                onPressed: _showMoreOptions,
-              ),
-            ],
-          ),
-          body: Column(
-            children: isUnsupportedVersion
-                ? [
-                    Expanded(
-                      child: _buildUnsupportedVersionNotice(
-                        requiredVersion: requiredVersion,
-                        currentVersion: currentVersion,
-                      ),
-                    ),
-                  ]
-                : [
-                    if (_note?.hasConflict == true) _buildConflictBanner(),
-                    if (_toolbarPlacement == EditorToolbarPlacement.top)
-                      _buildToolbar(),
-                    _buildEditorWorkspace(bgColor),
-                    if (_toolbarPlacement == EditorToolbarPlacement.bottom)
-                      _buildToolbar(),
-                  ],
-          ),
-        ),
+      child: content,
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(Color? bgColor) {
+    return AppBar(
+      backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+      flexibleSpace: desktopWindowDragArea(),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Center(
+        child: _buildTitleField(),
+      ),
+      actions: withDesktopWindowControls(
+        _buildHeaderActions(),
+        enabled: !widget.embedded,
       ),
     );
+  }
+
+  Widget _buildEmbeddedHeader(Color? bgColor) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final showTitle = maxWidth >= 220;
+        final showSideBySide = maxWidth >= 260;
+        final showStats = maxWidth >= 360;
+        final showSync = maxWidth >= 420;
+
+        return ClipRect(
+          child: Container(
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+              border: Border(
+                bottom: BorderSide(
+                  color: colors.outline.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (widget.onClose != null)
+                  IconButton(
+                    tooltip: 'Back to browser',
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.arrow_back_ios),
+                  ),
+                if (showTitle)
+                  Expanded(child: _buildTitleField())
+                else
+                  const Spacer(),
+                ..._buildHeaderActions(
+                  showSideBySide: showSideBySide,
+                  showStats: showStats,
+                  showSync: showSync,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTitleField() {
+    return TextField(
+      controller: _titleController,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.titleMedium,
+      decoration: const InputDecoration(
+        border: InputBorder.none,
+        hintText: 'Title',
+        contentPadding: EdgeInsets.zero,
+        filled: false,
+      ),
+      onChanged: _updateTitle,
+    );
+  }
+
+  List<Widget> _buildHeaderActions({
+    bool showSideBySide = true,
+    bool showStats = true,
+    bool showSync = true,
+  }) {
+    final sideBySideLabel =
+        widget.isSideBySideOpen ? 'Close side by side' : 'Open side by side';
+    final sideBySideIcon =
+        widget.isSideBySideOpen ? Icons.close : Icons.splitscreen_outlined;
+
+    return [
+      if (showSideBySide && widget.onSideBySideAction != null)
+        IconButton(
+          tooltip: sideBySideLabel,
+          onPressed: widget.onSideBySideAction,
+          icon: Icon(sideBySideIcon),
+        ),
+      if (showStats)
+        EditorStats(
+          lineCount: _lineCount,
+          characterCount: _characterCount,
+        ),
+      if (showSync) const SyncStatusIndicator(),
+      IconButton(
+        icon: const Icon(Icons.more_vert),
+        onPressed: _showMoreOptions,
+      ),
+    ];
   }
 
   Widget _buildToolbar() {
@@ -2343,6 +2433,31 @@ class _EditorScreenState extends State<EditorScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: Icon(
+                widget.isSideBySideOpen
+                    ? Icons.close
+                    : Icons.splitscreen_outlined,
+              ),
+              title: Text(
+                widget.isSideBySideOpen
+                    ? 'Close side by side'
+                    : 'Open side by side',
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                if (_note == null) return;
+                if (widget.onSideBySideAction != null) {
+                  widget.onSideBySideAction!.call();
+                  return;
+                }
+                AppRouter.openSplitEditor(
+                  this.context,
+                  primaryNoteId: _note!.id,
+                  initialSecondaryFolderId: _note!.folderId ?? widget.folderId,
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.attach_file),
               title: const Text('Attach file'),

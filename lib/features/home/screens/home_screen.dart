@@ -36,6 +36,7 @@ import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/search_query.dart';
@@ -614,6 +615,7 @@ class _HomeScreenState extends State<HomeScreen> {
       extendBody: true,
       // Custom app bar matching the design
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         // Show back button when in a folder
         leading: !isProfileTab && _currentFolderId != null
             ? IconButton(
@@ -629,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   : (currentFolder?.name ?? 'TypeSync'),
         ),
         actions: isProfileTab
-            ? [
+            ? withDesktopWindowControls([
                 IconButton(
                   icon: const Icon(Icons.schedule_outlined),
                   onPressed: () =>
@@ -641,8 +643,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () =>
                       AppRouter.navigateTo(context, AppRouter.settings),
                 ),
-              ]
-            : [
+              ])
+            : withDesktopWindowControls([
                 // Sync status indicator
                 const SyncStatusIndicator(),
 
@@ -673,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () =>
                       AppRouter.navigateTo(context, AppRouter.settings),
                 ),
-              ],
+              ]),
       ),
 
       body: isProfileTab
@@ -2276,6 +2278,18 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.splitscreen_outlined),
+              title: const Text('Open side by side'),
+              onTap: () {
+                Navigator.pop(bottomSheetContext);
+                AppRouter.openSplitEditor(
+                  context,
+                  primaryNoteId: noteId,
+                  initialSecondaryFolderId: _currentFolderId,
+                );
+              },
+            ),
             ListTile(
               leading: Icon(
                 note?.isFavorite == true ? Icons.star : Icons.star_outline,

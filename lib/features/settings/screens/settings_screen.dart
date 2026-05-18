@@ -35,6 +35,7 @@ import '../../../core/providers/timetable_provider.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/version_compatibility.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 /// Settings screen with app preferences
 class SettingsScreen extends StatelessWidget {
@@ -51,11 +52,13 @@ class SettingsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Settings'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: ListView(
         children: [

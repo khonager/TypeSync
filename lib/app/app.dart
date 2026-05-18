@@ -11,6 +11,7 @@ import '../core/services/theme_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
+import '../core/widgets/desktop_window_frame.dart';
 import 'home_widget_sync_coordinator.dart';
 import 'service_orchestrator.dart';
 
@@ -53,7 +54,7 @@ class TypeSyncAppContent extends StatelessWidget {
           // Global error handling for navigation
           builder: (context, child) {
             // Apply global text scaling limits for accessibility
-            return MediaQuery(
+            Widget content = MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(
                   MediaQuery.of(context).textScaler.scale(1.0).clamp(0.8, 1.4),
@@ -61,10 +62,76 @@ class TypeSyncAppContent extends StatelessWidget {
               ),
               child: child ?? const SizedBox.shrink(),
             );
+
+            content = _BackGestureFocusDismissScope(child: content);
+
+            if (supportsCustomDesktopWindowFrame) {
+              content = DesktopWindowFrameShell(child: content);
+            }
+
+            return content;
           },
         ),
       ),
     );
+  }
+}
+
+class _BackGestureFocusDismissScope extends StatefulWidget {
+  const _BackGestureFocusDismissScope({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  State<_BackGestureFocusDismissScope> createState() =>
+      _BackGestureFocusDismissScopeState();
+}
+
+class _BackGestureFocusDismissScopeState
+    extends State<_BackGestureFocusDismissScope> {
+  bool _hasFocusedEditableText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_handleFocusChange);
+    _hasFocusedEditableText = _isEditableTextFocused();
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_handleFocusChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_hasFocusedEditableText,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || !_hasFocusedEditableText) return;
+        FocusManager.instance.primaryFocus?.unfocus();
+      },
+      child: widget.child,
+    );
+  }
+
+  void _handleFocusChange() {
+    final hasFocusedEditableText = _isEditableTextFocused();
+    if (hasFocusedEditableText == _hasFocusedEditableText) return;
+    setState(() {
+      _hasFocusedEditableText = hasFocusedEditableText;
+    });
+  }
+
+  bool _isEditableTextFocused() {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) return false;
+    final focusedWidget = focusedContext.widget;
+    return focusedWidget is EditableText ||
+        focusedContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 }
 

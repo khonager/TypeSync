@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/homework.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 /// Homework todo list screen
 class HomeworkScreen extends StatefulWidget {
@@ -64,12 +65,13 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Homework'),
-        actions: [
+        actions: withDesktopWindowControls([
           IconButton(
             icon: Icon(
               _showCompleted ? Icons.visibility : Icons.visibility_off,
@@ -81,7 +83,7 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
             },
             tooltip: _showCompleted ? 'Hide completed' : 'Show completed',
           ),
-        ],
+        ]),
       ),
       body: homeworkProvider.isLoading
           ? const Center(child: CircularProgressIndicator())

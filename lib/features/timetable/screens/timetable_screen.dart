@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/timetable_entry.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 /// Timetable screen showing weekly class schedule
 class TimetableScreen extends StatefulWidget {
@@ -60,11 +61,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Timetable'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: Column(
         children: [

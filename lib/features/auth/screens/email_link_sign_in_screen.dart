@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/utils/email_validation.dart';
+import '../../../core/widgets/desktop_window_frame.dart';
 
 class EmailLinkSignInScreen extends StatefulWidget {
   const EmailLinkSignInScreen({super.key});
@@ -95,7 +96,9 @@ class _EmailLinkSignInScreenState extends State<EmailLinkSignInScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: desktopWindowDragArea(),
         title: const Text('Finish Sign In'),
+        actions: withDesktopWindowControls(const []),
       ),
       body: Center(
         child: SingleChildScrollView(
