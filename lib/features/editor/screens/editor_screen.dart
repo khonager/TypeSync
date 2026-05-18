@@ -64,7 +64,8 @@ class EditorScreen extends StatefulWidget {
   final String? searchQuery;
   final bool embedded;
   final VoidCallback? onClose;
-  final VoidCallback? onOpenSideBySide;
+  final VoidCallback? onSideBySideAction;
+  final bool isSideBySideOpen;
 
   const EditorScreen({
     super.key,
@@ -73,7 +74,8 @@ class EditorScreen extends StatefulWidget {
     this.searchQuery,
     this.embedded = false,
     this.onClose,
-    this.onOpenSideBySide,
+    this.onSideBySideAction,
+    this.isSideBySideOpen = false,
   });
 
   @override
@@ -741,6 +743,38 @@ class _EditorScreenState extends State<EditorScreen>
             ],
     );
 
+    final content = widget.embedded
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+            ),
+            child: Column(
+              children: [
+                _buildEmbeddedHeader(bgColor),
+                Expanded(child: editorBody),
+              ],
+            ),
+          )
+        : PopScope(
+            canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) return;
+              final titleHasFocus =
+                  FocusScope.of(context).focusedChild != null &&
+                      FocusManager.instance.primaryFocus?.context?.widget
+                          is EditableText;
+              if (_focusNode.hasFocus || titleHasFocus) {
+                FocusScope.of(context).unfocus();
+              }
+            },
+            child: Scaffold(
+              backgroundColor:
+                  bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+              appBar: _buildAppBar(bgColor),
+              body: editorBody,
+            ),
+          );
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
@@ -750,37 +784,7 @@ class _EditorScreenState extends State<EditorScreen>
           unawaited(_saveNoteFromShortcut());
         },
       },
-      child: PopScope(
-        canPop: !_focusNode.hasFocus && !_titleController.selection.isValid,
-        onPopInvokedWithResult: (didPop, result) {
-          if (didPop) return;
-          final titleHasFocus = FocusScope.of(context).focusedChild != null &&
-              FocusManager.instance.primaryFocus?.context?.widget
-                  is EditableText;
-          if (_focusNode.hasFocus || titleHasFocus) {
-            FocusScope.of(context).unfocus();
-          }
-        },
-        child: widget.embedded
-            ? DecoratedBox(
-                decoration: BoxDecoration(
-                  color:
-                      bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-                ),
-                child: Column(
-                  children: [
-                    _buildEmbeddedHeader(bgColor),
-                    Expanded(child: editorBody),
-                  ],
-                ),
-              )
-            : Scaffold(
-                backgroundColor:
-                    bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-                appBar: _buildAppBar(bgColor),
-                body: editorBody,
-              ),
-      ),
+      child: content,
     );
   }
 
@@ -815,9 +819,9 @@ class _EditorScreenState extends State<EditorScreen>
         children: [
           if (widget.onClose != null)
             IconButton(
-              tooltip: 'Close pane',
+              tooltip: 'Back to browser',
               onPressed: widget.onClose,
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.arrow_back_ios),
             ),
           Expanded(child: _buildTitleField()),
           ..._buildHeaderActions(),
@@ -842,12 +846,18 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   List<Widget> _buildHeaderActions() {
+    final sideBySideLabel =
+        widget.isSideBySideOpen ? 'Close side by side' : 'Open side by side';
+    final sideBySideIcon = widget.isSideBySideOpen
+        ? Icons.close
+        : Icons.splitscreen_outlined;
+
     return [
-      if (widget.onOpenSideBySide != null)
+      if (widget.onSideBySideAction != null)
         IconButton(
-          tooltip: 'Open side by side',
-          onPressed: widget.onOpenSideBySide,
-          icon: const Icon(Icons.splitscreen_outlined),
+          tooltip: sideBySideLabel,
+          onPressed: widget.onSideBySideAction,
+          icon: Icon(sideBySideIcon),
         ),
       EditorStats(
         lineCount: _lineCount,
@@ -2409,18 +2419,28 @@ class _EditorScreenState extends State<EditorScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.splitscreen_outlined),
-              title: const Text('Open side by side'),
+              leading: Icon(
+                widget.isSideBySideOpen
+                    ? Icons.close
+                    : Icons.splitscreen_outlined,
+              ),
+              title: Text(
+                widget.isSideBySideOpen
+                    ? 'Close side by side'
+                    : 'Open side by side',
+              ),
               onTap: () {
                 Navigator.pop(context);
                 if (_note == null) return;
-                if (widget.onOpenSideBySide != null) {
-                  widget.onOpenSideBySide!.call();
+                if (widget.onSideBySideAction != null) {
+                  widget.onSideBySideAction!.call();
                   return;
                 }
                 AppRouter.openSplitEditor(
                   this.context,
                   primaryNoteId: _note!.id,
+                  initialSecondaryFolderId:
+                      _note!.folderId ?? widget.folderId,
                 );
               },
             ),

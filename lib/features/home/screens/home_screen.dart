@@ -2284,6 +2284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 AppRouter.openSplitEditor(
                   context,
                   primaryNoteId: noteId,
+                  initialSecondaryFolderId: _currentFolderId,
                 );
               },
             ),

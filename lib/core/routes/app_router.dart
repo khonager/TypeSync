@@ -134,6 +134,7 @@ class AppRouter {
     BuildContext context, {
     required String primaryNoteId,
     String? secondaryNoteId,
+    String? initialSecondaryFolderId,
   }) {
     return Navigator.push(
       context,
@@ -141,6 +142,7 @@ class AppRouter {
         builder: (_) => SplitEditorScreen(
           primaryNoteId: primaryNoteId,
           secondaryNoteId: secondaryNoteId,
+          initialSecondaryFolderId: initialSecondaryFolderId,
         ),
       ),
     );
