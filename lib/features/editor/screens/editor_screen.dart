@@ -871,9 +871,8 @@ class _EditorScreenState extends State<EditorScreen>
   }) {
     final sideBySideLabel =
         widget.isSideBySideOpen ? 'Close side by side' : 'Open side by side';
-    final sideBySideIcon = widget.isSideBySideOpen
-        ? Icons.close
-        : Icons.splitscreen_outlined;
+    final sideBySideIcon =
+        widget.isSideBySideOpen ? Icons.close : Icons.splitscreen_outlined;
 
     return [
       if (showSideBySide && widget.onSideBySideAction != null)
@@ -2463,8 +2462,7 @@ class _EditorScreenState extends State<EditorScreen>
                 AppRouter.openSplitEditor(
                   this.context,
                   primaryNoteId: _note!.id,
-                  initialSecondaryFolderId:
-                      _note!.folderId ?? widget.folderId,
+                  initialSecondaryFolderId: _note!.folderId ?? widget.folderId,
                 );
               },
             ),
