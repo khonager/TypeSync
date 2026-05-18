@@ -484,7 +484,8 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
                           ? FileGrid(
                               notes: notes,
                               noteLocationLabels: noteLocationLabels,
-                              onNoteTap: (_) => widget.onNoteSelected(_),
+                              onNoteTap: (noteId) =>
+                                  widget.onNoteSelected(noteId),
                               onNoteLongPress: (_) {},
                             )
                           : FileList(
