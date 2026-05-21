@@ -110,6 +110,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Focus node for the editor
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _titleFocusNode = FocusNode();
 
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
@@ -733,6 +734,7 @@ class _EditorScreenState extends State<EditorScreen>
     _replaceController.dispose();
     _findFocusNode.dispose();
     _replaceFocusNode.dispose();
+    _titleFocusNode.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
     _focusNode.removeListener(_onEditorFocusChanged);
@@ -972,6 +974,7 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildTitleField() {
     return TextField(
       controller: _titleController,
+      focusNode: _titleFocusNode,
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.titleMedium,
       decoration: const InputDecoration(
@@ -1455,15 +1458,25 @@ class _EditorScreenState extends State<EditorScreen>
           children: [
             SizedBox(
               width: attachmentWidth,
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: _buildAttachmentPreview(activeAttachment),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.horizontal,
+                onDelta: (delta) =>
+                    _updateSideBySideAttachmentFraction(availableWidth, delta),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildAttachmentPreview(activeAttachment),
+                ),
               ),
             ),
             _buildHorizontalResizeHandle(availableWidth),
             SizedBox(
               width: editorWidth,
-              child: _buildEditorSurface(bgColor),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.horizontal,
+                onDelta: (delta) =>
+                    _updateSideBySideAttachmentFraction(availableWidth, delta),
+                child: _buildEditorSurface(bgColor),
+              ),
             ),
           ],
         );
@@ -1513,9 +1526,15 @@ class _EditorScreenState extends State<EditorScreen>
           children: [
             SizedBox(
               height: attachmentHeight,
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: _buildAttachmentPreview(activeAttachment),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.vertical,
+                enabled: () => !_isAnyTextInputFocused,
+                onDelta: (delta) =>
+                    _updateStackedAttachmentHeight(availableHeight, delta),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildAttachmentPreview(activeAttachment),
+                ),
               ),
             ),
             _buildVerticalResizeHandle(availableHeight),
@@ -1535,13 +1554,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) {
-          if (availableWidth <= 0) return;
-          setState(() {
-            final nextWidth = availableWidth * _sideBySideAttachmentFraction +
-                details.delta.dx;
-            _sideBySideAttachmentFraction =
-                (nextWidth / availableWidth).clamp(0.25, 0.72);
-          });
+          _updateSideBySideAttachmentFraction(availableWidth, details.delta.dx);
         },
         child: SizedBox(
           width: 18,
@@ -1568,26 +1581,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
-          if (availableHeight <= 0) return;
-          setState(() {
-            final maxAttachmentHeight = availableHeight > 180
-                ? availableHeight - 180.0
-                : availableHeight * 0.5;
-            final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
-              0.0,
-              availableHeight,
-            );
-            final resolvedMinAttachmentHeight =
-                (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
-              0.0,
-              resolvedMaxAttachmentHeight,
-            );
-            _stackedAttachmentHeight =
-                (_stackedAttachmentHeight + details.delta.dy).clamp(
-              resolvedMinAttachmentHeight,
-              resolvedMaxAttachmentHeight,
-            );
-          });
+          _updateStackedAttachmentHeight(availableHeight, details.delta.dy);
         },
         child: SizedBox(
           height: 18,
@@ -1605,6 +1599,67 @@ class _EditorScreenState extends State<EditorScreen>
           ),
         ),
       ),
+    );
+  }
+
+  bool get _isAnyTextInputFocused =>
+      _titleFocusNode.hasFocus ||
+      _findFocusNode.hasFocus ||
+      _replaceFocusNode.hasFocus ||
+      _focusNode.hasFocus;
+
+  void _updateSideBySideAttachmentFraction(
+    double availableWidth,
+    double delta,
+  ) {
+    if (availableWidth <= 0 || delta == 0) return;
+    setState(() {
+      final nextWidth = availableWidth * _sideBySideAttachmentFraction + delta;
+      _sideBySideAttachmentFraction =
+          (nextWidth / availableWidth).clamp(0.25, 0.72);
+    });
+  }
+
+  void _updateStackedAttachmentHeight(double availableHeight, double delta) {
+    if (availableHeight <= 0 || delta == 0) return;
+    setState(() {
+      final maxAttachmentHeight = availableHeight > 180
+          ? availableHeight - 180.0
+          : availableHeight * 0.5;
+      final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+        0.0,
+        availableHeight,
+      );
+      final resolvedMinAttachmentHeight =
+          (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+        0.0,
+        resolvedMaxAttachmentHeight,
+      );
+      _stackedAttachmentHeight = (_stackedAttachmentHeight + delta).clamp(
+        resolvedMinAttachmentHeight,
+        resolvedMaxAttachmentHeight,
+      );
+    });
+  }
+
+  Widget _wrapTrackpadResizeRegion({
+    required Axis axis,
+    required ValueChanged<double> onDelta,
+    required Widget child,
+    bool Function()? enabled,
+  }) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerPanZoomUpdate: (event) {
+        if (!(enabled?.call() ?? true)) return;
+        final panDelta = event.panDelta;
+        final primaryDelta =
+            axis == Axis.horizontal ? panDelta.dx : panDelta.dy;
+        final crossDelta = axis == Axis.horizontal ? panDelta.dy : panDelta.dx;
+        if (primaryDelta == 0 || primaryDelta.abs() < crossDelta.abs()) return;
+        onDelta(primaryDelta);
+      },
+      child: child,
     );
   }
 
