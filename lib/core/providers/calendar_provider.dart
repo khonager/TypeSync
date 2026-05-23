@@ -36,6 +36,7 @@ class CalendarProvider extends ChangeNotifier {
   // Sync service reference (set by parent)
   SyncService? _syncService;
   StreamSubscription<void>? _syncSubscription;
+  DateTime? _lastTodoMaintenanceDay;
 
   // ===========================================
   // GETTERS
@@ -100,6 +101,7 @@ class CalendarProvider extends ChangeNotifier {
       _eventsBox = await Hive.openBox<CalendarEvent>('calendar_events_$userId');
       _activeUserId = userId;
       _events = _eventsBox!.values.toList();
+      await rollOverPendingTodos();
 
       _errorMessage = null;
     } catch (e) {
@@ -178,7 +180,7 @@ class CalendarProvider extends ChangeNotifier {
     required String title,
     required DateTime startTime,
     String? description,
-    EventType type = EventType.reminder,
+    EventType type = EventType.todo,
     DateTime? endTime,
     String? subject,
     String? location,
@@ -218,6 +220,66 @@ class CalendarProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> rollOverPendingTodos() async {
+    final today = _dateOnly(DateTime.now());
+    if (_lastTodoMaintenanceDay != null &&
+        _dateOnly(_lastTodoMaintenanceDay!) == today) {
+      return;
+    }
+
+    var changed = false;
+
+    for (var i = 0; i < _events.length; i++) {
+      final event = _events[i];
+      if (!event.isTodo || event.isCompleted || event.isDeleted) {
+        continue;
+      }
+
+      final eventDate = _dateOnly(event.startTime);
+      if (!eventDate.isBefore(today)) {
+        continue;
+      }
+
+      final overdueDays = today.difference(eventDate).inDays;
+      final updatedEvent = event.copyWith(
+        startTime: DateTime(
+          today.year,
+          today.month,
+          today.day,
+          event.startTime.hour,
+          event.startTime.minute,
+          event.startTime.second,
+          event.startTime.millisecond,
+          event.startTime.microsecond,
+        ),
+        endTime: event.endTime == null
+            ? null
+            : DateTime(
+                today.year,
+                today.month,
+                today.day,
+                event.endTime!.hour,
+                event.endTime!.minute,
+                event.endTime!.second,
+                event.endTime!.millisecond,
+                event.endTime!.microsecond,
+              ),
+        rolloverCount: event.rolloverCount + overdueDays,
+        isDirty: true,
+      );
+
+      _events[i] = updatedEvent;
+      await _eventsBox?.put(updatedEvent.id, updatedEvent);
+      _syncService?.syncCalendarEvent(updatedEvent.toJson());
+      changed = true;
+    }
+
+    _lastTodoMaintenanceDay = today;
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   /// Update a calendar event
   Future<bool> updateEvent(CalendarEvent event) async {
     try {
@@ -241,6 +303,22 @@ class CalendarProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> toggleTodoCompletion({
+    required String eventId,
+    required bool isCompleted,
+  }) async {
+    final event = getEventById(eventId);
+    if (event == null || !event.isTodo) {
+      return false;
+    }
+
+    return updateEvent(
+      event.copyWith(
+        isCompleted: isCompleted,
+      ),
+    );
   }
 
   /// Delete a calendar event (soft delete)
@@ -291,6 +369,10 @@ class CalendarProvider extends ChangeNotifier {
     _syncSubscription?.cancel();
     super.dispose();
   }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
 }
 
 // Hive type adapter for CalendarEvent
@@ -300,23 +382,50 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
 
   @override
   CalendarEvent read(BinaryReader reader) {
+    final id = reader.readString();
+    final title = reader.readString();
+    final description = reader.readBool() ? reader.readString() : null;
+    final type = EventType.values[reader.readInt()];
+    final startTime = DateTime.parse(reader.readString());
+    final endTime =
+        reader.readBool() ? DateTime.parse(reader.readString()) : null;
+    final subject = reader.readBool() ? reader.readString() : null;
+    final location = reader.readBool() ? reader.readString() : null;
+    final color = reader.readBool() ? reader.readString() : null;
+    final hasReminder = reader.readBool();
+    final reminderMinutesBefore = reader.readInt();
+    final noteId = reader.readBool() ? reader.readString() : null;
+    final userId = reader.readString();
+    final createdAt = DateTime.parse(reader.readString());
+    final isDirty = reader.readBool();
+    final isDeleted = reader.readBool();
+
+    var isCompleted = false;
+    var rolloverCount = 0;
+    try {
+      isCompleted = reader.readBool();
+      rolloverCount = reader.readInt();
+    } catch (_) {}
+
     return CalendarEvent(
-      id: reader.readString(),
-      title: reader.readString(),
-      description: reader.readBool() ? reader.readString() : null,
-      type: EventType.values[reader.readInt()],
-      startTime: DateTime.parse(reader.readString()),
-      endTime: reader.readBool() ? DateTime.parse(reader.readString()) : null,
-      subject: reader.readBool() ? reader.readString() : null,
-      location: reader.readBool() ? reader.readString() : null,
-      color: reader.readBool() ? reader.readString() : null,
-      hasReminder: reader.readBool(),
-      reminderMinutesBefore: reader.readInt(),
-      noteId: reader.readBool() ? reader.readString() : null,
-      userId: reader.readString(),
-      createdAt: DateTime.parse(reader.readString()),
-      isDirty: reader.readBool(),
-      isDeleted: reader.readBool(),
+      id: id,
+      title: title,
+      description: description,
+      type: type,
+      startTime: startTime,
+      endTime: endTime,
+      subject: subject,
+      location: location,
+      color: color,
+      hasReminder: hasReminder,
+      reminderMinutesBefore: reminderMinutesBefore,
+      noteId: noteId,
+      userId: userId,
+      createdAt: createdAt,
+      isDirty: isDirty,
+      isDeleted: isDeleted,
+      isCompleted: isCompleted,
+      rolloverCount: rolloverCount,
     );
   }
 
@@ -356,5 +465,7 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
     writer.writeString(obj.createdAt.toIso8601String());
     writer.writeBool(obj.isDirty);
     writer.writeBool(obj.isDeleted);
+    writer.writeBool(obj.isCompleted);
+    writer.writeInt(obj.rolloverCount);
   }
 }

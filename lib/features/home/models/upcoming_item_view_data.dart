@@ -106,6 +106,8 @@ class UpcomingItemViewData {
 
   static IconData _calendarIcon(EventType type) {
     switch (type) {
+      case EventType.todo:
+        return Icons.check_circle_outline;
       case EventType.test:
       case EventType.exam:
         return Icons.event_note_outlined;
