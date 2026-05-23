@@ -34,6 +34,7 @@ import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
@@ -130,6 +131,8 @@ class _EditorScreenState extends State<EditorScreen>
   // Current note being edited
   Note? _note;
   Note? _pendingExternalNote;
+  String? _activeNoteSyncId;
+  SyncService? _syncService;
 
   // Auto-save timer
   Timer? _saveTimer;
@@ -182,6 +185,7 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    _syncService = context.read<SyncService>();
     _isSearchPanelVisible = _openedFromSearch;
     if (_openedFromSearch) {
       _findController.text = widget.searchQuery!.trim();
@@ -280,9 +284,25 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (_note != null && !_hasStartedCloudMigration) {
+      _attachActiveNoteSync();
       _hasStartedCloudMigration = true;
       unawaited(_ensureCloudBackedFiles());
     }
+  }
+
+  void _attachActiveNoteSync() {
+    final note = _note;
+    if (note == null || note.localOnly || note.id == _activeNoteSyncId) {
+      return;
+    }
+
+    final authService = context.read<AuthService>();
+    if (!authService.effectiveSyncEnabled || authService.userId == null) {
+      return;
+    }
+
+    _syncService?.startNoteListening(note.id);
+    _activeNoteSyncId = note.id;
   }
 
   void _onContentChanged() {
@@ -809,6 +829,9 @@ class _EditorScreenState extends State<EditorScreen>
     _focusNode.dispose();
     _scrollController.dispose();
     _titleController.dispose();
+    if (_activeNoteSyncId != null) {
+      _syncService?.stopNoteListening(_activeNoteSyncId);
+    }
     super.dispose();
   }
 

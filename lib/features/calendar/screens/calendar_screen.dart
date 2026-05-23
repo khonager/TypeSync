@@ -10,6 +10,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/models/calendar_event.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 
@@ -90,6 +91,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final userId = authService.storageUserId;
     if (userId != null) {
       await context.read<CalendarProvider>().initialize(userId);
+    }
+    if (!mounted) return;
+    final cloudUserId = authService.userId;
+    if (cloudUserId != null && authService.effectiveSyncEnabled) {
+      await context.read<SyncService>().fetchWorkspaceSnapshot(cloudUserId);
     }
   }
 

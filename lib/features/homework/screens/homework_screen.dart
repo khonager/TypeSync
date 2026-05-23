@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/providers/homework_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/models/homework.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 
@@ -55,6 +56,11 @@ class _HomeworkScreenState extends State<HomeworkScreen> {
     final userId = authService.storageUserId;
     if (userId != null) {
       await context.read<HomeworkProvider>().initialize(userId);
+    }
+    if (!mounted) return;
+    final cloudUserId = authService.userId;
+    if (cloudUserId != null && authService.effectiveSyncEnabled) {
+      await context.read<SyncService>().fetchWorkspaceSnapshot(cloudUserId);
     }
   }
 

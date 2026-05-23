@@ -58,7 +58,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const List<String> _inSearchSuggestions = [
     'in:text',
     'in:title',
@@ -115,12 +115,26 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Defer initialization until after the first frame to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _attachAuthListener();
       _initializeData();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    final authService = context.read<AuthService>();
+    final cloudUserId = authService.userId;
+    if (cloudUserId == null || !authService.effectiveSyncEnabled) {
+      return;
+    }
+    context.read<SyncService>().fetchWorkspaceSnapshot(cloudUserId);
   }
 
   @override
@@ -250,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _scheduleRepairAudit();
           }
         };
+        syncService.onNoteUpdated = notesProvider.handleSingleCloudNoteUpdate;
         syncService.onCalendarUpdated = calendarProvider.handleCloudUpdate;
         syncService.onHomeworkUpdated = homeworkProvider.handleCloudUpdate;
         syncService.onTimetableUpdated = timetableProvider.handleCloudUpdate;
@@ -260,7 +275,8 @@ class _HomeScreenState extends State<HomeScreen> {
           'SYNC_LIFECYCLE callbacks attached workspace=$effectiveUserId cloudUser=$cloudUserId',
         );
 
-        syncService.startListening(cloudUserId);
+        syncService.startCoreListening(cloudUserId);
+        unawaited(syncService.fetchWorkspaceSnapshot(cloudUserId));
 
         // Check for guest workspace import after sign-in
         if (mounted) {
@@ -282,6 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
         homeworkProvider.setSyncService(null);
         timetableProvider.setSyncService(null);
         themeService.setSyncService(null);
+        syncService.onNoteUpdated = null;
         _diagnostics.info(
           'HomeScreen',
           'SYNC_LIFECYCLE sync detached workspace=$effectiveUserId cloudUser=$cloudUserId syncEnabled=$syncEnabled guestMode=${authService.isGuestMode}',
@@ -720,6 +737,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authService?.removeListener(_handleAuthStateChanged);
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/timetable_entry.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 
 /// Timetable screen showing weekly class schedule
@@ -37,6 +38,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     if (userId != null) {
       await context.read<TimetableProvider>().initialize(userId);
+    }
+    if (!mounted) return;
+    if (authService.userId != null && authService.effectiveSyncEnabled) {
+      await context.read<SyncService>().fetchWorkspaceSnapshot(
+            authService.userId!,
+          );
     }
   }
 

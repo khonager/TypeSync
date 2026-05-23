@@ -3,6 +3,7 @@
 /// App settings including theme, sync, and account options.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -147,7 +148,10 @@ class SettingsScreen extends StatelessWidget {
                   if (authService.effectiveSyncEnabled &&
                       authService.userId != null) {
                     // Restart sync if enabled
-                    syncService.startListening(authService.userId!);
+                    syncService.startCoreListening(authService.userId!);
+                    unawaited(
+                      syncService.fetchWorkspaceSnapshot(authService.userId!),
+                    );
                   } else {
                     syncService.stopListening();
                   }
@@ -539,7 +543,8 @@ class SettingsScreen extends StatelessWidget {
 
     syncService.setSyncEnabled(authService.effectiveSyncEnabled);
     if (authService.effectiveSyncEnabled && authService.userId != null) {
-      syncService.startListening(authService.userId!);
+      syncService.startCoreListening(authService.userId!);
+      unawaited(syncService.fetchWorkspaceSnapshot(authService.userId!));
       notesProvider.setSyncService(syncService);
       foldersProvider.setSyncService(syncService);
       calendarProvider.setSyncService(syncService);
@@ -1159,7 +1164,7 @@ class SettingsScreen extends StatelessWidget {
 
       syncService.setSyncEnabled(authService.effectiveSyncEnabled);
       if (authService.effectiveSyncEnabled) {
-        syncService.startListening(cloudUserId);
+        syncService.startCoreListening(cloudUserId);
         notesProvider.setSyncService(syncService);
         foldersProvider.setSyncService(syncService);
         calendarProvider.setSyncService(syncService);

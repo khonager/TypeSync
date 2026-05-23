@@ -1036,6 +1036,65 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Handle a single live note update without treating missing notes as stale.
+  void handleSingleCloudNoteUpdate(Note cloudNote) {
+    if (cloudNote.userId != _activeUserId || cloudNote.localOnly) {
+      return;
+    }
+
+    final localIndex = _notes.indexWhere((n) => n.id == cloudNote.id);
+    if (localIndex < 0) {
+      if (!cloudNote.isDeleted) {
+        _notes.add(cloudNote);
+        _notesBox?.put(cloudNote.id, cloudNote);
+        notifyListeners();
+      }
+      return;
+    }
+
+    final localNote = _notes[localIndex];
+    if (localNote.localOnly) {
+      return;
+    }
+
+    if (cloudNote.isDeleted) {
+      if (!localNote.isDirty) {
+        _notes.removeAt(localIndex);
+        _notesBox?.delete(cloudNote.id);
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (localNote.isDirty &&
+        cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
+        localNote.content != cloudNote.content) {
+      final conflictedNote = localNote.copyWith(
+        hasConflict: true,
+        conflictContent: cloudNote.content,
+      );
+      _notes[localIndex] = conflictedNote;
+      _notesBox?.put(cloudNote.id, conflictedNote);
+      _diagnostics.warning(
+        'NotesProvider',
+        'SYNC_CONFLICT live note conflict detected workspace=$_activeUserId noteId=${localNote.id} localUpdatedAt=${localNote.updatedAt.toIso8601String()} cloudUpdatedAt=${cloudNote.updatedAt.toIso8601String()}',
+      );
+      notifyListeners();
+      return;
+    }
+
+    if (!localNote.isDirty ||
+        cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
+      final updatedNote = cloudNote.copyWith(
+        hasConflict: false,
+        clearConflictContent: true,
+      );
+      _notes[localIndex] = updatedNote;
+      _notesBox?.put(cloudNote.id, updatedNote);
+      notifyListeners();
+    }
+  }
+
   /// Resolves a merge conflict for a given note
   /// [strategy] can be 'local', 'cloud', or 'merge'
   Future<void> resolveConflict(String noteId, String strategy) async {

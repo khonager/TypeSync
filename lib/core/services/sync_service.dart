@@ -84,6 +84,8 @@ class SyncService extends ChangeNotifier {
       _timetableSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
       _settingsSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _activeNoteSubscription;
 
   // Stream subscriptions for real-time updates (firedart)
   StreamSubscription<List<fd.Document>>? _fdNotesSubscription;
@@ -92,6 +94,7 @@ class SyncService extends ChangeNotifier {
   StreamSubscription<List<fd.Document>>? _fdHomeworkSubscription;
   StreamSubscription<List<fd.Document>>? _fdTimetableSubscription;
   StreamSubscription<fd.Document?>? _fdSettingsSubscription;
+  StreamSubscription<fd.Document?>? _fdActiveNoteSubscription;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
@@ -105,6 +108,7 @@ class SyncService extends ChangeNotifier {
   void Function(List<Homework>)? onHomeworkUpdated;
   void Function(List<TimetableEntry>)? onTimetableUpdated;
   void Function(Map<String, dynamic>)? onSettingsUpdated;
+  void Function(Note)? onNoteUpdated;
 
   // Stream for triggering sync across providers
   final _syncTriggerController = StreamController<void>.broadcast();
@@ -186,33 +190,41 @@ class SyncService extends ChangeNotifier {
 
   // Current user ID for sync
   String? _currentUserId;
+  String? _activeNoteId;
   bool _listenersActive = false;
   int _listenerGeneration = 0;
-  bool _notesSnapshotReady = false;
-  bool _foldersSnapshotReady = false;
-  bool _initialWorkspaceSnapshotReady = false;
+  int _snapshotGeneration = 0;
 
   /// Start listening to real-time updates for a user
   void startListening(String userId) {
+    startCoreListening(userId);
+    unawaited(fetchWorkspaceSnapshot(userId));
+  }
+
+  void startCoreListening(String userId) {
     if (_currentUserId == userId &&
         _listenersActive &&
-        _initialWorkspaceSnapshotReady) {
+        (_settingsSubscription != null || _fdSettingsSubscription != null)) {
       _diagnostics.info(
         'SyncService',
-        'SYNC_LIFECYCLE reused active listeners for user=$userId generation=$_listenerGeneration',
+        'SYNC_LIFECYCLE reused core listeners for user=$userId generation=$_listenerGeneration',
       );
       return;
     }
 
-    stopListening(reason: 'startListening($userId)');
+    if (_currentUserId != userId) {
+      stopListening(reason: 'startCoreListening($userId)');
+    } else {
+      _cancelCoreListeners();
+    }
+
     _currentUserId = userId;
     final generation = ++_listenerGeneration;
     _listenersActive = true;
-    _resetInitialWorkspaceSnapshotState();
     _setStatus(SyncStatus.syncing);
     _diagnostics.info(
       'SyncService',
-      'SYNC_LIFECYCLE starting listeners user=$userId generation=$generation platform=${defaultTargetPlatform.name}',
+      'SYNC_SCOPE starting core listeners scope=core:settings user=$userId generation=$generation platform=${defaultTargetPlatform.name}',
     );
 
     if (!_syncEnabled) {
@@ -225,8 +237,7 @@ class SyncService extends ChangeNotifier {
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-      _startListeningFiredart(userId, generation);
-      unawaited(_primeLinuxSnapshots(userId, generation));
+      _startCoreListeningFiredart(userId, generation);
       return;
     }
 
@@ -237,131 +248,6 @@ class SyncService extends ChangeNotifier {
     }
 
     try {
-      // Listen to notes collection
-      _notesSubscription = firestore
-          .collection('notes')
-          .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          debugPrint(
-            'SyncService: Received ${snapshot.docs.length} notes from Firestore',
-          );
-          final notes = <Note>[];
-          for (final doc in snapshot.docs) {
-            try {
-              notes.add(Note.fromJson(doc.data()));
-            } catch (e) {
-              debugPrint('SyncService: Skipping malformed note ${doc.id}: $e');
-            }
-          }
-          onNotesUpdated?.call(notes);
-          _lastSyncTime = DateTime.now();
-          _markRefreshSucceeded('Received notes update');
-          _markWorkspaceCollectionReady('notes');
-        },
-        onError: (Object error) {
-          _setError('Failed to sync notes: $error');
-        },
-      );
-
-      // Listen to folders collection
-      _foldersSubscription = firestore
-          .collection('folders')
-          .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          debugPrint(
-            'SyncService: Received ${snapshot.docs.length} folders from Firestore',
-          );
-          final folders =
-              snapshot.docs.map((doc) => Folder.fromJson(doc.data())).toList();
-          onFoldersUpdated?.call(folders);
-          _markRefreshSucceeded('Received folders update');
-          _markWorkspaceCollectionReady('folders');
-        },
-        onError: (Object error) {
-          _setError('Failed to sync folders: $error');
-        },
-      );
-
-      // Listen to calendar_events collection
-      _calendarSubscription = firestore
-          .collection('calendar_events')
-          .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          debugPrint(
-            'SyncService: Received ${snapshot.docs.length} calendar events from Firestore',
-          );
-          final events = snapshot.docs
-              .map((doc) => CalendarEvent.fromJson(doc.data()))
-              .toList();
-          onCalendarUpdated?.call(events);
-        },
-        onError: (Object error) => _setError('Failed to sync calendar: $error'),
-      );
-
-      // Listen to homework collection
-      _homeworkSubscription = firestore
-          .collection('homework')
-          .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          debugPrint(
-            'SyncService: Received ${snapshot.docs.length} homework from Firestore',
-          );
-          final tasks = snapshot.docs
-              .map((doc) => Homework.fromJson(doc.data()))
-              .toList();
-          onHomeworkUpdated?.call(tasks);
-        },
-        onError: (Object error) => _setError('Failed to sync homework: $error'),
-      );
-
-      // Listen to timetable_entries collection
-      _timetableSubscription = firestore
-          .collection('timetable_entries')
-          .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          debugPrint(
-            'SyncService: Received ${snapshot.docs.length} timetable entries from Firestore',
-          );
-          final entries = snapshot.docs
-              .map((doc) => TimetableEntry.fromJson(doc.data()))
-              .toList();
-          onTimetableUpdated?.call(entries);
-        },
-        onError: (Object error) =>
-            _setError('Failed to sync timetable: $error'),
-      );
-
-      // Listen to user settings document
       _settingsSubscription = firestore
           .collection('users')
           .doc(userId)
@@ -376,6 +262,11 @@ class SyncService extends ChangeNotifier {
           if (snapshot.exists && snapshot.data() != null) {
             debugPrint('SyncService: Received settings update from Firestore');
             onSettingsUpdated?.call(snapshot.data()!);
+            _lastSyncTime = DateTime.now();
+            _markRefreshSucceeded('Received settings update');
+            if (_status == SyncStatus.syncing) {
+              _setStatus(SyncStatus.synced);
+            }
           }
         },
         onError: (Object error) => _setError('Failed to sync settings: $error'),
@@ -388,8 +279,195 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  Future<bool> fetchWorkspaceSnapshot(String userId) async {
+    if (!_isOnline || !_syncEnabled) {
+      return true;
+    }
+
+    _currentUserId ??= userId;
+    final generation = ++_snapshotGeneration;
+    _setStatus(SyncStatus.syncing);
+    _diagnostics.info(
+      'SyncService',
+      'SYNC_SCOPE fetching workspace snapshot scope=snapshot:workspace user=$userId generation=$generation platform=${defaultTargetPlatform.name}',
+    );
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      return _fetchWorkspaceSnapshotFiredart(userId, generation);
+    }
+
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      _setError('Sync unavailable: Firebase not initialized');
+      return false;
+    }
+
+    try {
+      final notesDocs = await firestore
+          .collection('notes')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final notes = <Note>[];
+      for (final doc in notesDocs.docs) {
+        try {
+          notes.add(Note.fromJson(doc.data()));
+        } catch (e) {
+          _diagnostics.warning(
+            'SyncService',
+            'Skipped malformed note ${doc.id} during snapshot fetch: $e',
+          );
+        }
+      }
+      if (generation != _snapshotGeneration) return false;
+      onNotesUpdated?.call(notes);
+
+      final folderDocs = await firestore
+          .collection('folders')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final folders =
+          folderDocs.docs.map((doc) => Folder.fromJson(doc.data())).toList();
+      if (generation != _snapshotGeneration) return false;
+      onFoldersUpdated?.call(folders);
+
+      final eventDocs = await firestore
+          .collection('calendar_events')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final events = eventDocs.docs
+          .map((doc) => CalendarEvent.fromJson(doc.data()))
+          .toList();
+      if (generation != _snapshotGeneration) return false;
+      onCalendarUpdated?.call(events);
+
+      final homeworkDocs = await firestore
+          .collection('homework')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final homework = homeworkDocs.docs
+          .map((doc) => Homework.fromJson(doc.data()))
+          .toList();
+      if (generation != _snapshotGeneration) return false;
+      onHomeworkUpdated?.call(homework);
+
+      final timetableDocs = await firestore
+          .collection('timetable_entries')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      final timetable = timetableDocs.docs
+          .map((doc) => TimetableEntry.fromJson(doc.data()))
+          .toList();
+      if (generation != _snapshotGeneration) return false;
+      onTimetableUpdated?.call(timetable);
+
+      _diagnostics.info(
+        'SyncService',
+        'SYNC_SCOPE workspace snapshot loaded user=$userId generation=$generation notes=${notes.length} folders=${folders.length} events=${events.length} homework=${homework.length} timetable=${timetable.length}',
+      );
+      _lastSyncTime = DateTime.now();
+      _markRefreshSucceeded('Workspace snapshot loaded');
+      _setStatus(SyncStatus.synced);
+      return true;
+    } catch (e) {
+      _setError('Workspace snapshot fetch failed: $e');
+      return false;
+    }
+  }
+
+  void startNoteListening(String noteId) {
+    final userId = _currentUserId;
+    if (userId == null || !_isOnline || !_syncEnabled) {
+      return;
+    }
+    if (_activeNoteId == noteId &&
+        (_activeNoteSubscription != null ||
+            _fdActiveNoteSubscription != null)) {
+      return;
+    }
+
+    stopNoteListening();
+    _activeNoteId = noteId;
+    final generation = _listenerGeneration;
+    _diagnostics.info(
+      'SyncService',
+      'SYNC_SCOPE starting active note listener scope=note:$noteId user=$userId generation=$generation',
+    );
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      final firestore = _firedartFirestore;
+      if (firestore == null) {
+        _setError('Sync unavailable: Firedart Firestore not initialized');
+        return;
+      }
+      _fdActiveNoteSubscription =
+          firestore.collection('notes').document(noteId).stream.listen(
+        (doc) {
+          if (_activeNoteId != noteId || generation != _listenerGeneration) {
+            return;
+          }
+          if (doc == null) return;
+          final data = Map<String, dynamic>.from(doc.map);
+          data['id'] = doc.id;
+          final note = Note.fromJson(data);
+          if (note.userId == userId) {
+            onNoteUpdated?.call(note);
+            _lastSyncTime = DateTime.now();
+          }
+        },
+        onError: (Object error) => _setError('Failed to sync note: $error'),
+      );
+      return;
+    }
+
+    final firestore = _firebaseFirestore;
+    if (firestore == null) {
+      _setError('Sync unavailable: Firebase not initialized');
+      return;
+    }
+    _activeNoteSubscription =
+        firestore.collection('notes').doc(noteId).snapshots().listen(
+      (snapshot) {
+        if (_activeNoteId != noteId || generation != _listenerGeneration) {
+          return;
+        }
+        final data = snapshot.data();
+        if (!snapshot.exists || data == null) return;
+        final note = Note.fromJson(data);
+        if (note.userId == userId) {
+          onNoteUpdated?.call(note);
+          _lastSyncTime = DateTime.now();
+        }
+      },
+      onError: (Object error) => _setError('Failed to sync note: $error'),
+    );
+  }
+
+  void stopNoteListening([String? noteId]) {
+    if (noteId != null && _activeNoteId != noteId) {
+      return;
+    }
+    final hadListener =
+        _activeNoteSubscription != null || _fdActiveNoteSubscription != null;
+    if (hadListener) {
+      _diagnostics.info(
+        'SyncService',
+        'SYNC_SCOPE stopping active note listener scope=note:${_activeNoteId ?? 'none'}',
+      );
+    }
+    _activeNoteSubscription?.cancel();
+    _fdActiveNoteSubscription?.cancel();
+    _activeNoteSubscription = null;
+    _fdActiveNoteSubscription = null;
+    _activeNoteId = null;
+  }
+
   /// Start listening to Firedart (Linux) real-time updates
-  void _startListeningFiredart(String userId, int generation) {
+  void _startCoreListeningFiredart(String userId, int generation) {
     final firestore = _firedartFirestore;
     if (firestore == null) {
       debugPrint('Cannot start listening: Firedart Firestore not available');
@@ -399,141 +477,6 @@ class SyncService extends ChangeNotifier {
     }
 
     try {
-      // Listen to notes collection
-      _fdNotesSubscription = firestore.collection('notes').stream.listen(
-        (docs) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          final filteredDocs = docs.where(
-            (doc) =>
-                doc.map['userId'] == userId && doc.map['isDeleted'] == false,
-          );
-          debugPrint(
-            'SyncService [Linux]: Received ${filteredDocs.length} notes from Firestore',
-          );
-          final notes = <Note>[];
-          for (final doc in filteredDocs) {
-            try {
-              final data = doc.map;
-              data['id'] = doc.id;
-              notes.add(Note.fromJson(data));
-            } catch (e) {
-              debugPrint(
-                'SyncService [Linux]: Skipping malformed note ${doc.id}: $e',
-              );
-            }
-          }
-          onNotesUpdated?.call(notes);
-          _lastSyncTime = DateTime.now();
-          _markRefreshSucceeded('Received Linux notes update');
-          _markWorkspaceCollectionReady('notes');
-        },
-        onError: (Object error) {
-          _setError('Failed to sync notes: $error');
-        },
-      );
-
-      // Listen to folders collection
-      _fdFoldersSubscription = firestore.collection('folders').stream.listen(
-        (docs) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          final filteredDocs = docs.where(
-            (doc) =>
-                doc.map['userId'] == userId && doc.map['isDeleted'] == false,
-          );
-          debugPrint(
-            'SyncService [Linux]: Received ${filteredDocs.length} folders from Firestore',
-          );
-          final folders = filteredDocs.map((doc) {
-            final data = doc.map;
-            data['id'] = doc.id;
-            return Folder.fromJson(data);
-          }).toList();
-          onFoldersUpdated?.call(folders);
-          _markRefreshSucceeded('Received Linux folders update');
-          _markWorkspaceCollectionReady('folders');
-        },
-        onError: (Object error) {
-          _setError('Failed to sync folders: $error');
-        },
-      );
-
-      // Listen to calendar_events collection
-      _fdCalendarSubscription =
-          firestore.collection('calendar_events').stream.listen(
-        (docs) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          final filteredDocs = docs.where(
-            (doc) =>
-                doc.map['userId'] == userId && doc.map['isDeleted'] == false,
-          );
-          debugPrint(
-            'SyncService [Linux]: Received ${filteredDocs.length} calendar events from Firestore',
-          );
-          final events = filteredDocs.map((doc) {
-            final data = doc.map;
-            data['id'] = doc.id;
-            return CalendarEvent.fromJson(data);
-          }).toList();
-          onCalendarUpdated?.call(events);
-        },
-        onError: (Object error) => _setError('Failed to sync calendar: $error'),
-      );
-
-      // Listen to homework collection
-      _fdHomeworkSubscription = firestore.collection('homework').stream.listen(
-        (docs) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          final filteredDocs = docs.where(
-            (doc) =>
-                doc.map['userId'] == userId && doc.map['isDeleted'] == false,
-          );
-          debugPrint(
-            'SyncService [Linux]: Received ${filteredDocs.length} homework from Firestore',
-          );
-          final tasks = filteredDocs.map((doc) {
-            final data = doc.map;
-            data['id'] = doc.id;
-            return Homework.fromJson(data);
-          }).toList();
-          onHomeworkUpdated?.call(tasks);
-        },
-        onError: (Object error) => _setError('Failed to sync homework: $error'),
-      );
-
-      // Listen to timetable_entries collection
-      _fdTimetableSubscription =
-          firestore.collection('timetable_entries').stream.listen(
-        (docs) {
-          if (generation != _listenerGeneration) {
-            return;
-          }
-          final filteredDocs = docs.where(
-            (doc) =>
-                doc.map['userId'] == userId && doc.map['isDeleted'] == false,
-          );
-          debugPrint(
-            'SyncService [Linux]: Received ${filteredDocs.length} timetable entries from Firestore',
-          );
-          final entries = filteredDocs.map((doc) {
-            final data = doc.map;
-            data['id'] = doc.id;
-            return TimetableEntry.fromJson(data);
-          }).toList();
-          onTimetableUpdated?.call(entries);
-        },
-        onError: (Object error) =>
-            _setError('Failed to sync timetable: $error'),
-      );
-
-      // Listen to user settings document
       _fdSettingsSubscription = firestore
           .collection('users')
           .document(userId)
@@ -552,6 +495,11 @@ class SyncService extends ChangeNotifier {
             final data = doc.map;
             data['id'] = doc.id;
             onSettingsUpdated?.call(data);
+            _lastSyncTime = DateTime.now();
+            _markRefreshSucceeded('Received Linux settings update');
+            if (_status == SyncStatus.syncing) {
+              _setStatus(SyncStatus.synced);
+            }
           }
         },
         onError: (Object error) => _setError('Failed to sync settings: $error'),
@@ -562,18 +510,20 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> _primeLinuxSnapshots(String userId, int generation) async {
+  Future<bool> _fetchWorkspaceSnapshotFiredart(
+    String userId,
+    int generation,
+  ) async {
     final firestore = _firedartFirestore;
     if (firestore == null) {
-      _listenersActive = false;
       _setError('Sync unavailable: Firedart Firestore not initialized');
-      return;
+      return false;
     }
 
     try {
       _diagnostics.info(
         'SyncService',
-        'SYNC_LIFECYCLE fetching initial Linux cloud snapshot user=$userId generation=$generation',
+        'SYNC_SCOPE fetching Linux workspace snapshot user=$userId generation=$generation',
       );
 
       final notesDocs = await firestore
@@ -594,12 +544,12 @@ class SyncService extends ChangeNotifier {
           );
         }
       }
-      if (generation != _listenerGeneration) {
+      if (generation != _snapshotGeneration) {
         _diagnostics.info(
           'SyncService',
-          'SYNC_LIFECYCLE discarded stale Linux notes snapshot user=$userId generation=$generation currentGeneration=$_listenerGeneration',
+          'SYNC_SCOPE discarded stale Linux notes snapshot user=$userId generation=$generation currentGeneration=$_snapshotGeneration',
         );
-        return;
+        return false;
       }
       onNotesUpdated?.call(notes);
 
@@ -621,12 +571,12 @@ class SyncService extends ChangeNotifier {
           );
         }
       }
-      if (generation != _listenerGeneration) {
+      if (generation != _snapshotGeneration) {
         _diagnostics.info(
           'SyncService',
-          'SYNC_LIFECYCLE discarded stale Linux folder snapshot user=$userId generation=$generation currentGeneration=$_listenerGeneration',
+          'SYNC_SCOPE discarded stale Linux folder snapshot user=$userId generation=$generation currentGeneration=$_snapshotGeneration',
         );
-        return;
+        return false;
       }
       onFoldersUpdated?.call(folders);
 
@@ -640,8 +590,8 @@ class SyncService extends ChangeNotifier {
         data['id'] = doc.id;
         return CalendarEvent.fromJson(data);
       }).toList();
-      if (generation != _listenerGeneration) {
-        return;
+      if (generation != _snapshotGeneration) {
+        return false;
       }
       onCalendarUpdated?.call(events);
 
@@ -655,8 +605,8 @@ class SyncService extends ChangeNotifier {
         data['id'] = doc.id;
         return Homework.fromJson(data);
       }).toList();
-      if (generation != _listenerGeneration) {
-        return;
+      if (generation != _snapshotGeneration) {
+        return false;
       }
       onHomeworkUpdated?.call(homework);
 
@@ -670,40 +620,22 @@ class SyncService extends ChangeNotifier {
         data['id'] = doc.id;
         return TimetableEntry.fromJson(data);
       }).toList();
-      if (generation != _listenerGeneration) {
-        return;
+      if (generation != _snapshotGeneration) {
+        return false;
       }
       onTimetableUpdated?.call(timetable);
 
-      try {
-        final settingsDoc = await firestore
-            .collection('users')
-            .document(userId)
-            .collection('settings')
-            .document('app_settings')
-            .get();
-        final settings = Map<String, dynamic>.from(settingsDoc.map);
-        settings['id'] = settingsDoc.id;
-        if (generation != _listenerGeneration) {
-          return;
-        }
-        onSettingsUpdated?.call(settings);
-      } catch (_) {
-        // Settings are optional; ignore if absent.
-      }
-
       _diagnostics.info(
         'SyncService',
-        'SYNC_LIFECYCLE initial Linux snapshot loaded user=$userId generation=$generation notes=${notes.length} folders=${folders.length} events=${events.length} homework=${homework.length} timetable=${timetable.length}',
+        'SYNC_SCOPE Linux workspace snapshot loaded user=$userId generation=$generation notes=${notes.length} folders=${folders.length} events=${events.length} homework=${homework.length} timetable=${timetable.length}',
       );
-      _notesSnapshotReady = true;
-      _foldersSnapshotReady = true;
-      _initialWorkspaceSnapshotReady = true;
       _lastSyncTime = DateTime.now();
       _markRefreshSucceeded('Initial Linux cloud snapshot loaded');
       _setStatus(SyncStatus.synced);
+      return true;
     } catch (e) {
-      _setError('Initial Linux sync fetch failed: $e');
+      _setError('Linux workspace snapshot fetch failed: $e');
+      return false;
     }
   }
 
@@ -716,12 +648,14 @@ class SyncService extends ChangeNotifier {
         _homeworkSubscription != null ||
         _timetableSubscription != null ||
         _settingsSubscription != null ||
+        _activeNoteSubscription != null ||
         _fdNotesSubscription != null ||
         _fdFoldersSubscription != null ||
         _fdCalendarSubscription != null ||
         _fdHomeworkSubscription != null ||
         _fdTimetableSubscription != null ||
-        _fdSettingsSubscription != null;
+        _fdSettingsSubscription != null ||
+        _fdActiveNoteSubscription != null;
     _diagnostics.info(
       'SyncService',
       'SYNC_LIFECYCLE stopping listeners user=$_currentUserId generation=$_listenerGeneration reason=$reason hadListeners=$hadListeners',
@@ -733,6 +667,7 @@ class SyncService extends ChangeNotifier {
     _homeworkSubscription?.cancel();
     _timetableSubscription?.cancel();
     _settingsSubscription?.cancel();
+    _activeNoteSubscription?.cancel();
 
     _fdNotesSubscription?.cancel();
     _fdFoldersSubscription?.cancel();
@@ -740,6 +675,7 @@ class SyncService extends ChangeNotifier {
     _fdHomeworkSubscription?.cancel();
     _fdTimetableSubscription?.cancel();
     _fdSettingsSubscription?.cancel();
+    _fdActiveNoteSubscription?.cancel();
 
     _notesSubscription = null;
     _foldersSubscription = null;
@@ -747,14 +683,24 @@ class SyncService extends ChangeNotifier {
     _homeworkSubscription = null;
     _timetableSubscription = null;
     _settingsSubscription = null;
+    _activeNoteSubscription = null;
     _fdNotesSubscription = null;
     _fdFoldersSubscription = null;
     _fdCalendarSubscription = null;
     _fdHomeworkSubscription = null;
     _fdTimetableSubscription = null;
     _fdSettingsSubscription = null;
+    _fdActiveNoteSubscription = null;
+    _activeNoteId = null;
     _listenersActive = false;
-    _resetInitialWorkspaceSnapshotState();
+  }
+
+  void _cancelCoreListeners() {
+    _settingsSubscription?.cancel();
+    _fdSettingsSubscription?.cancel();
+    _settingsSubscription = null;
+    _fdSettingsSubscription = null;
+    _listenersActive = false;
   }
 
   /// Trigger a sync operation (debounced)
@@ -1341,24 +1287,13 @@ class SyncService extends ChangeNotifier {
       // Reset error status
       _errorMessage = null;
 
-      // If we assume the issue might be a broken stream, let's restart listeners if we can
       if (_currentUserId != null) {
         _diagnostics.info(
           'SyncService',
-          'Restarting sync listeners for user $_currentUserId',
+          'Refreshing workspace snapshot for user $_currentUserId',
         );
-        final previousGeneration = _listenerGeneration;
-        startListening(_currentUserId!);
-
-        // If listeners were already active and fully initialized, startListening
-        // intentionally reuses them. In that case we should treat refresh as
-        // successful instead of timing out while waiting for a new cloud event.
-        if (_listenerGeneration == previousGeneration &&
-            _listenersActive &&
-            _initialWorkspaceSnapshotReady) {
-          _markRefreshSucceeded('Manual refresh reused healthy listeners');
-          _setStatus(SyncStatus.synced);
-        }
+        triggerSync();
+        unawaited(fetchWorkspaceSnapshot(_currentUserId!));
       } else {
         _diagnostics.warning(
           'SyncService',
@@ -1390,36 +1325,6 @@ class SyncService extends ChangeNotifier {
       _awaitingRefreshResult = false;
     }
     notifyListeners();
-  }
-
-  void _resetInitialWorkspaceSnapshotState() {
-    _notesSnapshotReady = false;
-    _foldersSnapshotReady = false;
-    _initialWorkspaceSnapshotReady = false;
-  }
-
-  void _markWorkspaceCollectionReady(String collection) {
-    if (collection == 'notes') {
-      _notesSnapshotReady = true;
-    } else if (collection == 'folders') {
-      _foldersSnapshotReady = true;
-    }
-
-    if (!_initialWorkspaceSnapshotReady &&
-        _notesSnapshotReady &&
-        _foldersSnapshotReady) {
-      _initialWorkspaceSnapshotReady = true;
-      _diagnostics.info(
-        'SyncService',
-        'SYNC_LIFECYCLE initial workspace snapshot is ready user=$_currentUserId generation=$_listenerGeneration',
-      );
-      _setStatus(SyncStatus.synced);
-      return;
-    }
-
-    if (_status != SyncStatus.error) {
-      notifyListeners();
-    }
   }
 
   void _setError(String message) {
