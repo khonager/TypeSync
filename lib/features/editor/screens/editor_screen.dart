@@ -853,11 +853,8 @@ class _EditorScreenState extends State<EditorScreen>
           providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
         final providerContent = _normalizedStoredContent(providerNote.content);
-        final localContent = jsonEncode(
-          _sanitizeDeltaOperations(
-            _quillController.document.toDelta().toJson(),
-          ),
-        );
+        final localContent = _currentEditorContent();
+        final localHasUnsavedEdits = _hasUnsavedLocalEditorChanges();
 
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
@@ -865,7 +862,8 @@ class _EditorScreenState extends State<EditorScreen>
             providerContent != _lastSavedContent) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (_focusNode.hasFocus) {
+            if (!localHasUnsavedEdits) {
+              _pendingExternalNote = null;
               _updateContentFromProvider(providerNote);
               return;
             }
@@ -3053,6 +3051,19 @@ class _EditorScreenState extends State<EditorScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  String _currentEditorContent() {
+    return jsonEncode(
+      _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
+    );
+  }
+
+  bool _hasUnsavedLocalEditorChanges() {
+    if (_note == null) {
+      return false;
+    }
+    return _currentEditorContent() != _normalizedStoredContent(_note!.content);
   }
 
   void _showMoreOptions() {
