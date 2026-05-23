@@ -10,6 +10,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/timetable_entry.dart';
+import '../services/diagnostics_service.dart';
 import '../services/sync_service.dart';
 
 /// Provider for managing timetable entry state
@@ -17,6 +18,8 @@ import '../services/sync_service.dart';
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class TimetableProvider extends ChangeNotifier {
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+
   // Local storage box
   Box<TimetableEntry>? _entriesBox;
   String? _activeUserId;
@@ -89,11 +92,21 @@ class TimetableProvider extends ChangeNotifier {
       _entriesBox = await Hive.openBox<TimetableEntry>('timetable_$userId');
       _activeUserId = userId;
       _entries = _entriesBox!.values.toList();
+      final visibleCount = _entries.where((entry) => !entry.isDeleted).length;
+      final deletedCount = _entries.length - visibleCount;
+      _diagnostics.info(
+        'TimetableProvider',
+        'WORKSPACE_FLOW timetable initialized workspace=$userId rawCount=${_entries.length} visibleCount=$visibleCount deletedCount=$deletedCount',
+      );
 
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Failed to load timetable entries';
       debugPrint('Timetable initialization error: $e');
+      _diagnostics.error(
+        'TimetableProvider',
+        'HIVE_BOX failed to initialize timetable workspace=$userId error=$e',
+      );
     }
 
     _isLoading = false;
@@ -265,6 +278,35 @@ class TimetableProvider extends ChangeNotifier {
 
   /// Handle cloud update (called by SyncService)
   void handleCloudUpdate(List<TimetableEntry> cloudEntries) {
+    final cloudIds = cloudEntries.map((entry) => entry.id).toSet();
+    final localVisibleEntries = _entries
+        .where((entry) => !entry.isDeleted && entry.userId == _activeUserId)
+        .toList();
+    final localVisibleCount = localVisibleEntries.length;
+    final localDeletedCount = _entries
+        .where((entry) => entry.isDeleted && entry.userId == _activeUserId)
+        .length;
+    final staleVisibleDirtyIds = localVisibleEntries
+        .where((entry) => entry.isDirty && !cloudIds.contains(entry.id))
+        .map((entry) => entry.id)
+        .toList();
+    final staleVisibleCleanIds = localVisibleEntries
+        .where((entry) => !entry.isDirty && !cloudIds.contains(entry.id))
+        .map((entry) => entry.id)
+        .toList();
+
+    _diagnostics.info(
+      'TimetableProvider',
+      'SYNC_LIFECYCLE applying cloud timetable workspace=$_activeUserId cloudCount=${cloudEntries.length} localVisibleBefore=$localVisibleCount localDeleted=$localDeletedCount staleVisibleClean=${staleVisibleCleanIds.length} staleVisibleDirty=${staleVisibleDirtyIds.length}',
+    );
+
+    if (staleVisibleCleanIds.isNotEmpty || staleVisibleDirtyIds.isNotEmpty) {
+      _diagnostics.warning(
+        'TimetableProvider',
+        'SYNC_LIFECYCLE timetable mismatch workspace=$_activeUserId missingFromCloudClean=${_sampleIds(staleVisibleCleanIds)} missingFromCloudDirty=${_sampleIds(staleVisibleDirtyIds)}',
+      );
+    }
+
     for (final cloudEntry in cloudEntries) {
       final localIndex = _entries.indexWhere((e) => e.id == cloudEntry.id);
 
@@ -282,7 +324,21 @@ class TimetableProvider extends ChangeNotifier {
       }
     }
 
+    final visibleAfter = entries.length;
+    _diagnostics.info(
+      'TimetableProvider',
+      'SYNC_LIFECYCLE cloud timetable applied workspace=$_activeUserId visibleAfter=$visibleAfter unresolvedMissingClean=${staleVisibleCleanIds.length} unresolvedMissingDirty=${staleVisibleDirtyIds.length}',
+    );
     notifyListeners();
+  }
+
+  String _sampleIds(List<String> ids) {
+    if (ids.isEmpty) {
+      return '[]';
+    }
+    final preview = ids.take(5).join(', ');
+    final suffix = ids.length > 5 ? ', ...' : '';
+    return '[$preview$suffix]';
   }
 }
 

@@ -815,8 +815,9 @@ class NotesProvider extends ChangeNotifier {
           );
           _notes[localIndex] = conflictedNote;
           _notesBox?.put(cloudNote.id, conflictedNote);
-          debugPrint(
-            'NotesProvider: Conflict detected for note ${localNote.id}',
+          _diagnostics.warning(
+            'NotesProvider',
+            'SYNC_CONFLICT note conflict detected workspace=$_activeUserId noteId=${localNote.id} localUpdatedAt=${localNote.updatedAt.toIso8601String()} cloudUpdatedAt=${cloudNote.updatedAt.toIso8601String()}',
           );
         } else if (!localNote.isDirty ||
             cloudNote.updatedAt.isAfter(localNote.updatedAt)) {

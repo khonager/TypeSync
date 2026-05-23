@@ -147,9 +147,11 @@ class FoldersProvider extends ChangeNotifier {
       _foldersBox = await Hive.openBox<Folder>(boxName);
       _activeUserId = userId;
       _folders = _foldersBox!.values.toList();
+      final visibleCount = _folders.where((folder) => !folder.isDeleted).length;
+      final deletedCount = _folders.length - visibleCount;
       _diagnostics.info(
         'FoldersProvider',
-        'WORKSPACE_FLOW folders initialized workspace=$userId boxType=${_foldersBox.runtimeType} folderCount=${_folders.length}',
+        'WORKSPACE_FLOW folders initialized workspace=$userId boxType=${_foldersBox.runtimeType} rawCount=${_folders.length} visibleCount=$visibleCount deletedCount=$deletedCount',
       );
 
       _errorMessage = null;
@@ -327,14 +329,29 @@ class FoldersProvider extends ChangeNotifier {
   /// Handle folders updated from cloud
   void handleCloudUpdate(List<Folder> cloudFolders) {
     final cloudIds = cloudFolders.map((folder) => folder.id).toSet();
-    final localVisibleCount = _folders
+    final localVisibleFolders = _folders
         .where((folder) => !folder.isDeleted && folder.userId == _activeUserId)
+        .toList();
+    final localVisibleCount = localVisibleFolders.length;
+    final localDeletedCount = _folders
+        .where((folder) => folder.isDeleted && folder.userId == _activeUserId)
         .length;
+    final staleVisibleDirtyIds = localVisibleFolders
+        .where((folder) => folder.isDirty && !cloudIds.contains(folder.id))
+        .map((folder) => folder.id)
+        .toList();
 
     _diagnostics.info(
       'FoldersProvider',
-      'SYNC_LIFECYCLE applying cloud folders workspace=$_activeUserId cloudCount=${cloudFolders.length} localVisibleBefore=$localVisibleCount',
+      'SYNC_LIFECYCLE applying cloud folders workspace=$_activeUserId cloudCount=${cloudFolders.length} localVisibleBefore=$localVisibleCount localDeleted=$localDeletedCount staleVisibleDirty=${staleVisibleDirtyIds.length}',
     );
+
+    if (staleVisibleDirtyIds.isNotEmpty) {
+      _diagnostics.warning(
+        'FoldersProvider',
+        'SYNC_LIFECYCLE folders missing from cloud but still dirty workspace=$_activeUserId ids=${_sampleIds(staleVisibleDirtyIds)}',
+      );
+    }
 
     for (final cloudFolder in cloudFolders) {
       final localIndex = _folders.indexWhere((f) => f.id == cloudFolder.id);
@@ -522,6 +539,15 @@ class FoldersProvider extends ChangeNotifier {
     );
     final box = await Hive.openBox<Folder>(boxName);
     return _OpenedCloneBox(box: box, wasOpen: false);
+  }
+
+  String _sampleIds(List<String> ids) {
+    if (ids.isEmpty) {
+      return '[]';
+    }
+    final preview = ids.take(5).join(', ');
+    final suffix = ids.length > 5 ? ', ...' : '';
+    return '[$preview$suffix]';
   }
 }
 
