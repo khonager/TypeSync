@@ -696,14 +696,43 @@ class _EditorScreenState extends State<EditorScreen>
     final content = jsonEncode(
       _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
     );
-    _lastSavedContent = content;
 
-    await notesProvider.updateNoteContent(
+    final result = await notesProvider.saveNoteContentFromEditor(
       noteId: _note!.id,
+      baseUpdatedAt: _note!.updatedAt,
+      baseContent: _normalizedStoredContent(_note!.content),
       content: content,
       characterCount: _characterCount,
       lineCount: _lineCount,
     );
+
+    if (!mounted) return;
+
+    switch (result.status) {
+      case NoteWriteStatus.saved:
+        setState(() {
+          _note = result.note;
+          _lastSavedContent = content;
+        });
+        break;
+      case NoteWriteStatus.skippedRemoteNewer:
+        if (result.note != null) {
+          _showEditorSyncMessage(result.message ?? 'Loaded a newer version.');
+          _updateContentFromProvider(result.note!);
+        }
+        return;
+      case NoteWriteStatus.conflict:
+        setState(() {
+          _note = result.note;
+        });
+        _showEditorSyncMessage(
+          result.message ?? 'Conflicting changes were detected.',
+        );
+        return;
+      case NoteWriteStatus.missing:
+        _showEditorSyncMessage('This note could not be found anymore.');
+        return;
+    }
 
     final minimumVersion = _minimumVersionRequiredByCurrentDocument();
     if (minimumVersion != null) {
@@ -715,7 +744,46 @@ class _EditorScreenState extends State<EditorScreen>
     if (_note == null) return;
 
     final notesProvider = context.read<NotesProvider>();
-    await notesProvider.updateNote(_note!.copyWith(title: title));
+    final result = await notesProvider.saveNoteTitleFromEditor(
+      noteId: _note!.id,
+      baseUpdatedAt: _note!.updatedAt,
+      baseTitle: _note!.title,
+      title: title,
+    );
+    if (!mounted) return;
+
+    switch (result.status) {
+      case NoteWriteStatus.saved:
+        setState(() {
+          _note = result.note;
+        });
+        break;
+      case NoteWriteStatus.skippedRemoteNewer:
+        if (result.note != null) {
+          _showEditorSyncMessage(result.message ?? 'Loaded a newer title.');
+          setState(() {
+            _note = result.note;
+            _titleController.text = result.note!.title;
+            _titleController.selection = TextSelection.collapsed(
+              offset: _titleController.text.length,
+            );
+          });
+        }
+        break;
+      case NoteWriteStatus.conflict:
+        if (result.note != null) {
+          setState(() {
+            _note = result.note;
+          });
+        }
+        _showEditorSyncMessage(
+          result.message ?? 'This note has unresolved conflicting changes.',
+        );
+        break;
+      case NoteWriteStatus.missing:
+        _showEditorSyncMessage('This note could not be found anymore.');
+        break;
+    }
   }
 
   @override
@@ -2977,6 +3045,13 @@ class _EditorScreenState extends State<EditorScreen>
           ),
         ],
       ),
+    );
+  }
+
+  void _showEditorSyncMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
