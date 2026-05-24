@@ -17,6 +17,17 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    configurations.configureEach {
+        resolutionStrategy {
+            // home_widget 0.8.1 uses dynamic AndroidX versions. Keep CI from
+            // resolving newer releases that require a newer compileSdk/AGP
+            // than Flutter 3.27.1 currently supports.
+            force 'androidx.glance:glance-appwidget:1.1.1'
+            force 'androidx.work:work-runtime-ktx:2.9.1'
+            force 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+        }
+    }
 }
 
 rootProject.buildDir = '../build'
@@ -30,6 +41,5 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-
 
 
