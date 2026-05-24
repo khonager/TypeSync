@@ -13,6 +13,7 @@ enum EventType {
   classEvent,
   reminder,
   other,
+  todo,
 }
 
 /// Calendar event model for test reminders and scheduling
@@ -29,6 +30,8 @@ class CalendarEvent extends Equatable {
   final bool hasReminder;
   final int reminderMinutesBefore;
   final String? noteId;
+  final bool isCompleted;
+  final int rolloverCount;
   final String userId;
   final DateTime createdAt;
   final bool isDirty;
@@ -41,7 +44,7 @@ class CalendarEvent extends Equatable {
     required this.userId,
     required this.createdAt,
     this.description,
-    this.type = EventType.reminder,
+    this.type = EventType.todo,
     this.endTime,
     this.subject,
     this.location,
@@ -49,9 +52,13 @@ class CalendarEvent extends Equatable {
     this.hasReminder = true,
     this.reminderMinutesBefore = 30,
     this.noteId,
+    this.isCompleted = false,
+    this.rolloverCount = 0,
     this.isDirty = true,
     this.isDeleted = false,
   });
+
+  bool get isTodo => type == EventType.todo;
 
   bool get isToday {
     final now = DateTime.now();
@@ -73,6 +80,8 @@ class CalendarEvent extends Equatable {
     bool? hasReminder,
     int? reminderMinutesBefore,
     String? noteId,
+    bool? isCompleted,
+    int? rolloverCount,
     String? userId,
     DateTime? createdAt,
     bool? isDirty,
@@ -92,6 +101,8 @@ class CalendarEvent extends Equatable {
       reminderMinutesBefore:
           reminderMinutesBefore ?? this.reminderMinutesBefore,
       noteId: noteId ?? this.noteId,
+      isCompleted: isCompleted ?? this.isCompleted,
+      rolloverCount: rolloverCount ?? this.rolloverCount,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       isDirty: isDirty ?? this.isDirty,
@@ -112,6 +123,8 @@ class CalendarEvent extends Equatable {
         'hasReminder': hasReminder,
         'reminderMinutesBefore': reminderMinutesBefore,
         'noteId': noteId,
+        'isCompleted': isCompleted,
+        'rolloverCount': rolloverCount,
         'userId': userId,
         'createdAt': createdAt.toIso8601String(),
         'isDeleted': isDeleted,
@@ -132,6 +145,8 @@ class CalendarEvent extends Equatable {
         hasReminder: json['hasReminder'] as bool? ?? true,
         reminderMinutesBefore: json['reminderMinutesBefore'] as int? ?? 30,
         noteId: json['noteId'] as String?,
+        isCompleted: json['isCompleted'] as bool? ?? false,
+        rolloverCount: json['rolloverCount'] as int? ?? 0,
         userId: json['userId'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
         isDirty: false,
@@ -152,6 +167,8 @@ class CalendarEvent extends Equatable {
         hasReminder,
         reminderMinutesBefore,
         noteId,
+        isCompleted,
+        rolloverCount,
         userId,
         createdAt,
         isDirty,

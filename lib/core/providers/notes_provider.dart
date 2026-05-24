@@ -21,6 +21,25 @@ import '../services/sync_service.dart';
 import '../utils/version_compatibility.dart';
 import '../utils/search_query.dart';
 
+enum NoteWriteStatus {
+  saved,
+  skippedRemoteNewer,
+  conflict,
+  missing,
+}
+
+class NoteWriteResult {
+  final NoteWriteStatus status;
+  final Note? note;
+  final String? message;
+
+  const NoteWriteResult({
+    required this.status,
+    this.note,
+    this.message,
+  });
+}
+
 /// Provider for managing note state
 ///
 /// Handles local storage with Hive and coordinates with
@@ -76,7 +95,7 @@ class NotesProvider extends ChangeNotifier {
 
   /// Get notes with unsynced changes that are eligible for cloud sync.
   List<Note> get dirtyNotes =>
-      _notes.where((n) => n.isDirty && !n.localOnly).toList();
+      _notes.where((n) => n.isDirty && !n.localOnly && !n.hasConflict).toList();
 
   /// Search notes by title, note content, attachment metadata, and file paths.
   ///
@@ -603,7 +622,9 @@ class NotesProvider extends ChangeNotifier {
       }
 
       // Trigger sync
-      _syncService?.syncNote(updatedNote);
+      if (!updatedNote.hasConflict) {
+        _syncService?.syncNote(updatedNote);
+      }
 
       notifyListeners();
       return true;
@@ -613,6 +634,144 @@ class NotesProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<NoteWriteResult> saveNoteContentFromEditor({
+    required String noteId,
+    required DateTime baseUpdatedAt,
+    required String baseContent,
+    required String content,
+    required int characterCount,
+    required int lineCount,
+  }) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) {
+      return const NoteWriteResult(status: NoteWriteStatus.missing);
+    }
+
+    final currentNote = _notes[index];
+    if (currentNote.hasConflict) {
+      return NoteWriteResult(
+        status: NoteWriteStatus.conflict,
+        note: currentNote,
+        message: 'This note already has unresolved conflicting changes.',
+      );
+    }
+
+    final editorChanged = !_sameStoredContent(content, baseContent);
+    final currentChangedSinceBase =
+        currentNote.updatedAt.isAfter(baseUpdatedAt);
+    final currentContentChanged =
+        !_sameStoredContent(currentNote.content, baseContent);
+
+    if (currentChangedSinceBase && currentContentChanged) {
+      if (editorChanged && !_sameStoredContent(currentNote.content, content)) {
+        final conflictedNote = currentNote.copyWith(
+          content: content,
+          characterCount: characterCount,
+          lineCount: lineCount,
+          size: content.length,
+          updatedAt: DateTime.now(),
+          isDirty: true,
+          hasConflict: true,
+          conflictContent: currentNote.content,
+        );
+
+        await _persistEditorResolvedNote(index, conflictedNote);
+        _diagnostics.warning(
+          'NotesProvider',
+          'SYNC_CONFLICT editor content conflict workspace=$_activeUserId noteId=$noteId localBaseUpdatedAt=${baseUpdatedAt.toIso8601String()} providerUpdatedAt=${currentNote.updatedAt.toIso8601String()}',
+        );
+
+        return NoteWriteResult(
+          status: NoteWriteStatus.conflict,
+          note: conflictedNote,
+          message: 'Conflicting edits were detected for this note.',
+        );
+      }
+
+      _diagnostics.warning(
+        'NotesProvider',
+        'SYNC_LIFECYCLE skipped stale editor content save workspace=$_activeUserId noteId=$noteId localBaseUpdatedAt=${baseUpdatedAt.toIso8601String()} providerUpdatedAt=${currentNote.updatedAt.toIso8601String()}',
+      );
+      return NoteWriteResult(
+        status: NoteWriteStatus.skippedRemoteNewer,
+        note: currentNote,
+        message: 'A newer version was found and kept.',
+      );
+    }
+
+    final updatedNote = currentNote.copyWith(
+      content: content,
+      characterCount: characterCount,
+      lineCount: lineCount,
+      size: content.length,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+      hasConflict: false,
+      clearConflictContent: true,
+    );
+
+    await _persistEditorResolvedNote(index, updatedNote, triggerSync: true);
+    return NoteWriteResult(
+      status: NoteWriteStatus.saved,
+      note: updatedNote,
+    );
+  }
+
+  Future<NoteWriteResult> saveNoteTitleFromEditor({
+    required String noteId,
+    required DateTime baseUpdatedAt,
+    required String baseTitle,
+    required String title,
+  }) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) {
+      return const NoteWriteResult(status: NoteWriteStatus.missing);
+    }
+
+    final currentNote = _notes[index];
+    if (currentNote.hasConflict) {
+      return NoteWriteResult(
+        status: NoteWriteStatus.conflict,
+        note: currentNote,
+        message: 'This note already has unresolved conflicting changes.',
+      );
+    }
+
+    final editorChanged = title != baseTitle;
+    final currentChangedSinceBase =
+        currentNote.updatedAt.isAfter(baseUpdatedAt);
+    final currentTitleChanged = currentNote.title != baseTitle;
+
+    if (currentChangedSinceBase && currentTitleChanged) {
+      if (editorChanged && currentNote.title != title) {
+        _diagnostics.warning(
+          'NotesProvider',
+          'SYNC_LIFECYCLE skipped conflicting editor title save workspace=$_activeUserId noteId=$noteId localBaseUpdatedAt=${baseUpdatedAt.toIso8601String()} providerUpdatedAt=${currentNote.updatedAt.toIso8601String()}',
+        );
+      }
+
+      return NoteWriteResult(
+        status: NoteWriteStatus.skippedRemoteNewer,
+        note: currentNote,
+        message: 'A newer title was found and kept.',
+      );
+    }
+
+    final updatedNote = currentNote.copyWith(
+      title: title,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+      hasConflict: false,
+      clearConflictContent: true,
+    );
+
+    await _persistEditorResolvedNote(index, updatedNote, triggerSync: true);
+    return NoteWriteResult(
+      status: NoteWriteStatus.saved,
+      note: updatedNote,
+    );
   }
 
   /// Update note content (optimized for live editing)
@@ -815,8 +974,9 @@ class NotesProvider extends ChangeNotifier {
           );
           _notes[localIndex] = conflictedNote;
           _notesBox?.put(cloudNote.id, conflictedNote);
-          debugPrint(
-            'NotesProvider: Conflict detected for note ${localNote.id}',
+          _diagnostics.warning(
+            'NotesProvider',
+            'SYNC_CONFLICT note conflict detected workspace=$_activeUserId noteId=${localNote.id} localUpdatedAt=${localNote.updatedAt.toIso8601String()} cloudUpdatedAt=${cloudNote.updatedAt.toIso8601String()}',
           );
         } else if (!localNote.isDirty ||
             cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
@@ -874,6 +1034,65 @@ class NotesProvider extends ChangeNotifier {
       'SYNC_LIFECYCLE cloud notes applied workspace=$_activeUserId visibleAfter=${notes.length}',
     );
     notifyListeners();
+  }
+
+  /// Handle a single live note update without treating missing notes as stale.
+  void handleSingleCloudNoteUpdate(Note cloudNote) {
+    if (cloudNote.userId != _activeUserId || cloudNote.localOnly) {
+      return;
+    }
+
+    final localIndex = _notes.indexWhere((n) => n.id == cloudNote.id);
+    if (localIndex < 0) {
+      if (!cloudNote.isDeleted) {
+        _notes.add(cloudNote);
+        _notesBox?.put(cloudNote.id, cloudNote);
+        notifyListeners();
+      }
+      return;
+    }
+
+    final localNote = _notes[localIndex];
+    if (localNote.localOnly) {
+      return;
+    }
+
+    if (cloudNote.isDeleted) {
+      if (!localNote.isDirty) {
+        _notes.removeAt(localIndex);
+        _notesBox?.delete(cloudNote.id);
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (localNote.isDirty &&
+        cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
+        localNote.content != cloudNote.content) {
+      final conflictedNote = localNote.copyWith(
+        hasConflict: true,
+        conflictContent: cloudNote.content,
+      );
+      _notes[localIndex] = conflictedNote;
+      _notesBox?.put(cloudNote.id, conflictedNote);
+      _diagnostics.warning(
+        'NotesProvider',
+        'SYNC_CONFLICT live note conflict detected workspace=$_activeUserId noteId=${localNote.id} localUpdatedAt=${localNote.updatedAt.toIso8601String()} cloudUpdatedAt=${cloudNote.updatedAt.toIso8601String()}',
+      );
+      notifyListeners();
+      return;
+    }
+
+    if (!localNote.isDirty ||
+        cloudNote.updatedAt.isAfter(localNote.updatedAt)) {
+      final updatedNote = cloudNote.copyWith(
+        hasConflict: false,
+        clearConflictContent: true,
+      );
+      _notes[localIndex] = updatedNote;
+      _notesBox?.put(cloudNote.id, updatedNote);
+      notifyListeners();
+    }
   }
 
   /// Resolves a merge conflict for a given note
@@ -937,6 +1156,32 @@ class NotesProvider extends ChangeNotifier {
     _syncService?.triggerSync();
 
     notifyListeners();
+  }
+
+  Future<void> _persistEditorResolvedNote(
+    int index,
+    Note note, {
+    bool triggerSync = false,
+  }) async {
+    _notes[index] = note;
+    await _notesBox?.put(note.id, note);
+    if (triggerSync && !note.localOnly && !note.hasConflict) {
+      _syncService?.triggerSync();
+    }
+    notifyListeners();
+  }
+
+  bool _sameStoredContent(String a, String b) {
+    return _normalizeStoredContent(a) == _normalizeStoredContent(b);
+  }
+
+  String _normalizeStoredContent(String content) {
+    try {
+      final decoded = jsonDecode(content);
+      return jsonEncode(decoded);
+    } catch (_) {
+      return content;
+    }
   }
 
   /// Clear dirty flags for a list of notes

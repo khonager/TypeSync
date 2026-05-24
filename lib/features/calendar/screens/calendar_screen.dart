@@ -10,6 +10,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/providers/calendar_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/models/calendar_event.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 
@@ -90,6 +91,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final userId = authService.storageUserId;
     if (userId != null) {
       await context.read<CalendarProvider>().initialize(userId);
+    }
+    if (!mounted) return;
+    final cloudUserId = authService.userId;
+    if (cloudUserId != null && authService.effectiveSyncEnabled) {
+      await context.read<SyncService>().fetchWorkspaceSnapshot(cloudUserId);
     }
   }
 
@@ -570,43 +576,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
           )
         else
           ...events.map(
-            (event) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: Container(
-                  width: 4,
-                  height: double.infinity,
-                  color: event.color != null
-                      ? Color(
-                          int.parse(event.color!.replaceFirst('#', '0xFF')),
+            (event) {
+              final accentColor = _eventAccentColor(event);
+              final titleStyle = event.isTodo && event.isCompleted
+                  ? TextStyle(
+                      decoration: TextDecoration.lineThrough,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.65),
+                    )
+                  : null;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  onTap: () => _openEventEditor(existingEvent: event),
+                  leading: event.isTodo
+                      ? Checkbox(
+                          value: event.isCompleted,
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            await calendarProvider.toggleTodoCompletion(
+                              eventId: event.id,
+                              isCompleted: value,
+                            );
+                          },
                         )
-                      : Theme.of(context).colorScheme.primary,
+                      : Container(
+                          width: 4,
+                          height: double.infinity,
+                          color: accentColor,
+                        ),
+                  title: Text(event.title, style: titleStyle),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (event.subject != null &&
+                          event.subject!.trim().isNotEmpty)
+                        Text(
+                          'Subject: ${event.subject}',
+                          style: titleStyle,
+                        ),
+                      Text(
+                        _eventDateTimeLabel(event),
+                        style: titleStyle,
+                      ),
+                      if (event.description != null &&
+                          event.description!.trim().isNotEmpty)
+                        Text(event.description!, style: titleStyle),
+                      if (event.isTodo &&
+                          !event.isCompleted &&
+                          event.rolloverCount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            event.rolloverCount == 1
+                                ? 'Carried over from yesterday'
+                                : 'Carried over for ${event.rolloverCount} days',
+                            style: TextStyle(
+                              color: accentColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: Icon(
+                    _getEventTypeIcon(event.type),
+                    color: accentColor,
+                  ),
                 ),
-                title: Text(event.title),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (event.subject != null &&
-                        event.subject!.trim().isNotEmpty)
-                      Text('Subject: ${event.subject}'),
-                    Text(
-                      _eventDateTimeLabel(event),
-                    ),
-                    if (event.description != null &&
-                        event.description!.trim().isNotEmpty)
-                      Text(event.description!),
-                  ],
-                ),
-                trailing: Icon(
-                  _getEventTypeIcon(event.type),
-                  color: event.color != null
-                      ? Color(
-                          int.parse(event.color!.replaceFirst('#', '0xFF')),
-                        )
-                      : null,
-                ),
-              ),
-            ),
+              );
+            },
           ),
       ],
     );
@@ -735,6 +777,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   IconData _getEventTypeIcon(EventType type) {
     switch (type) {
+      case EventType.todo:
+        return Icons.check_circle_outline;
       case EventType.test:
         return Icons.quiz;
       case EventType.exam:
@@ -751,12 +795,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _addEvent() {
-    final titleController = TextEditingController();
-    final subjectController = TextEditingController();
-    final descriptionController = TextEditingController();
-    EventType selectedType = EventType.reminder;
-    DateTime selectedDate = _defaultDateForNewEvent();
-    TimeOfDay? selectedTime;
+    _openEventEditor(
+      initialDate: _defaultDateForNewEvent(),
+    );
+  }
+
+  void _openEventEditor({
+    CalendarEvent? existingEvent,
+    DateTime? initialDate,
+  }) {
+    final isEditing = existingEvent != null;
+    final titleController = TextEditingController(text: existingEvent?.title);
+    final subjectController = TextEditingController(
+      text: existingEvent?.subject,
+    );
+    final descriptionController = TextEditingController(
+      text: existingEvent?.description,
+    );
+    EventType selectedType = existingEvent?.type ?? EventType.todo;
+    DateTime selectedDate = _dateOnly(
+      existingEvent?.startTime ?? initialDate ?? _defaultDateForNewEvent(),
+    );
+    TimeOfDay? selectedTime =
+        _isAllDay(existingEvent?.startTime ?? selectedDate)
+            ? null
+            : TimeOfDay.fromDateTime(existingEvent!.startTime);
 
     showModalBottomSheet(
       context: context,
@@ -774,7 +837,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Add Event',
+                    isEditing ? 'Edit Event' : 'Add Event',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 16),
@@ -798,6 +861,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         value: selectedType,
                         isDense: true,
                         items: const [
+                          DropdownMenuItem(
+                            value: EventType.todo,
+                            child: Text('ToDo'),
+                          ),
                           DropdownMenuItem(
                             value: EventType.test,
                             child: Text('Test'),
@@ -962,25 +1029,64 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         selectedTime?.minute ?? 0,
                       );
 
-                      await context.read<CalendarProvider>().createEvent(
-                            userId: userId,
-                            title: titleController.text,
-                            description: descriptionController.text.isEmpty
-                                ? null
-                                : descriptionController.text,
-                            type: selectedType,
-                            startTime: startTime,
-                            subject: subjectController.text.isEmpty
-                                ? null
-                                : subjectController.text,
-                          );
+                      if (isEditing) {
+                        await context.read<CalendarProvider>().updateEvent(
+                              existingEvent.copyWith(
+                                title: titleController.text,
+                                description: descriptionController.text.isEmpty
+                                    ? null
+                                    : descriptionController.text,
+                                type: selectedType,
+                                startTime: startTime,
+                                subject: subjectController.text.isEmpty
+                                    ? null
+                                    : subjectController.text,
+                                isCompleted: selectedType == EventType.todo
+                                    ? existingEvent.isCompleted
+                                    : false,
+                                rolloverCount: selectedType == EventType.todo
+                                    ? existingEvent.rolloverCount
+                                    : 0,
+                              ),
+                            );
+                      } else {
+                        await context.read<CalendarProvider>().createEvent(
+                              userId: userId,
+                              title: titleController.text,
+                              description: descriptionController.text.isEmpty
+                                  ? null
+                                  : descriptionController.text,
+                              type: selectedType,
+                              startTime: startTime,
+                              subject: subjectController.text.isEmpty
+                                  ? null
+                                  : subjectController.text,
+                            );
+                      }
 
                       if (context.mounted) {
                         Navigator.pop(context);
                       }
                     },
-                    child: const Text('Add Event'),
+                    child: Text(isEditing ? 'Save Changes' : 'Add Event'),
                   ),
+                  if (isEditing) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () async {
+                        final deleted = await context
+                            .read<CalendarProvider>()
+                            .deleteEvent(existingEvent.id);
+                        if (deleted && context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      child: const Text(
+                        'Delete Event',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -988,5 +1094,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
     );
+  }
+
+  Color _eventAccentColor(CalendarEvent event) {
+    if (event.color != null) {
+      return Color(int.parse(event.color!.replaceFirst('#', '0xFF')));
+    }
+
+    if (!event.isTodo) {
+      return Theme.of(context).colorScheme.primary;
+    }
+
+    if (event.isCompleted) {
+      return Theme.of(context).colorScheme.outline;
+    }
+
+    final base = Theme.of(context).colorScheme.primary;
+    final warning = Theme.of(context).colorScheme.error;
+    final intensity = (event.rolloverCount / 4).clamp(0.0, 1.0);
+    return Color.lerp(base, warning, intensity) ?? base;
   }
 }

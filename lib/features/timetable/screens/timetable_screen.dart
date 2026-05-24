@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/timetable_entry.dart';
 import '../../../core/providers/timetable_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
 
 /// Timetable screen showing weekly class schedule
@@ -21,15 +22,6 @@ class TimetableScreen extends StatefulWidget {
 
 class _TimetableScreenState extends State<TimetableScreen> {
   Weekday _selectedDay = Weekday.values[DateTime.now().weekday - 1];
-
-  final TextEditingController _subjectController = TextEditingController();
-  final TextEditingController _teacherController = TextEditingController();
-  final TextEditingController _roomController = TextEditingController();
-  int _startHour = 9;
-  int _startMinute = 0;
-  int _endHour = 10;
-  int _endMinute = 0;
-  Weekday _selectedWeekday = Weekday.monday;
 
   @override
   void initState() {
@@ -47,14 +39,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
     if (userId != null) {
       await context.read<TimetableProvider>().initialize(userId);
     }
-  }
-
-  @override
-  void dispose() {
-    _subjectController.dispose();
-    _teacherController.dispose();
-    _roomController.dispose();
-    super.dispose();
+    if (!mounted) return;
+    if (authService.userId != null && authService.effectiveSyncEnabled) {
+      await context.read<SyncService>().fetchWorkspaceSnapshot(
+            authService.userId!,
+          );
+    }
   }
 
   @override
@@ -170,6 +160,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           margin: const EdgeInsets.only(bottom: 12),
           color: color.withValues(alpha: 0.2),
           child: ListTile(
+            onTap: () => _openEntryEditor(existingEntry: entry),
             contentPadding: const EdgeInsets.all(16),
             leading: Container(
               width: 4,
@@ -238,254 +229,313 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   void _addEntry() {
-    _subjectController.clear();
-    _teacherController.clear();
-    _roomController.clear();
-    _startHour = 9;
-    _startMinute = 0;
-    _endHour = 10;
-    _endMinute = 0;
-    _selectedWeekday = _selectedDay;
+    _openEntryEditor();
+  }
+
+  void _openEntryEditor({TimetableEntry? existingEntry}) {
+    final isEditing = existingEntry != null;
+    final subjectController = TextEditingController(
+      text: existingEntry?.subject,
+    );
+    final teacherController = TextEditingController(
+      text: existingEntry?.teacher,
+    );
+    final roomController = TextEditingController(text: existingEntry?.room);
+    var startHour = existingEntry?.startHour ?? 9;
+    var startMinute = existingEntry?.startMinute ?? 0;
+    var endHour = existingEntry?.endHour ?? 10;
+    var endMinute = existingEntry?.endMinute ?? 0;
+    var selectedWeekday = existingEntry?.weekday ?? _selectedDay;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Add Class',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _subjectController,
-                  decoration: const InputDecoration(
-                    labelText: 'Subject',
-                    hintText: 'e.g., Mathematics',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isEditing ? 'Edit Class' : 'Add Class',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _teacherController,
-                  decoration: const InputDecoration(
-                    labelText: 'Teacher',
-                    hintText: 'e.g., Mr. Smith',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: subjectController,
+                    decoration: const InputDecoration(
+                      labelText: 'Subject',
+                      hintText: 'e.g., Mathematics',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _roomController,
-                  decoration: const InputDecoration(
-                    labelText: 'Room',
-                    hintText: 'e.g., Room 101',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: teacherController,
+                    decoration: const InputDecoration(
+                      labelText: 'Teacher',
+                      hintText: 'e.g., Mr. Smith',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Day',
-                    border: OutlineInputBorder(),
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: roomController,
+                    decoration: const InputDecoration(
+                      labelText: 'Room',
+                      hintText: 'e.g., Room 101',
+                    ),
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<Weekday>(
-                      value: _selectedWeekday,
-                      isDense: true,
-                      items: Weekday.values.map((day) {
-                        return DropdownMenuItem(
-                          value: day,
-                          child: Text(day.fullName),
+                  const SizedBox(height: 16),
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Day',
+                      border: OutlineInputBorder(),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<Weekday>(
+                        value: selectedWeekday,
+                        isDense: true,
+                        items: Weekday.values.map((day) {
+                          return DropdownMenuItem(
+                            value: day,
+                            child: Text(day.fullName),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setModalState(() {
+                              selectedWeekday = value;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Start Hour',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: startHour,
+                              isDense: true,
+                              items:
+                                  List.generate(14, (i) => i + 7).map((hour) {
+                                return DropdownMenuItem(
+                                  value: hour,
+                                  child: Text('$hour:00'),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    startHour = value;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Start Minute',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: startMinute,
+                              isDense: true,
+                              items: [0, 15, 30, 45].map((minute) {
+                                return DropdownMenuItem(
+                                  value: minute,
+                                  child: Text(
+                                    ':${minute.toString().padLeft(2, '0')}',
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    startMinute = value;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'End Hour',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: endHour,
+                              isDense: true,
+                              items:
+                                  List.generate(14, (i) => i + 7).map((hour) {
+                                return DropdownMenuItem(
+                                  value: hour,
+                                  child: Text('$hour:00'),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    endHour = value;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'End Minute',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: endMinute,
+                              isDense: true,
+                              items: [0, 15, 30, 45].map((minute) {
+                                return DropdownMenuItem(
+                                  value: minute,
+                                  child: Text(
+                                    ':${minute.toString().padLeft(2, '0')}',
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setModalState(() {
+                                    endMinute = value;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (subjectController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter a subject'),
+                          ),
                         );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _selectedWeekday = value;
-                          });
+                        return;
+                      }
+
+                      final authService = context.read<AuthService>();
+                      final userId = authService.storageUserId;
+                      if (userId == null) return;
+
+                      if (isEditing) {
+                        await context.read<TimetableProvider>().updateEntry(
+                              existingEntry.copyWith(
+                                subject: subjectController.text,
+                                teacher: teacherController.text.isEmpty
+                                    ? null
+                                    : teacherController.text,
+                                room: roomController.text.isEmpty
+                                    ? null
+                                    : roomController.text,
+                                weekday: selectedWeekday,
+                                startHour: startHour,
+                                startMinute: startMinute,
+                                endHour: endHour,
+                                endMinute: endMinute,
+                              ),
+                            );
+                      } else {
+                        await context.read<TimetableProvider>().createEntry(
+                              userId: userId,
+                              subject: subjectController.text,
+                              teacher: teacherController.text.isEmpty
+                                  ? null
+                                  : teacherController.text,
+                              room: roomController.text.isEmpty
+                                  ? null
+                                  : roomController.text,
+                              weekday: selectedWeekday,
+                              startHour: startHour,
+                              startMinute: startMinute,
+                              endHour: endHour,
+                              endMinute: endMinute,
+                            );
+                      }
+
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: Text(isEditing ? 'Save Changes' : 'Add Class'),
+                  ),
+                  if (isEditing) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () async {
+                        await context
+                            .read<TimetableProvider>()
+                            .deleteEntry(existingEntry.id);
+                        if (context.mounted) {
+                          Navigator.pop(context);
                         }
                       },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Start Hour',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: _startHour,
-                            isDense: true,
-                            items: List.generate(14, (i) => i + 7).map((hour) {
-                              return DropdownMenuItem(
-                                value: hour,
-                                child: Text('$hour:00'),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _startHour = value;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Start Minute',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: _startMinute,
-                            isDense: true,
-                            items: [0, 15, 30, 45].map((minute) {
-                              return DropdownMenuItem(
-                                value: minute,
-                                child: Text(
-                                  ':$minute${minute.toString().padLeft(2, '0')}',
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _startMinute = value;
-                                });
-                              }
-                            },
-                          ),
-                        ),
+                      child: const Text(
+                        'Delete Class',
+                        style: TextStyle(color: Colors.red),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'End Hour',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: _endHour,
-                            isDense: true,
-                            items: List.generate(14, (i) => i + 7).map((hour) {
-                              return DropdownMenuItem(
-                                value: hour,
-                                child: Text('$hour:00'),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _endHour = value;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'End Minute',
-                          border: OutlineInputBorder(),
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: _endMinute,
-                            isDense: true,
-                            items: [0, 15, 30, 45].map((minute) {
-                              return DropdownMenuItem(
-                                value: minute,
-                                child: Text(
-                                  ':$minute${minute.toString().padLeft(2, '0')}',
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _endMinute = value;
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (_subjectController.text.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please enter a subject')),
-                      );
-                      return;
-                    }
-
-                    final authService = context.read<AuthService>();
-                    final userId = authService.storageUserId;
-                    if (userId == null) return;
-
-                    await context.read<TimetableProvider>().createEntry(
-                          userId: userId,
-                          subject: _subjectController.text,
-                          teacher: _teacherController.text.isEmpty
-                              ? null
-                              : _teacherController.text,
-                          room: _roomController.text.isEmpty
-                              ? null
-                              : _roomController.text,
-                          weekday: _selectedWeekday,
-                          startHour: _startHour,
-                          startMinute: _startMinute,
-                          endHour: _endHour,
-                          endMinute: _endMinute,
-                        );
-
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Add Class'),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

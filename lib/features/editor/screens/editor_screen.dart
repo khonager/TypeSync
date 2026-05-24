@@ -34,6 +34,7 @@ import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
@@ -110,6 +111,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Focus node for the editor
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _titleFocusNode = FocusNode();
 
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
@@ -129,6 +131,8 @@ class _EditorScreenState extends State<EditorScreen>
   // Current note being edited
   Note? _note;
   Note? _pendingExternalNote;
+  String? _activeNoteSyncId;
+  SyncService? _syncService;
 
   // Auto-save timer
   Timer? _saveTimer;
@@ -181,6 +185,7 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    _syncService = context.read<SyncService>();
     _isSearchPanelVisible = _openedFromSearch;
     if (_openedFromSearch) {
       _findController.text = widget.searchQuery!.trim();
@@ -279,9 +284,25 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     if (_note != null && !_hasStartedCloudMigration) {
+      _attachActiveNoteSync();
       _hasStartedCloudMigration = true;
       unawaited(_ensureCloudBackedFiles());
     }
+  }
+
+  void _attachActiveNoteSync() {
+    final note = _note;
+    if (note == null || note.localOnly || note.id == _activeNoteSyncId) {
+      return;
+    }
+
+    final authService = context.read<AuthService>();
+    if (!authService.effectiveSyncEnabled || authService.userId == null) {
+      return;
+    }
+
+    _syncService?.startNoteListening(note.id);
+    _activeNoteSyncId = note.id;
   }
 
   void _onContentChanged() {
@@ -695,14 +716,43 @@ class _EditorScreenState extends State<EditorScreen>
     final content = jsonEncode(
       _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
     );
-    _lastSavedContent = content;
 
-    await notesProvider.updateNoteContent(
+    final result = await notesProvider.saveNoteContentFromEditor(
       noteId: _note!.id,
+      baseUpdatedAt: _note!.updatedAt,
+      baseContent: _normalizedStoredContent(_note!.content),
       content: content,
       characterCount: _characterCount,
       lineCount: _lineCount,
     );
+
+    if (!mounted) return;
+
+    switch (result.status) {
+      case NoteWriteStatus.saved:
+        setState(() {
+          _note = result.note;
+          _lastSavedContent = content;
+        });
+        break;
+      case NoteWriteStatus.skippedRemoteNewer:
+        if (result.note != null) {
+          _showEditorSyncMessage(result.message ?? 'Loaded a newer version.');
+          _updateContentFromProvider(result.note!);
+        }
+        return;
+      case NoteWriteStatus.conflict:
+        setState(() {
+          _note = result.note;
+        });
+        _showEditorSyncMessage(
+          result.message ?? 'Conflicting changes were detected.',
+        );
+        return;
+      case NoteWriteStatus.missing:
+        _showEditorSyncMessage('This note could not be found anymore.');
+        return;
+    }
 
     final minimumVersion = _minimumVersionRequiredByCurrentDocument();
     if (minimumVersion != null) {
@@ -714,7 +764,46 @@ class _EditorScreenState extends State<EditorScreen>
     if (_note == null) return;
 
     final notesProvider = context.read<NotesProvider>();
-    await notesProvider.updateNote(_note!.copyWith(title: title));
+    final result = await notesProvider.saveNoteTitleFromEditor(
+      noteId: _note!.id,
+      baseUpdatedAt: _note!.updatedAt,
+      baseTitle: _note!.title,
+      title: title,
+    );
+    if (!mounted) return;
+
+    switch (result.status) {
+      case NoteWriteStatus.saved:
+        setState(() {
+          _note = result.note;
+        });
+        break;
+      case NoteWriteStatus.skippedRemoteNewer:
+        if (result.note != null) {
+          _showEditorSyncMessage(result.message ?? 'Loaded a newer title.');
+          setState(() {
+            _note = result.note;
+            _titleController.text = result.note!.title;
+            _titleController.selection = TextSelection.collapsed(
+              offset: _titleController.text.length,
+            );
+          });
+        }
+        break;
+      case NoteWriteStatus.conflict:
+        if (result.note != null) {
+          setState(() {
+            _note = result.note;
+          });
+        }
+        _showEditorSyncMessage(
+          result.message ?? 'This note has unresolved conflicting changes.',
+        );
+        break;
+      case NoteWriteStatus.missing:
+        _showEditorSyncMessage('This note could not be found anymore.');
+        break;
+    }
   }
 
   @override
@@ -733,12 +822,16 @@ class _EditorScreenState extends State<EditorScreen>
     _replaceController.dispose();
     _findFocusNode.dispose();
     _replaceFocusNode.dispose();
+    _titleFocusNode.dispose();
     _quillController.removeListener(_onContentChanged);
     _quillController.dispose();
     _focusNode.removeListener(_onEditorFocusChanged);
     _focusNode.dispose();
     _scrollController.dispose();
     _titleController.dispose();
+    if (_activeNoteSyncId != null) {
+      _syncService?.stopNoteListening(_activeNoteSyncId);
+    }
     super.dispose();
   }
 
@@ -783,11 +876,8 @@ class _EditorScreenState extends State<EditorScreen>
           providerNote.isDirty != _note!.isDirty ||
           providerNote.hasConflict != _note!.hasConflict) {
         final providerContent = _normalizedStoredContent(providerNote.content);
-        final localContent = jsonEncode(
-          _sanitizeDeltaOperations(
-            _quillController.document.toDelta().toJson(),
-          ),
-        );
+        final localContent = _currentEditorContent();
+        final localHasUnsavedEdits = _hasUnsavedLocalEditorChanges();
 
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
@@ -795,7 +885,8 @@ class _EditorScreenState extends State<EditorScreen>
             providerContent != _lastSavedContent) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (_focusNode.hasFocus) {
+            if (!localHasUnsavedEdits) {
+              _pendingExternalNote = null;
               _updateContentFromProvider(providerNote);
               return;
             }
@@ -972,6 +1063,7 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildTitleField() {
     return TextField(
       controller: _titleController,
+      focusNode: _titleFocusNode,
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.titleMedium,
       decoration: const InputDecoration(
@@ -1455,15 +1547,25 @@ class _EditorScreenState extends State<EditorScreen>
           children: [
             SizedBox(
               width: attachmentWidth,
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: _buildAttachmentPreview(activeAttachment),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.horizontal,
+                onDelta: (delta) =>
+                    _updateSideBySideAttachmentFraction(availableWidth, delta),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildAttachmentPreview(activeAttachment),
+                ),
               ),
             ),
             _buildHorizontalResizeHandle(availableWidth),
             SizedBox(
               width: editorWidth,
-              child: _buildEditorSurface(bgColor),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.horizontal,
+                onDelta: (delta) =>
+                    _updateSideBySideAttachmentFraction(availableWidth, delta),
+                child: _buildEditorSurface(bgColor),
+              ),
             ),
           ],
         );
@@ -1513,9 +1615,15 @@ class _EditorScreenState extends State<EditorScreen>
           children: [
             SizedBox(
               height: attachmentHeight,
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                child: _buildAttachmentPreview(activeAttachment),
+              child: _wrapTrackpadResizeRegion(
+                axis: Axis.vertical,
+                enabled: () => !_isAnyTextInputFocused,
+                onDelta: (delta) =>
+                    _updateStackedAttachmentHeight(availableHeight, delta),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildAttachmentPreview(activeAttachment),
+                ),
               ),
             ),
             _buildVerticalResizeHandle(availableHeight),
@@ -1535,13 +1643,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) {
-          if (availableWidth <= 0) return;
-          setState(() {
-            final nextWidth = availableWidth * _sideBySideAttachmentFraction +
-                details.delta.dx;
-            _sideBySideAttachmentFraction =
-                (nextWidth / availableWidth).clamp(0.25, 0.72);
-          });
+          _updateSideBySideAttachmentFraction(availableWidth, details.delta.dx);
         },
         child: SizedBox(
           width: 18,
@@ -1568,26 +1670,7 @@ class _EditorScreenState extends State<EditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) {
-          if (availableHeight <= 0) return;
-          setState(() {
-            final maxAttachmentHeight = availableHeight > 180
-                ? availableHeight - 180.0
-                : availableHeight * 0.5;
-            final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
-              0.0,
-              availableHeight,
-            );
-            final resolvedMinAttachmentHeight =
-                (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
-              0.0,
-              resolvedMaxAttachmentHeight,
-            );
-            _stackedAttachmentHeight =
-                (_stackedAttachmentHeight + details.delta.dy).clamp(
-              resolvedMinAttachmentHeight,
-              resolvedMaxAttachmentHeight,
-            );
-          });
+          _updateStackedAttachmentHeight(availableHeight, details.delta.dy);
         },
         child: SizedBox(
           height: 18,
@@ -1605,6 +1688,67 @@ class _EditorScreenState extends State<EditorScreen>
           ),
         ),
       ),
+    );
+  }
+
+  bool get _isAnyTextInputFocused =>
+      _titleFocusNode.hasFocus ||
+      _findFocusNode.hasFocus ||
+      _replaceFocusNode.hasFocus ||
+      _focusNode.hasFocus;
+
+  void _updateSideBySideAttachmentFraction(
+    double availableWidth,
+    double delta,
+  ) {
+    if (availableWidth <= 0 || delta == 0) return;
+    setState(() {
+      final nextWidth = availableWidth * _sideBySideAttachmentFraction + delta;
+      _sideBySideAttachmentFraction =
+          (nextWidth / availableWidth).clamp(0.25, 0.72);
+    });
+  }
+
+  void _updateStackedAttachmentHeight(double availableHeight, double delta) {
+    if (availableHeight <= 0 || delta == 0) return;
+    setState(() {
+      final maxAttachmentHeight = availableHeight > 180
+          ? availableHeight - 180.0
+          : availableHeight * 0.5;
+      final resolvedMaxAttachmentHeight = maxAttachmentHeight.clamp(
+        0.0,
+        availableHeight,
+      );
+      final resolvedMinAttachmentHeight =
+          (availableHeight >= 420 ? 180.0 : availableHeight * 0.35).clamp(
+        0.0,
+        resolvedMaxAttachmentHeight,
+      );
+      _stackedAttachmentHeight = (_stackedAttachmentHeight + delta).clamp(
+        resolvedMinAttachmentHeight,
+        resolvedMaxAttachmentHeight,
+      );
+    });
+  }
+
+  Widget _wrapTrackpadResizeRegion({
+    required Axis axis,
+    required ValueChanged<double> onDelta,
+    required Widget child,
+    bool Function()? enabled,
+  }) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerPanZoomUpdate: (event) {
+        if (!(enabled?.call() ?? true)) return;
+        final panDelta = event.panDelta;
+        final primaryDelta =
+            axis == Axis.horizontal ? panDelta.dx : panDelta.dy;
+        final crossDelta = axis == Axis.horizontal ? panDelta.dy : panDelta.dx;
+        if (primaryDelta == 0 || primaryDelta.abs() < crossDelta.abs()) return;
+        onDelta(primaryDelta);
+      },
+      child: child,
     );
   }
 
@@ -2923,6 +3067,26 @@ class _EditorScreenState extends State<EditorScreen>
         ],
       ),
     );
+  }
+
+  void _showEditorSyncMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  String _currentEditorContent() {
+    return jsonEncode(
+      _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
+    );
+  }
+
+  bool _hasUnsavedLocalEditorChanges() {
+    if (_note == null) {
+      return false;
+    }
+    return _currentEditorContent() != _normalizedStoredContent(_note!.content);
   }
 
   void _showMoreOptions() {

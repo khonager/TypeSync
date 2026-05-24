@@ -161,18 +161,28 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
               return Row(
                 children: [
                   if (primaryWidth > 0)
-                    SizedBox(width: primaryWidth, child: primaryPane),
+                    SizedBox(
+                      width: primaryWidth,
+                      child: _TrackpadResizeRegion(
+                        onDelta: (delta) =>
+                            _updatePrimaryPaneFraction(availableWidth, delta),
+                        child: primaryPane,
+                      ),
+                    ),
                   if (!_isClosingSplit)
                     _ResizeHandle(
-                      onDrag: (delta) {
-                        if (availableWidth <= 0) return;
-                        final nextWidth = primaryWidth + delta;
-                        _primaryPaneFraction.value =
-                            (nextWidth / availableWidth).clamp(0.28, 0.72);
-                      },
+                      onDrag: (delta) =>
+                          _updatePrimaryPaneFraction(availableWidth, delta),
                     ),
                   if (secondaryWidth > 0)
-                    SizedBox(width: secondaryWidth, child: secondaryPane),
+                    SizedBox(
+                      width: secondaryWidth,
+                      child: _TrackpadResizeRegion(
+                        onDelta: (delta) =>
+                            _updatePrimaryPaneFraction(availableWidth, delta),
+                        child: secondaryPane,
+                      ),
+                    ),
                 ],
               );
             },
@@ -252,6 +262,12 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
     if (value == null) return;
     _primaryPaneFraction.value = value;
   }
+
+  void _updatePrimaryPaneFraction(double availableWidth, double delta) {
+    if (_isClosingSplit || availableWidth <= 0 || delta == 0) return;
+    final nextWidth = (availableWidth * _primaryPaneFraction.value) + delta;
+    _primaryPaneFraction.value = (nextWidth / availableWidth).clamp(0.28, 0.72);
+  }
 }
 
 class _ResizeHandle extends StatelessWidget {
@@ -285,6 +301,29 @@ class _ResizeHandle extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TrackpadResizeRegion extends StatelessWidget {
+  const _TrackpadResizeRegion({
+    required this.onDelta,
+    required this.child,
+  });
+
+  final ValueChanged<double> onDelta;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerPanZoomUpdate: (event) {
+        final delta = event.panDelta;
+        if (delta.dx == 0 || delta.dx.abs() < delta.dy.abs()) return;
+        onDelta(delta.dx);
+      },
+      child: child,
     );
   }
 }
