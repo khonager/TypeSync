@@ -18,6 +18,34 @@ import '../models/user.dart';
 import '../../firebase_options.dart';
 import 'diagnostics_service.dart';
 
+String? resolveStorageObjectPath(
+  String path, {
+  required String userId,
+}) {
+  if (path.startsWith('gs://')) {
+    final uri = Uri.parse(path);
+    final objectPath =
+        uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+    return objectPath.isEmpty ? null : objectPath;
+  }
+
+  if (!path.startsWith('http://') && !path.startsWith('https://')) {
+    if (path.startsWith('users/')) {
+      return path;
+    }
+    return 'users/$userId/$path';
+  }
+
+  final uri = Uri.tryParse(path);
+  if (uri == null) return null;
+  final segments = uri.pathSegments;
+  final objectIndex = segments.indexOf('o');
+  if (objectIndex == -1 || objectIndex + 1 >= segments.length) {
+    return null;
+  }
+  return Uri.decodeComponent(segments[objectIndex + 1]);
+}
+
 /// Service for managing cloud storage and subscriptions
 ///
 /// Tracks storage usage against subscription limits and handles
@@ -493,11 +521,24 @@ class StorageService extends ChangeNotifier {
     required String filePath,
   }) async {
     try {
+      final normalizedObjectPath = resolveStorageObjectPath(
+        filePath,
+        userId: userId,
+      );
+      if (normalizedObjectPath == null || normalizedObjectPath.isEmpty) {
+        throw Exception('Could not resolve storage object path');
+      }
+
+      _diagnostics.info(
+        'StorageService',
+        'ATTACHMENT_DELETE resolved delete target user=$userId input=$filePath object=$normalizedObjectPath linuxRest=$_shouldUseLinuxStorageRest',
+      );
+
       if (_shouldUseLinuxStorageRest) {
-        final fileSize = await _fetchLinuxObjectSize(
-          _storageObjectPath(userId, filePath),
+        final fileSize = await _deleteLinuxObjectViaFunction(
+          userId: userId,
+          objectPath: normalizedObjectPath,
         );
-        await _deleteLinuxObject(_storageObjectPath(userId, filePath));
         _storageUsedBytes =
             (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
         await _writeStorageUsage(userId);
@@ -505,7 +546,7 @@ class StorageService extends ChangeNotifier {
         return true;
       }
 
-      final ref = _firebaseStorage.ref().child('users/$userId/$filePath');
+      final ref = _firebaseStorage.ref().child(normalizedObjectPath);
 
       // Get file size before deleting
       final metadata = await ref.getMetadata();
@@ -812,28 +853,7 @@ class StorageService extends ChangeNotifier {
     String path, {
     required String userId,
   }) {
-    if (path.startsWith('gs://')) {
-      final uri = Uri.parse(path);
-      final objectPath =
-          uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
-      return objectPath.isEmpty ? null : objectPath;
-    }
-
-    if (!path.startsWith('http://') && !path.startsWith('https://')) {
-      if (path.startsWith('users/')) {
-        return path;
-      }
-      return _storageObjectPath(userId, path);
-    }
-
-    final uri = Uri.tryParse(path);
-    if (uri == null) return null;
-    final segments = uri.pathSegments;
-    final objectIndex = segments.indexOf('o');
-    if (objectIndex == -1 || objectIndex + 1 >= segments.length) {
-      return null;
-    }
-    return Uri.decodeComponent(segments[objectIndex + 1]);
+    return resolveStorageObjectPath(path, userId: userId);
   }
 
   int? _intFromDynamic(dynamic value, {int? fallback}) {
@@ -1005,19 +1025,34 @@ class StorageService extends ChangeNotifier {
     return 0;
   }
 
-  Future<void> _deleteLinuxObject(String objectPath) async {
+  Future<int> _deleteLinuxObjectViaFunction({
+    required String userId,
+    required String objectPath,
+  }) async {
     final idToken = await _linuxIdToken();
-    final uri = Uri.https(
-      'firebasestorage.googleapis.com',
-      '/v0/b/$_storageBucket/o/${Uri.encodeComponent(objectPath)}',
+    final deleteUri = _linuxFunctionUri('delete_storage_object');
+
+    final response = await _httpClient.post(
+      deleteUri,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode({
+        'userId': userId,
+        'objectPath': objectPath,
+      }),
     );
-    final response = await _httpClient.delete(
-      uri,
-      headers: {'Authorization': 'Bearer $idToken'},
-    );
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_extractHttpError(response));
     }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final sizeValue = body['size'];
+    if (sizeValue is int) return sizeValue;
+    if (sizeValue is String) return int.tryParse(sizeValue) ?? 0;
+    return 0;
   }
 
   String _buildDownloadUrl(String objectPath, {String? downloadToken}) {

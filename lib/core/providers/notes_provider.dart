@@ -144,32 +144,7 @@ class NotesProvider extends ChangeNotifier {
     final buffer = StringBuffer()
       ..write(note.title)
       ..write(' ')
-      ..write(RichTextPlainTextService.extractPlainText(note.content))
-      ..write(' ')
-      ..write(note.pdfPath ?? '');
-
-    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) {
-      buffer
-        ..write(' ')
-        ..write(p.basename(note.pdfPath!));
-    }
-
-    for (final attachment in note.attachments) {
-      buffer
-        ..write(' ')
-        ..write(attachment.name)
-        ..write(' ')
-        ..write(attachment.path)
-        ..write(' ')
-        ..write(attachment.mimeType ?? '');
-
-      if (attachment.path.isNotEmpty) {
-        buffer
-          ..write(' ')
-          ..write(p.basename(attachment.path));
-      }
-    }
-
+      ..write(RichTextPlainTextService.extractPlainText(note.content));
     return buffer.toString().toLowerCase();
   }
 

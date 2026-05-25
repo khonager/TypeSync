@@ -32,6 +32,7 @@ import '../../../core/models/typesync_kanban_embed.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/diagnostics_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -98,6 +99,7 @@ class _EditorSearchMatch {
 
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
+  final DiagnosticsService _diagnostics = DiagnosticsService.instance;
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
   static const String _toolbarPlacementPreferenceKey =
       'typesync_editor_toolbar_placement_v1';
@@ -1276,19 +1278,24 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildEditorWorkspace(Color? bgColor) {
+    final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+
     return Expanded(
       child: DropTarget(
         onDragEntered: (details) {
+          if (!routeIsCurrent) return;
           setState(() {
             _isDragging = true;
           });
         },
         onDragExited: (details) {
+          if (!routeIsCurrent) return;
           setState(() {
             _isDragging = false;
           });
         },
         onDragDone: (details) {
+          if (!routeIsCurrent) return;
           _handleDroppedFiles(details.files);
           setState(() {
             _isDragging = false;
@@ -2258,66 +2265,63 @@ class _EditorScreenState extends State<EditorScreen>
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.attach_file,
-            size: 18,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              attachment.name,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '1 attachment',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(width: 8),
-          if (canSideBySide)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: _sideBySideAttachments
-                  ? 'Switch to stacked view'
-                  : 'Switch to side-by-side view',
-              onPressed: () {
-                setState(() {
-                  _sideBySideAttachments = !_sideBySideAttachments;
-                });
-              },
-              icon: Icon(
-                _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 560;
+          final actions = _buildAttachmentBarActions(
+            canSideBySide: canSideBySide,
+            showAttachmentPreview: showAttachmentPreview,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.attach_file,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      attachment.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  if (!isCompact) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '1 attachment',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ],
               ),
-            ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: showAttachmentPreview
-                ? 'Hide attachment preview'
-                : 'Show attachment preview',
-            onPressed: () {
-              setState(() {
-                _hideAttachmentPreview = !_hideAttachmentPreview;
-              });
-            },
-            icon: Icon(
-              showAttachmentPreview
-                  ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
-            ),
-          ),
-          TextButton.icon(
-            onPressed: _insertPdf,
-            icon: const Icon(Icons.add),
-            label: const Text('Attach'),
-          ),
-        ],
+              const SizedBox(height: 8),
+              if (isCompact)
+                Text(
+                  '1 attachment',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              if (isCompact) const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: actions,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2335,71 +2339,59 @@ class _EditorScreenState extends State<EditorScreen>
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.attach_file,
-                size: 18,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${attachments.length} attachments'
-                  '${activeAttachment != null ? ' • ${activeAttachment.name}' : ''}',
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _attachmentsExpanded = !_attachmentsExpanded;
-                  });
-                },
-                child: Text(_attachmentsExpanded ? 'Collapse' : 'Expand'),
-              ),
-              if (canSideBySide)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: _sideBySideAttachments
-                      ? 'Switch to stacked view'
-                      : 'Switch to side-by-side view',
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 560;
+              final actions = <Widget>[
+                TextButton(
                   onPressed: () {
                     setState(() {
-                      _sideBySideAttachments = !_sideBySideAttachments;
+                      _attachmentsExpanded = !_attachmentsExpanded;
                     });
                   },
-                  icon: Icon(
-                    _sideBySideAttachments
-                        ? Icons.splitscreen
-                        : Icons.view_agenda,
-                  ),
+                  child: Text(_attachmentsExpanded ? 'Collapse' : 'Expand'),
                 ),
-              if (activeAttachment != null)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: showAttachmentPreview
-                      ? 'Hide attachment preview'
-                      : 'Show attachment preview',
-                  onPressed: () {
-                    setState(() {
-                      _hideAttachmentPreview = !_hideAttachmentPreview;
-                    });
-                  },
-                  icon: Icon(
-                    showAttachmentPreview
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
+                ..._buildAttachmentBarActions(
+                  canSideBySide: canSideBySide,
+                  showAttachmentPreview: showAttachmentPreview,
+                  includePreviewToggle: activeAttachment != null,
                 ),
-              TextButton.icon(
-                onPressed: _insertPdf,
-                icon: const Icon(Icons.add),
-                label: const Text('Attach'),
-              ),
-            ],
+              ];
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.attach_file,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${attachments.length} attachments'
+                          '${activeAttachment != null ? ' • ${activeAttachment.name}' : ''}',
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: actions,
+                  ),
+                  if (isCompact) const SizedBox(height: 0),
+                ],
+              );
+            },
           ),
           if (_attachmentsExpanded) ...[
             const SizedBox(height: 8),
@@ -2458,6 +2450,52 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
+  List<Widget> _buildAttachmentBarActions({
+    required bool canSideBySide,
+    required bool showAttachmentPreview,
+    bool includePreviewToggle = true,
+  }) {
+    return [
+      if (canSideBySide)
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: _sideBySideAttachments
+              ? 'Switch to stacked view'
+              : 'Switch to side-by-side view',
+          onPressed: () {
+            setState(() {
+              _sideBySideAttachments = !_sideBySideAttachments;
+            });
+          },
+          icon: Icon(
+            _sideBySideAttachments ? Icons.splitscreen : Icons.view_agenda,
+          ),
+        ),
+      if (includePreviewToggle)
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: showAttachmentPreview
+              ? 'Hide attachment preview'
+              : 'Show attachment preview',
+          onPressed: () {
+            setState(() {
+              _hideAttachmentPreview = !_hideAttachmentPreview;
+            });
+          },
+          icon: Icon(
+            showAttachmentPreview
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+          ),
+        ),
+      TextButton.icon(
+        onPressed: _insertPdf,
+        icon: const Icon(Icons.add),
+        label: const Text('Attach'),
+      ),
+    ];
+  }
+
   void _showAttachmentOptions(NoteAttachment attachment) {
     showModalBottomSheet(
       context: context,
@@ -2489,6 +2527,10 @@ class _EditorScreenState extends State<EditorScreen>
     final notesProvider = context.read<NotesProvider>();
     final authService = context.read<AuthService>();
     final storageService = context.read<StorageService>();
+    _diagnostics.info(
+      'EditorScreen',
+      'ATTACHMENT_DELETE requested note=${note.id} attachment=${attachment.id} name=${attachment.name} path=${attachment.path} remote=${_isRemoteAttachmentPath(attachment.path)}',
+    );
 
     final deleteSucceeded = await _deleteAttachmentFile(
       note: note,
@@ -2497,6 +2539,10 @@ class _EditorScreenState extends State<EditorScreen>
       storageService: storageService,
     );
     if (!deleteSucceeded) {
+      _diagnostics.error(
+        'EditorScreen',
+        'ATTACHMENT_DELETE storage delete failed note=${note.id} attachment=${attachment.id} error=${storageService.errorMessage ?? 'unknown'}',
+      );
       if (mounted) {
         final errorMessage = storageService.errorMessage;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2510,12 +2556,24 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
 
+    final isPrimaryPdfAttachment = note.pdfPath != null &&
+        note.pdfPath == attachment.path &&
+        !note.attachments.any((candidate) => candidate.id == attachment.id);
+
     final updatedAttachments = note.attachments
         .where((candidate) => candidate.id != attachment.id)
         .toList();
-    final updatedNote = note.copyWith(attachments: updatedAttachments);
+    final updatedNote = note.copyWith(
+      attachments: updatedAttachments,
+      pdfPath: isPrimaryPdfAttachment ? null : note.pdfPath,
+      size: isPrimaryPdfAttachment ? 0 : note.size,
+    );
     final success = await notesProvider.updateNote(updatedNote);
     if (!success) {
+      _diagnostics.error(
+        'EditorScreen',
+        'ATTACHMENT_DELETE note update failed note=${note.id} attachment=${attachment.id}',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2542,6 +2600,10 @@ class _EditorScreenState extends State<EditorScreen>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Deleted: ${attachment.name}')));
+    _diagnostics.info(
+      'EditorScreen',
+      'ATTACHMENT_DELETE completed note=${note.id} attachment=${attachment.id} remaining=${updatedAttachments.length}',
+    );
   }
 
   Future<bool> _deleteAttachmentFile({
@@ -2559,16 +2621,37 @@ class _EditorScreenState extends State<EditorScreen>
 
     if (_isRemoteAttachmentPath(attachment.path)) {
       if (userId == null) {
+        _diagnostics.error(
+          'EditorScreen',
+          'ATTACHMENT_DELETE remote delete missing user note=${note.id} attachment=${attachment.id}',
+        );
         return false;
       }
+      _diagnostics.info(
+        'EditorScreen',
+        'ATTACHMENT_DELETE attempting remote delete via stored path note=${note.id} attachment=${attachment.id} target=${attachment.path}',
+      );
+      final deletedStoredPath = await storageService.deleteFile(
+        userId: userId,
+        filePath: attachment.path,
+      );
+      if (deletedStoredPath) {
+        return true;
+      }
+
+      final legacyPath = _buildCloudFilePath(
+        noteId: note.id,
+        itemId: attachment.id,
+        fileName: attachment.name,
+        bucket: 'attachments',
+      );
+      _diagnostics.warning(
+        'EditorScreen',
+        'ATTACHMENT_DELETE stored path delete failed, trying legacy path note=${note.id} attachment=${attachment.id} target=$legacyPath',
+      );
       return storageService.deleteFile(
         userId: userId,
-        filePath: _buildCloudFilePath(
-          noteId: note.id,
-          itemId: attachment.id,
-          fileName: attachment.name,
-          bucket: 'attachments',
-        ),
+        filePath: legacyPath,
       );
     }
 
@@ -2577,8 +2660,16 @@ class _EditorScreenState extends State<EditorScreen>
       if (await file.exists()) {
         await file.delete();
       }
+      _diagnostics.info(
+        'EditorScreen',
+        'ATTACHMENT_DELETE deleted local file note=${note.id} attachment=${attachment.id} path=${attachment.path}',
+      );
       return true;
-    } catch (_) {
+    } catch (e) {
+      _diagnostics.error(
+        'EditorScreen',
+        'ATTACHMENT_DELETE local delete failed note=${note.id} attachment=${attachment.id} path=${attachment.path} error=$e',
+      );
       return false;
     }
   }
@@ -2927,27 +3018,35 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildAttachmentInfo(NoteAttachment attachment) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.insert_drive_file_outlined, size: 52),
-            const SizedBox(height: 12),
-            Text(attachment.name, textAlign: TextAlign.center),
-            const SizedBox(height: 6),
-            Text(
-              '${(attachment.size / 1024).toStringAsFixed(1)} KB',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () => _openAttachmentExternally(attachment),
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open externally'),
-            ),
-          ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.insert_drive_file_outlined, size: 52),
+              const SizedBox(height: 12),
+              Text(
+                attachment.name,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${(attachment.size / 1024).toStringAsFixed(1)} KB',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () => _openAttachmentExternally(attachment),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open externally'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3140,6 +3239,7 @@ class _EditorScreenState extends State<EditorScreen>
                   this.context,
                   primaryNoteId: _note!.id,
                   initialSecondaryFolderId: _note!.folderId ?? widget.folderId,
+                  replaceCurrent: true,
                 );
               },
             ),

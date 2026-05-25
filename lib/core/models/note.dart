@@ -237,7 +237,7 @@ class Note extends Equatable {
     int? lineCount,
     int? size,
     String? userId,
-    String? pdfPath,
+    Object? pdfPath = _noChange,
     List<NoteAttachment>? attachments,
     bool? localOnly,
     bool backgroundColorSet = false,
@@ -267,7 +267,8 @@ class Note extends Equatable {
       lineCount: lineCount ?? this.lineCount,
       size: size ?? this.size,
       userId: userId ?? this.userId,
-      pdfPath: pdfPath ?? this.pdfPath,
+      pdfPath:
+          identical(pdfPath, _noChange) ? this.pdfPath : pdfPath as String?,
       attachments: attachments ?? this.attachments,
       localOnly: localOnly ?? this.localOnly,
       hasConflict: hasConflict ?? this.hasConflict,

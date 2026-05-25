@@ -940,19 +940,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final hasVisibleItems = folders.isNotEmpty || notes.isNotEmpty;
     final bottomScrollPadding = homeBottomBarScrollPaddingFor(context);
+    final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
 
     return DropTarget(
       onDragEntered: (details) {
+        if (!routeIsCurrent) return;
         setState(() {
           _isDragging = true;
         });
       },
       onDragExited: (details) {
+        if (!routeIsCurrent) return;
         setState(() {
           _isDragging = false;
         });
       },
       onDragDone: (details) {
+        if (!routeIsCurrent) return;
         _handleDroppedFiles(details.files);
         setState(() {
           _isDragging = false;
@@ -1473,12 +1477,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _searchFocusNode.unfocus();
 
     final note = context.read<NotesProvider>().getNoteById(noteId);
+    final resolvedSearchQuery =
+        note != null && _shouldOpenEditorSearch(note, searchQuery)
+            ? searchQuery
+            : null;
     AppRouter.openEditor(
       context,
       noteId: noteId,
       folderId: note?.folderId ?? _currentFolderId,
-      searchQuery: searchQuery,
+      searchQuery: resolvedSearchQuery,
     );
+  }
+
+  bool _shouldOpenEditorSearch(Note note, String? searchQuery) {
+    final query = searchQuery?.trim().toLowerCase();
+    if (query == null || query.isEmpty) return false;
+
+    final content = RichTextPlainTextService.extractPlainText(
+      note.content,
+    ).toLowerCase();
+    if (content.contains(query)) {
+      return true;
+    }
+
+    final tokens =
+        query.split(RegExp(r'\s+')).where((token) => token.isNotEmpty);
+    return tokens.every(content.contains);
   }
 
   void _showCreateOptions() {

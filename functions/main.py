@@ -509,6 +509,84 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             content_type="application/json",
         )
 
+
+@https_fn.on_request()
+def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
+    if req.method != "POST":
+        return https_fn.Response("Method not allowed", status=405)
+
+    uid = _verified_uid(req)
+
+    try:
+        payload = req.get_json(silent=True) or {}
+        target_uid = payload.get("userId")
+        object_path = payload.get("objectPath")
+    except Exception as exc:
+        print(f"Bad delete payload: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": "Invalid JSON body"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    if target_uid != uid:
+        return https_fn.Response(
+            json.dumps({"error": "userId does not match authenticated user"}),
+            status=403,
+            content_type="application/json",
+        )
+
+    if not object_path or not isinstance(object_path, str):
+        return https_fn.Response(
+            json.dumps({"error": "objectPath is required"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    expected_prefix = f"users/{uid}/"
+    if not object_path.startswith(expected_prefix):
+        return https_fn.Response(
+            json.dumps(
+                {"error": "objectPath is outside the authenticated user scope"}
+            ),
+            status=403,
+            content_type="application/json",
+        )
+
+    try:
+        bucket = storage.bucket()
+        blob = bucket.blob(object_path)
+        if not blob.exists():
+            return https_fn.Response(
+                json.dumps({"error": "Object not found"}),
+                status=404,
+                content_type="application/json",
+            )
+
+        blob.reload()
+        size = int(blob.size or 0)
+        blob.delete()
+
+        return https_fn.Response(
+            json.dumps(
+                {
+                    "deleted": True,
+                    "size": size,
+                    "bucket": bucket.name,
+                    "path": object_path,
+                }
+            ),
+            status=200,
+            content_type="application/json",
+        )
+    except Exception as exc:
+        print(f"Delete storage object failed: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": f"Delete failed: {exc}"}),
+            status=500,
+            content_type="application/json",
+        )
+
 @https_fn.on_call()
 def verify_gumroad_license(req: https_fn.CallableRequest) -> dict:
     """Verifies a Gumroad license key and updates the user's subscription."""
