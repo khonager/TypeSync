@@ -204,7 +204,7 @@ class BillingService extends ChangeNotifier {
     await configureForUser(userId);
 
     if (!supportsRevenueCatSdk) {
-      final url = _configuredWebPurchaseUrlFor(plan.tier);
+      final url = _configuredWebPurchaseUrlFor(plan.tier, userId: userId);
       if (url.isEmpty) {
         _errorMessage = 'RevenueCat web purchase link is not configured yet.';
         notifyListeners();
@@ -405,17 +405,30 @@ class BillingService extends ChangeNotifier {
     }
   }
 
-  String _configuredWebPurchaseUrlFor(SubscriptionTier tier) {
+  String _configuredWebPurchaseUrlFor(SubscriptionTier tier, {String? userId}) {
     switch (tier) {
       case SubscriptionTier.basic:
-        return _runtimeConfig.typeSyncLiteWebPurchaseUrl.ifEmpty(
+        final baseUrl = _runtimeConfig.typeSyncLiteWebPurchaseUrl.ifEmpty(
           RevenueCatBillingConfig.typeSyncLiteWebPurchaseUrl,
         );
+        if (baseUrl.isEmpty || userId == null || userId.isEmpty) {
+          return baseUrl;
+        }
+        return _appendAppUserIdToPurchaseUrl(baseUrl, userId);
       case SubscriptionTier.standard:
       case SubscriptionTier.premium:
       case SubscriptionTier.free:
         return '';
     }
+  }
+
+  String _appendAppUserIdToPurchaseUrl(String baseUrl, String userId) {
+    final uri = Uri.parse(baseUrl);
+    final pathSegments = [
+      ...uri.pathSegments.where((segment) => segment.isNotEmpty),
+      userId,
+    ];
+    return uri.replace(pathSegments: pathSegments).toString();
   }
 
   static SubscriptionTier tierFromActiveEntitlements(
