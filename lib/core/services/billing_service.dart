@@ -3,7 +3,10 @@
 /// Owns RevenueCat configuration, purchase actions, and entitlement mapping.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart' as rc_ui;
 import 'package:url_launcher/url_launcher.dart';
@@ -37,7 +40,6 @@ class RevenueCatBillingConfig {
   };
 
   static bool get supportsRevenueCatSdk =>
-      kIsWeb ||
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.macOS;
@@ -74,6 +76,33 @@ class RevenueCatBillingConfig {
   }
 }
 
+class RevenueCatRuntimeBillingConfig {
+  final String typeSyncLiteWebPurchaseUrl;
+  final String customerPortalUrl;
+
+  const RevenueCatRuntimeBillingConfig({
+    this.typeSyncLiteWebPurchaseUrl = '',
+    this.customerPortalUrl = '',
+  });
+
+  factory RevenueCatRuntimeBillingConfig.fromJson(Map<String, dynamic> json) {
+    String stringValue(String key) {
+      final value = json[key];
+      return value is String ? value.trim() : '';
+    }
+
+    return RevenueCatRuntimeBillingConfig(
+      typeSyncLiteWebPurchaseUrl:
+          stringValue('typeSyncLiteWebPurchaseUrl').isNotEmpty
+              ? stringValue('typeSyncLiteWebPurchaseUrl')
+              : stringValue('revenueCatTypeSyncLiteWebPurchaseUrl'),
+      customerPortalUrl: stringValue('customerPortalUrl').isNotEmpty
+          ? stringValue('customerPortalUrl')
+          : stringValue('revenueCatCustomerPortalUrl'),
+    );
+  }
+}
+
 enum BillingActionResult {
   completed,
   openedExternal,
@@ -93,6 +122,9 @@ class BillingService extends ChangeNotifier {
   SubscriptionTier _entitlementTier = SubscriptionTier.free;
   Map<String, purchases.Package> _packagesByProductId = {};
   purchases.Offering? _currentOffering;
+  bool _runtimeConfigLoaded = false;
+  RevenueCatRuntimeBillingConfig _runtimeConfig =
+      const RevenueCatRuntimeBillingConfig();
 
   bool get isLoading => _isLoading;
   bool get isConfigured => _isConfigured;
@@ -104,12 +136,14 @@ class BillingService extends ChangeNotifier {
   bool get supportsRevenueCatUi => RevenueCatBillingConfig.supportsRevenueCatUi;
 
   bool get hasWebPurchaseLinks =>
-      RevenueCatBillingConfig.typeSyncLiteWebPurchaseUrl.isNotEmpty;
+      _configuredWebPurchaseUrlFor(SubscriptionTier.basic).isNotEmpty;
 
   bool get canStartPurchase =>
       supportsRevenueCatSdk ? _isConfigured : hasWebPurchaseLinks;
 
   Future<void> configureForUser(String? userId) async {
+    await _loadRuntimeConfig();
+
     if (userId == null || userId.isEmpty) {
       _configuredUserId = null;
       _isConfigured = false;
@@ -170,7 +204,7 @@ class BillingService extends ChangeNotifier {
     await configureForUser(userId);
 
     if (!supportsRevenueCatSdk) {
-      final url = RevenueCatBillingConfig.webPurchaseUrlFor(plan.tier);
+      final url = _configuredWebPurchaseUrlFor(plan.tier);
       if (url.isEmpty) {
         _errorMessage = 'RevenueCat web purchase link is not configured yet.';
         notifyListeners();
@@ -325,7 +359,10 @@ class BillingService extends ChangeNotifier {
       }
     }
 
-    final url = _managementUrl ?? RevenueCatBillingConfig.customerPortalUrl;
+    final url = _managementUrl ??
+        _runtimeConfig.customerPortalUrl.ifEmpty(
+          RevenueCatBillingConfig.customerPortalUrl,
+        );
     if (url.isEmpty) {
       _errorMessage = 'Customer portal is not configured yet.';
       notifyListeners();
@@ -340,6 +377,45 @@ class BillingService extends ChangeNotifier {
       notifyListeners();
     }
     return opened;
+  }
+
+  Future<void> _loadRuntimeConfig() async {
+    if (_runtimeConfigLoaded) return;
+    _runtimeConfigLoaded = true;
+
+    if (!kIsWeb) return;
+
+    try {
+      final uri = Uri.base.resolve(
+        'billing_config.json?v=${DateTime.now().millisecondsSinceEpoch}',
+      );
+      final response = await http.get(uri);
+      if (response.statusCode != 200 || response.body.trim().isEmpty) {
+        notifyListeners();
+        return;
+      }
+
+      final json = jsonDecode(response.body);
+      if (json is Map<String, dynamic>) {
+        _runtimeConfig = RevenueCatRuntimeBillingConfig.fromJson(json);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Billing runtime config load failed: $e');
+    }
+  }
+
+  String _configuredWebPurchaseUrlFor(SubscriptionTier tier) {
+    switch (tier) {
+      case SubscriptionTier.basic:
+        return _runtimeConfig.typeSyncLiteWebPurchaseUrl.ifEmpty(
+          RevenueCatBillingConfig.typeSyncLiteWebPurchaseUrl,
+        );
+      case SubscriptionTier.standard:
+      case SubscriptionTier.premium:
+      case SubscriptionTier.free:
+        return '';
+    }
   }
 
   static SubscriptionTier tierFromActiveEntitlements(
@@ -396,4 +472,8 @@ class BillingService extends ChangeNotifier {
     _isLoading = value;
     notifyListeners();
   }
+}
+
+extension _StringFallback on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }
