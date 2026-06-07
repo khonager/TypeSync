@@ -428,7 +428,14 @@ class BillingService extends ChangeNotifier {
       ...uri.pathSegments.where((segment) => segment.isNotEmpty),
       userId,
     ];
-    return uri.replace(pathSegments: pathSegments).toString();
+    return uri.replace(
+      pathSegments: pathSegments,
+      queryParameters: {
+        ...uri.queryParameters,
+        if (!uri.queryParameters.containsKey('package_id'))
+          'package_id': RevenueCatBillingConfig.monthlyProductId,
+      },
+    ).toString();
   }
 
   static SubscriptionTier tierFromActiveEntitlements(
