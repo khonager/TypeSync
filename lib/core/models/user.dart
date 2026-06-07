@@ -10,10 +10,12 @@ import 'package:equatable/equatable.dart';
 /// Subscription tier enum
 ///
 /// Defines the available storage plans:
-/// - free: 1GB storage included
-/// - basic: 5GB for €1.99/month
-/// - standard: 50GB for €4.99/month
-/// - premium: 200GB for €9.99/month
+/// - free: small cloud quota for trial use
+/// - basic: TypeSync Lite plan
+/// - standard: Plus plan
+/// - premium: Pro plan
+///
+/// The enum order is intentionally preserved for legacy Firestore documents.
 enum SubscriptionTier {
   free,
   basic,
@@ -27,13 +29,13 @@ extension SubscriptionTierExtension on SubscriptionTier {
   int get storageLimitBytes {
     switch (this) {
       case SubscriptionTier.free:
-        return 1 * 1024 * 1024 * 1024; // 1GB
+        return 5 * 1024 * 1024; // 5 MB
       case SubscriptionTier.basic:
-        return 5 * 1024 * 1024 * 1024; // 5GB
+        return 1 * 1024 * 1024 * 1024; // 1 GB
       case SubscriptionTier.standard:
-        return 50 * 1024 * 1024 * 1024; // 50GB
+        return 25 * 1024 * 1024 * 1024; // 25 GB
       case SubscriptionTier.premium:
-        return 200 * 1024 * 1024 * 1024; // 200GB
+        return 100 * 1024 * 1024 * 1024; // 100 GB
     }
   }
 
@@ -41,13 +43,13 @@ extension SubscriptionTierExtension on SubscriptionTier {
   String get storageLimitFormatted {
     switch (this) {
       case SubscriptionTier.free:
-        return '1 GB';
+        return '5 MB';
       case SubscriptionTier.basic:
-        return '5 GB';
+        return '1 GB';
       case SubscriptionTier.standard:
-        return '50 GB';
+        return '25 GB';
       case SubscriptionTier.premium:
-        return '200 GB';
+        return '100 GB';
     }
   }
 
@@ -57,11 +59,11 @@ extension SubscriptionTierExtension on SubscriptionTier {
       case SubscriptionTier.free:
         return 0.0;
       case SubscriptionTier.basic:
-        return 1.99;
+        return 2.99;
       case SubscriptionTier.standard:
-        return 4.99;
+        return 5.99;
       case SubscriptionTier.premium:
-        return 9.99;
+        return 11.99;
     }
   }
 
@@ -71,12 +73,64 @@ extension SubscriptionTierExtension on SubscriptionTier {
       case SubscriptionTier.free:
         return 'Free';
       case SubscriptionTier.basic:
-        return 'Basic';
+        return 'TypeSync Lite';
       case SubscriptionTier.standard:
-        return 'Standard';
+        return 'Plus';
       case SubscriptionTier.premium:
-        return 'Premium';
+        return 'Pro';
     }
+  }
+
+  /// Stable plan id used by RevenueCat and backend entitlement documents.
+  String get planId {
+    switch (this) {
+      case SubscriptionTier.free:
+        return 'free';
+      case SubscriptionTier.basic:
+        return 'TypeSync Lite';
+      case SubscriptionTier.standard:
+        return 'plus';
+      case SubscriptionTier.premium:
+        return 'pro';
+    }
+  }
+
+  /// RevenueCat entitlement id for paid plans.
+  String? get revenueCatEntitlementId =>
+      this == SubscriptionTier.free ? null : planId;
+
+  /// RevenueCat monthly product id for paid plans.
+  String? get revenueCatProductId {
+    switch (this) {
+      case SubscriptionTier.free:
+        return null;
+      case SubscriptionTier.basic:
+        return 'monthly';
+      case SubscriptionTier.standard:
+        return 'typesync_plus_monthly';
+      case SubscriptionTier.premium:
+        return 'typesync_pro_monthly';
+    }
+  }
+}
+
+/// Looks up a subscription tier from a stable plan id.
+SubscriptionTier subscriptionTierFromPlanId(
+  String? planId, {
+  SubscriptionTier fallback = SubscriptionTier.free,
+}) {
+  switch (planId) {
+    case 'free':
+      return SubscriptionTier.free;
+    case 'TypeSync Lite':
+    case 'light':
+      return SubscriptionTier.basic;
+    case 'plus':
+      return SubscriptionTier.standard;
+    case 'pro':
+      return SubscriptionTier.premium;
+    default:
+      return fallback;
   }
 }
 
@@ -189,6 +243,7 @@ class User extends Equatable {
       'displayName': displayName,
       'photoUrl': photoUrl,
       'subscriptionTier': subscriptionTier.index,
+      'planId': subscriptionTier.planId,
       'storageUsedBytes': storageUsedBytes,
       'createdAt': createdAt.toIso8601String(),
       'lastSignIn': lastSignIn?.toIso8601String(),
@@ -199,13 +254,22 @@ class User extends Equatable {
 
   /// Creates from JSON (Firebase)
   factory User.fromJson(Map<String, dynamic> json) {
+    final tierIndex = json['subscriptionTier'] as int?;
+    final legacyTier = tierIndex == null ||
+            tierIndex < 0 ||
+            tierIndex >= SubscriptionTier.values.length
+        ? SubscriptionTier.free
+        : SubscriptionTier.values[tierIndex];
+
     return User(
       id: json['id'] as String,
       email: json['email'] as String,
       displayName: json['displayName'] as String?,
       photoUrl: json['photoUrl'] as String?,
-      subscriptionTier:
-          SubscriptionTier.values[json['subscriptionTier'] as int? ?? 0],
+      subscriptionTier: subscriptionTierFromPlanId(
+        json['planId'] as String?,
+        fallback: legacyTier,
+      ),
       storageUsedBytes: json['storageUsedBytes'] as int? ?? 0,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastSignIn: json['lastSignIn'] != null

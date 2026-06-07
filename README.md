@@ -17,10 +17,8 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
 - ☁️ **Cloud Sync** - Real-time synchronization via Firebase
 - 📴 **Offline First** - Works offline with background sync when connected
 - 💾 **Storage Tiers**:
-  - Free: 1 GB
-  - Basic: 5 GB (€1.99/month)
-  - Standard: 50 GB (€4.99/month)
-  - Premium: 200 GB (€9.99/month)
+  - Free: unlimited local notes with a small 5 MB cloud trial
+  - TypeSync Lite: 1 GB (€2.99/month)
 
 ### Productivity
 - 📅 **Calendar** - Test reminders and event scheduling
@@ -175,6 +173,24 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    - Deploy Functions after configuration:
    ```bash
    firebase deploy --only functions
+   ```
+
+7. **Configure subscriptions with RevenueCat**:
+   - Create a monthly product/package named `monthly`
+   - Create an entitlement named `TypeSync Lite`
+   - Use the `default` offering
+   - The default web SDK key is scaffolded for testing, or override it with:
+   ```bash
+   flutter build web --dart-define=REVENUECAT_WEB_API_KEY=public_web_key
+   ```
+   - For native builds, pass platform SDK keys when they are available:
+   ```bash
+   flutter build apk --dart-define=REVENUECAT_ANDROID_API_KEY=public_android_key
+   flutter build ios --dart-define=REVENUECAT_APPLE_API_KEY=public_apple_key
+   ```
+   - Store the RevenueCat webhook token before deploying Functions:
+   ```bash
+   firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH_TOKEN
    ```
 
 ## Building for Release

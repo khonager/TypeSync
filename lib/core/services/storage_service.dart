@@ -134,37 +134,23 @@ class StorageService extends ChangeNotifier {
         const SubscriptionInfo(
           tier: SubscriptionTier.free,
           name: 'Free',
-          storage: '1 GB',
+          storage: '5 MB',
           priceEuros: 0,
-          features: ['Basic sync', '1 GB storage', 'All core features'],
-        ),
-        const SubscriptionInfo(
-          tier: SubscriptionTier.basic,
-          name: 'Basic',
-          storage: '5 GB',
-          priceEuros: 1.99,
-          features: ['Everything in Free', '5 GB storage', 'Priority sync'],
-        ),
-        const SubscriptionInfo(
-          tier: SubscriptionTier.standard,
-          name: 'Standard',
-          storage: '50 GB',
-          priceEuros: 4.99,
           features: [
-            'Everything in Basic',
-            '50 GB storage',
-            'Advanced features',
+            'Unlimited local notes',
+            'Small cloud trial',
+            'Core productivity tools',
           ],
         ),
         const SubscriptionInfo(
-          tier: SubscriptionTier.premium,
-          name: 'Premium',
-          storage: '200 GB',
-          priceEuros: 9.99,
+          tier: SubscriptionTier.basic,
+          name: 'TypeSync Lite',
+          storage: '1 GB',
+          priceEuros: 2.99,
           features: [
-            'Everything in Standard',
-            '200 GB storage',
-            'Priority support',
+            'Unlimited synced notes',
+            '1 GB cloud storage',
+            'Cloud attachments',
           ],
         ),
       ];
@@ -203,8 +189,8 @@ class StorageService extends ChangeNotifier {
             final userDoc =
                 await fdFirestore.collection('users').document(userId).get();
             if (userDoc.map.isNotEmpty) {
-              _currentTier = _subscriptionTierFromDynamic(
-                userDoc.map['subscriptionTier'],
+              _currentTier = _subscriptionTierFromUserData(
+                userDoc.map,
                 fallback: _currentTier,
               );
               recordedBytes = _intFromDynamic(
@@ -249,8 +235,8 @@ class StorageService extends ChangeNotifier {
               await _firebaseFirestore.collection('users').doc(userId).get();
           if (userDoc.exists) {
             final data = userDoc.data()!;
-            _currentTier = _subscriptionTierFromDynamic(
-              data['subscriptionTier'],
+            _currentTier = _subscriptionTierFromUserData(
+              data,
               fallback: _currentTier,
             );
             recordedBytes = _intFromDynamic(
@@ -612,48 +598,16 @@ class StorageService extends ChangeNotifier {
 
   /// Upgrade subscription tier
   ///
-  /// Note: In production, this would integrate with a payment provider
-  /// like Stripe or Google Play Billing.
+  /// Legacy prototype method. Paid entitlements are now granted only through
+  /// RevenueCat webhooks, never by direct client writes.
   Future<bool> upgradeSubscription(
     String userId,
     SubscriptionTier newTier,
   ) async {
-    _isLoading = true;
+    _errorMessage =
+        'Plan changes are handled by RevenueCat checkout and webhooks.';
     notifyListeners();
-
-    try {
-      // TODO: Integrate with payment provider
-      // For now, just update the tier in Firestore
-
-      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-        final fdFirestore = _firedartFirestore;
-        if (fdFirestore != null) {
-          await fdFirestore.collection('users').document(userId).update({
-            'subscriptionTier': newTier.index,
-            'subscriptionExpiresAt':
-                DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-          });
-        }
-      } else {
-        await _firebaseFirestore.collection('users').doc(userId).update({
-          'subscriptionTier': newTier.index,
-          'subscriptionExpiresAt':
-              DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-        });
-      }
-
-      _currentTier = newTier;
-      _errorMessage = null;
-      _isLoading = false;
-      notifyListeners();
-
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to upgrade subscription';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
+    return false;
   }
 
   /// Calculate total storage used by recalculating from Firestore note sizes
@@ -874,6 +828,20 @@ class StorageService extends ChangeNotifier {
       return fallback;
     }
     return SubscriptionTier.values[tierIndex];
+  }
+
+  SubscriptionTier _subscriptionTierFromUserData(
+    Map<dynamic, dynamic> data, {
+    SubscriptionTier fallback = SubscriptionTier.free,
+  }) {
+    final planId = data['planId'];
+    if (planId is String && planId.isNotEmpty) {
+      return subscriptionTierFromPlanId(planId, fallback: fallback);
+    }
+    return _subscriptionTierFromDynamic(
+      data['subscriptionTier'],
+      fallback: fallback,
+    );
   }
 
   bool get _shouldUseLinuxStorageRest =>
@@ -1253,6 +1221,7 @@ class SubscriptionInfo {
   final String storage;
   final double priceEuros;
   final List<String> features;
+  final bool isRecommended;
 
   const SubscriptionInfo({
     required this.tier,
@@ -1260,6 +1229,7 @@ class SubscriptionInfo {
     required this.storage,
     required this.priceEuros,
     required this.features,
+    this.isRecommended = false,
   });
 
   String get priceFormatted =>

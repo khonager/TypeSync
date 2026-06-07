@@ -134,6 +134,7 @@
               pkgs.lib.makeLibraryPath [
                 pkgs.vulkan-loader
                 pkgs.libGL
+                pkgs.stdenv.cc.cc.lib
                 pkgs.xorg.libX11
                 pkgs.xorg.libXcursor
                 pkgs.xorg.libXi
