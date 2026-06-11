@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -36,6 +37,7 @@ import '../../../core/services/diagnostics_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/sync_service.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/color_utils.dart';
@@ -101,6 +103,10 @@ class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
   static const String _caretOffsetPreferencePrefix = 'typesync_editor_caret_';
+  static const String _checklistCreatedAtAttributeKey =
+      'typesync-checklist-created-at';
+  static const String _checklistCheckedAtAttributeKey =
+      'typesync-checklist-checked-at';
   static const String _toolbarPlacementPreferenceKey =
       'typesync_editor_toolbar_placement_v1';
   static const String _toolbarOffsetXPreferenceKey =
@@ -152,6 +158,7 @@ class _EditorScreenState extends State<EditorScreen>
   // Drag and drop state
   bool _isDragging = false;
   bool _isUpdatingFromExternal = false;
+  bool _isApplyingChecklistMetadata = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
   bool _hasStartedCloudMigration = false;
@@ -327,10 +334,241 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _onContentChanged() {
     if (_isUpdatingFromExternal) return;
+    _ensureChecklistMetadata();
     _updateStats();
     _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
+  }
+
+  void _ensureChecklistMetadata() {
+    if (_isApplyingChecklistMetadata) return;
+
+    final updates = <({int offset, Attribute<String?> attribute})>[];
+    final operations = _quillController.document.toDelta().toJson();
+    var documentOffset = 0;
+    var lineStartOffset = 0;
+
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      final attributes = operation['attributes'] is Map
+          ? Map<String, dynamic>.from(operation['attributes'] as Map)
+          : const <String, dynamic>{};
+
+      if (insert is String) {
+        for (final rune in insert.runes) {
+          final character = String.fromCharCode(rune);
+          if (character == '\n') {
+            final listType = attributes[Attribute.list.key];
+            final isChecklist = listType == Attribute.checked.value ||
+                listType == Attribute.unchecked.value;
+
+            if (isChecklist) {
+              final createdAt =
+                  attributes[_checklistCreatedAtAttributeKey] as String?;
+              final checkedAt =
+                  attributes[_checklistCheckedAtAttributeKey] as String?;
+              final isChecked = listType == Attribute.checked.value;
+              final now = DateTime.now().toIso8601String();
+
+              if (createdAt == null || createdAt.isEmpty) {
+                updates.add(
+                  (
+                    offset: lineStartOffset,
+                    attribute: _checklistMetadataAttribute(
+                      _checklistCreatedAtAttributeKey,
+                      now,
+                    ),
+                  ),
+                );
+              }
+
+              if (isChecked && (checkedAt == null || checkedAt.isEmpty)) {
+                updates.add(
+                  (
+                    offset: lineStartOffset,
+                    attribute: _checklistMetadataAttribute(
+                      _checklistCheckedAtAttributeKey,
+                      now,
+                    ),
+                  ),
+                );
+              } else if (!isChecked &&
+                  checkedAt != null &&
+                  checkedAt.isNotEmpty) {
+                updates.add(
+                  (
+                    offset: lineStartOffset,
+                    attribute: _checklistMetadataAttribute(
+                      _checklistCheckedAtAttributeKey,
+                      null,
+                    ),
+                  ),
+                );
+              }
+            }
+
+            lineStartOffset = documentOffset + 1;
+          }
+
+          documentOffset++;
+        }
+        continue;
+      }
+
+      documentOffset++;
+    }
+
+    if (updates.isEmpty) return;
+
+    final selection = _quillController.selection;
+    _isApplyingChecklistMetadata = true;
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      for (final update in updates) {
+        _quillController.formatText(update.offset, 0, update.attribute);
+      }
+      if (selection.isValid) {
+        _quillController.updateSelection(selection, ChangeSource.local);
+      }
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+      _isApplyingChecklistMetadata = false;
+    }
+  }
+
+  Attribute<String?> _checklistMetadataAttribute(String key, String? value) {
+    return Attribute<String?>(key, AttributeScope.block, value);
+  }
+
+  DateTime? _parseChecklistMetadataTimestamp(Object? rawValue) {
+    if (rawValue is! String || rawValue.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(rawValue)?.toLocal();
+  }
+
+  String _formatChecklistMetadataTimestamp(DateTime timestamp) {
+    return DateFormat.yMMMd().add_jm().format(timestamp);
+  }
+
+  String _buildChecklistTooltipMessage(Line line, bool isChecked) {
+    final attributes = line.style.attributes;
+    final createdAt = _parseChecklistMetadataTimestamp(
+      attributes[_checklistCreatedAtAttributeKey]?.value,
+    );
+    final checkedAt = isChecked
+        ? _parseChecklistMetadataTimestamp(
+            attributes[_checklistCheckedAtAttributeKey]?.value,
+          )
+        : null;
+
+    final lines = <String>[
+      if (createdAt != null)
+        'Created: ${_formatChecklistMetadataTimestamp(createdAt)}',
+      if (checkedAt != null)
+        'Checked: ${_formatChecklistMetadataTimestamp(checkedAt)}',
+    ];
+
+    if (lines.isEmpty) {
+      return 'Checklist item';
+    }
+
+    return lines.join('\n');
+  }
+
+  void _handleChecklistCheckboxTap(
+    int offset,
+    bool value,
+    ValueChanged<bool> onCheckboxTap,
+  ) {
+    onCheckboxTap(value);
+
+    final selection = _quillController.selection;
+    _isApplyingChecklistMetadata = true;
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      final lineNode = _quillController.document.queryChild(offset).node;
+      if (lineNode is! Line) return;
+
+      final createdAt = lineNode
+          .style.attributes[_checklistCreatedAtAttributeKey]?.value as String?;
+      if (createdAt == null || createdAt.isEmpty) {
+        _quillController.formatText(
+          offset,
+          0,
+          _checklistMetadataAttribute(
+            _checklistCreatedAtAttributeKey,
+            DateTime.now().toIso8601String(),
+          ),
+        );
+      }
+
+      _quillController.formatText(
+        offset,
+        0,
+        _checklistMetadataAttribute(
+          _checklistCheckedAtAttributeKey,
+          value ? DateTime.now().toIso8601String() : null,
+        ),
+      );
+
+      if (selection.isValid) {
+        _quillController.updateSelection(selection, ChangeSource.local);
+      }
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+      _isApplyingChecklistMetadata = false;
+    }
+  }
+
+  Widget? _buildChecklistHoverLeading(Node node, LeadingConfigurations config) {
+    final isChecklist = config.attribute == Attribute.checked ||
+        config.attribute == Attribute.unchecked;
+    if (!isChecklist || node is! Line || config.lineSize == null) {
+      return null;
+    }
+
+    return Tooltip(
+      message: _buildChecklistTooltipMessage(node, config.value),
+      waitDuration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppTheme.darkTertiary,
+        ),
+      ),
+      textStyle: const TextStyle(
+        color: AppTheme.darkTextPrimary,
+        fontSize: 14,
+        height: 1.35,
+      ),
+      child: QuillEditorCheckboxPoint(
+        size: config.lineSize!,
+        value: config.value,
+        enabled: config.enabled ?? false,
+        uiBuilder: config.uiBuilder,
+        onChanged: (value) {
+          _handleChecklistCheckboxTap(
+            node.documentOffset,
+            value,
+            config.onCheckboxTap,
+          );
+        },
+      ),
+    );
   }
 
   void _handleSearchQueryChanged() {
@@ -561,7 +799,9 @@ class _EditorScreenState extends State<EditorScreen>
     for (final entry in attributes.entries) {
       final attribute = Attribute.fromKeyValue(entry.key, entry.value);
       if (attribute?.scope == AttributeScope.block ||
-          attribute?.scope == AttributeScope.ignore) {
+          attribute?.scope == AttributeScope.ignore ||
+          entry.key == _checklistCreatedAtAttributeKey ||
+          entry.key == _checklistCheckedAtAttributeKey) {
         lineAttributes[entry.key] = entry.value;
       }
     }
@@ -1806,6 +2046,7 @@ class _EditorScreenState extends State<EditorScreen>
                   TypeSyncTableEmbedBuilder(),
                   MarkdownTableEmbedBuilder(),
                 ],
+                customLeadingBlockBuilder: _buildChecklistHoverLeading,
               ),
             ),
           ),
