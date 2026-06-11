@@ -816,12 +816,12 @@ class NotesProvider extends ChangeNotifier {
   }
 
   /// Move note to a folder
-  Future<void> moveToFolder(String noteId, String? folderId) async {
+  Future<bool> moveToFolder(String noteId, String? folderId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
-    if (index < 0) return;
+    if (index < 0) return false;
 
     final note = _notes[index];
-    await updateNote(note.copyWith(folderId: folderId));
+    return updateNote(note.copyWith(folderId: folderId));
   }
 
   /// Add tag to note

@@ -2607,25 +2607,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleNoteDroppedOnFolder(String noteId, String folderId) {
-    context.read<NotesProvider>().moveToFolder(noteId, folderId);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Note moved to folder')),
-      );
+    _moveNoteWithUndo(noteId, folderId);
+  }
+
+  Future<void> _moveNoteWithUndo(String noteId, String folderId) async {
+    final notesProvider = context.read<NotesProvider>();
+    final note = notesProvider.getNoteById(noteId);
+    if (note == null || note.folderId == folderId) {
+      return;
     }
+
+    final previousFolderId = note.folderId;
+    final moved = await notesProvider.moveToFolder(noteId, folderId);
+    if (!mounted || !moved) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final undoColor = Theme.of(context).colorScheme.primary;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('File moved'),
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: undoColor,
+            onPressed: () {
+              notesProvider.moveToFolder(noteId, previousFolderId);
+            },
+          ),
+        ),
+      );
   }
 
   void _handleFolderDroppedOnFolder(String folderId, String? newParentId) {
-    context.read<FoldersProvider>().moveFolder(folderId, newParentId);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    _moveFolderWithUndo(folderId, newParentId);
+  }
+
+  Future<void> _moveFolderWithUndo(
+    String folderId,
+    String? newParentId,
+  ) async {
+    final foldersProvider = context.read<FoldersProvider>();
+    final folder = foldersProvider.getFolderById(folderId);
+    if (folder == null || folder.parentId == newParentId) {
+      return;
+    }
+
+    final previousParentId = folder.parentId;
+    final moved = await foldersProvider.moveFolder(folderId, newParentId);
+    if (!mounted || !moved) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final undoColor = Theme.of(context).colorScheme.primary;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
         SnackBar(
           content: Text(
             newParentId == null ? 'Folder moved to root' : 'Folder moved',
           ),
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: undoColor,
+            onPressed: () {
+              foldersProvider.moveFolder(folderId, previousParentId);
+            },
+          ),
         ),
       );
-    }
   }
 
   bool _isRemoteFilePath(String path) =>
