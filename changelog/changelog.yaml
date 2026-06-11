@@ -1,5 +1,28 @@
 schema_version: 2
 releases:
+  - version: 1.1.18
+    date: 2026-06-11
+    title: Offline Workflows + Smarter Editing
+    important:
+      - TypeSync now has a fuller offline workflow with more robust note conflict handling, restored live updates, and substantially fewer unnecessary sync network requests.
+    new_features:
+      - Added offline mode support for working without connectivity.
+      - Added side-by-side note editing, including split-view polish, a custom desktop window flow, and shortcut help in Settings.
+      - Added smart editor search plus search-and-replace for note editing.
+      - Added subscription and billing groundwork, including RevenueCat link handling and cloud storage deletion support.
+      - Added richer editing interactions such as strikethrough, checklist keyboard shortcuts, improved checklist behavior, and better checked-item hover details.
+      - Added drag-and-drop folder move breadcrumbs and an undo action for file or folder moves.
+      - Added timetable and calendar editing improvements, including todo rollover to the next day when unfinished.
+    fixes_improvements:
+      - Improved note update reliability with explicit conflict detection and resolution logic, plus diagnostic logging for sync and initialization flows.
+      - Improved side-by-side editing stability, fixed jumping note updates, and resolved Kanban text-entry issues.
+      - Reduced sync-related network traffic and re-enabled live note update sync behavior.
+      - Improved marker color selection, toolkit organization, and natural resizing with two-finger scrolling gestures.
+      - Fixed several Quill/editor regressions, Android build issues, Nix/Linux build problems, and analyzer cleanup.
+      - Disabled checkout flows on Linux where billing support is not available yet.
+    notes:
+      - These notes summarize the work shipped after `v1.1.17` (2026-04-11). Local-only commits such as `local prop`, formatting, and build-output helper commits were not called out individually.
+
   - version: 1.1.17
     date: 2026-04-11
     title: Apple Platform Hardening + Import Upgrades
