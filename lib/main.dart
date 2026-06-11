@@ -21,6 +21,7 @@ import 'core/services/sync_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/billing_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/editor_color_palette_service.dart';
 import 'core/services/theme_service.dart';
 import 'core/services/local_folder_sync_service.dart';
 import 'core/services/diagnostics_service.dart';
@@ -164,6 +165,9 @@ class TypeSyncApp extends StatelessWidget {
 
         // Storage service for managing cloud storage limits and subscriptions
         ChangeNotifierProvider(create: (_) => StorageService()),
+
+        // Editor color palettes for text and highlighter semantics
+        ChangeNotifierProvider(create: (_) => EditorColorPaletteService()),
 
         // Billing service for RevenueCat entitlement checks and purchases
         ChangeNotifierProvider(create: (_) => BillingService()),

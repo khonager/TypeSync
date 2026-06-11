@@ -17,6 +17,15 @@ void main() {
               onInsertPdf: () {},
               onInsertTable: () {},
               onInsertKanban: () {},
+              onToggleChecklist: () {
+                final hasChecklist = controller
+                    .getSelectionStyle()
+                    .attributes
+                    .containsKey(Attribute.list.key);
+                controller.formatSelection(
+                  hasChecklist ? Attribute.clone(Attribute.checked, null) : Attribute.checked,
+                );
+              },
               placement: EditorToolbarPlacement.top,
               onPlacementChanged: (_) {},
               initialPosition: Offset.zero,

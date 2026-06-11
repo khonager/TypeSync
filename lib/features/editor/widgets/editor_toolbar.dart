@@ -7,12 +7,17 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/services/editor_color_palette_service.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/color_utils.dart';
 
 enum EditorToolbarPlacement { floating, top, bottom, left, right }
 
 enum _ToolbarAnchorEdge { floating, top, bottom, left, right }
+
+enum _EditorColorPaletteType { text, marker }
 
 /// Rich text editing toolbar
 ///
@@ -757,77 +762,104 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   void _showColorPicker() {
-    final currentStyle = widget.controller.getSelectionStyle();
-    final colorAttr = currentStyle.attributes[Attribute.color.key];
-    final currentColor = colorAttr?.value as String?;
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Text Color'),
-        content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _ColorOption(
-              color: Colors.white,
-              onTap: () => _setTextColor(null, dialogContext),
-              isSelected: currentColor == null,
-              label: 'Default',
-            ),
-            ...AppColorPalette.textColors.map(
-              (colorOption) => _ColorOption(
-                color: colorOption.color,
-                onTap: () => _setTextColor(colorOption.hex, dialogContext),
-                isSelected: currentColor == colorOption.hex,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
+    _showPalettePicker(_EditorColorPaletteType.text);
   }
 
   void _showMarkerColorPicker() {
+    _showPalettePicker(_EditorColorPaletteType.marker);
+  }
+
+  void _showPalettePicker(_EditorColorPaletteType type) {
     final currentStyle = widget.controller.getSelectionStyle();
-    final bgAttr = currentStyle.attributes[Attribute.background.key];
-    final currentBgColor = bgAttr?.value as String?;
+    final currentColor = switch (type) {
+      _EditorColorPaletteType.text =>
+        currentStyle.attributes[Attribute.color.key]?.value as String?,
+      _EditorColorPaletteType.marker =>
+        currentStyle.attributes[Attribute.background.key]?.value as String?,
+    };
 
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Marker Color'),
-        content: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _ColorOption(
-              color: Colors.transparent,
-              onTap: () => _setMarkerColor(null, dialogContext),
-              isSelected: currentBgColor == null,
-              label: 'None',
+      builder: (dialogContext) => Consumer<EditorColorPaletteService>(
+        builder: (context, paletteService, _) {
+          final colors = type == _EditorColorPaletteType.text
+              ? paletteService.textColors
+              : paletteService.markerColors;
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    type == _EditorColorPaletteType.text
+                        ? 'Text Color'
+                        : 'Marker Color',
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Edit palette',
+                  onPressed: () => _openPaletteEditor(dialogContext, type),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+              ],
             ),
-            ...AppColorPalette.markerColors.map(
-              (colorOption) => _ColorOption(
-                color: colorOption.color,
-                onTap: () => _setMarkerColor(colorOption.hex, dialogContext),
-                isSelected: currentBgColor == colorOption.hex,
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _usageHintForPalette(type),
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _ColorOption(
+                          onTap: () => type == _EditorColorPaletteType.text
+                              ? _setTextColor(null, dialogContext)
+                              : _setMarkerColor(null, dialogContext),
+                          isSelected: currentColor == null,
+                          tooltip: type == _EditorColorPaletteType.text
+                              ? 'Default\nNormal text'
+                              : 'None\nRemove the highlight',
+                          paletteType: type,
+                          previewLabel: type == _EditorColorPaletteType.text
+                              ? 'Default'
+                              : 'None',
+                        ),
+                        ...colors.map(
+                          (colorOption) => _ColorOption(
+                            onTap: () => type == _EditorColorPaletteType.text
+                                ? _setTextColor(colorOption.hex, dialogContext)
+                                : _setMarkerColor(
+                                    colorOption.hex,
+                                    dialogContext,
+                                  ),
+                            isSelected: currentColor == colorOption.hex,
+                            tooltip: _buildColorTooltip(colorOption),
+                            paletteType: type,
+                            colorOption: colorOption,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -870,6 +902,47 @@ class _EditorToolbarState extends State<EditorToolbar> {
       return;
     }
     widget.controller.formatSelection(BackgroundAttribute(colorHex));
+  }
+
+  String _buildColorTooltip(ColorOption colorOption) {
+    if (colorOption.meaning == null || colorOption.meaning!.isEmpty) {
+      return colorOption.name;
+    }
+    return '${colorOption.name}\n${colorOption.meaning!}';
+  }
+
+  String _usageHintForPalette(_EditorColorPaletteType type) {
+    return type == _EditorColorPaletteType.text
+        ? 'Use text color for text you wrote yourself, even if someone else dictated it.'
+        : 'Use highlighters for text that was not written by you, like copied text from a book or website.';
+  }
+
+  Future<void> _openPaletteEditor(
+    BuildContext dialogContext,
+    _EditorColorPaletteType type,
+  ) async {
+    Navigator.pop(dialogContext);
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+
+    final paletteService = context.read<EditorColorPaletteService>();
+    final editedColors = await showDialog<List<ColorOption>>(
+      context: context,
+      builder: (context) => _PaletteEditorDialog(
+        paletteType: type,
+        initialColors: type == _EditorColorPaletteType.text
+            ? paletteService.textColors
+            : paletteService.markerColors,
+      ),
+    );
+
+    if (editedColors == null) return;
+
+    if (type == _EditorColorPaletteType.text) {
+      await paletteService.setTextColors(editedColors);
+    } else {
+      await paletteService.setMarkerColors(editedColors);
+    }
   }
 }
 
@@ -949,16 +1022,22 @@ class _ToolbarDivider extends StatelessWidget {
 
 /// Color option widget
 class _ColorOption extends StatelessWidget {
-  final Color color;
   final VoidCallback onTap;
   final bool isSelected;
-  final String? label;
+  final ColorOption? colorOption;
+  final String? previewLabel;
+  final String? tooltip;
+  final _EditorColorPaletteType paletteType;
+  final bool enabled;
 
   const _ColorOption({
-    required this.color,
     required this.onTap,
+    required this.paletteType,
     this.isSelected = false,
-    this.label,
+    this.colorOption,
+    this.previewLabel,
+    this.tooltip,
+    this.enabled = true,
   });
 
   @override
@@ -967,25 +1046,503 @@ class _ColorOption extends StatelessWidget {
         ? Theme.of(context).colorScheme.primary
         : Theme.of(context).dividerColor;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
-        ),
-        alignment: Alignment.center,
-        child: label == null
-            ? null
-            : Text(
-                label!,
-                style: Theme.of(context).textTheme.labelSmall,
-                textAlign: TextAlign.center,
+    final preview = Container(
+      width: 88,
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.darkTertiary,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
+      ),
+      child: _ColorPreview(
+        paletteType: paletteType,
+        colorOption: colorOption,
+        fallbackLabel: previewLabel,
+      ),
+    );
+
+    final option = enabled
+        ? InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: preview,
+          )
+        : preview;
+
+    if (!enabled || tooltip == null || tooltip!.isEmpty) {
+      return option;
+    }
+
+    return Tooltip(
+      message: tooltip!,
+      waitDuration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: AppTheme.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.darkTertiary),
+      ),
+      textStyle: const TextStyle(
+        color: AppTheme.darkTextPrimary,
+        fontSize: 14,
+        height: 1.35,
+      ),
+      child: option,
+    );
+  }
+}
+
+class _ColorPreview extends StatelessWidget {
+  final _EditorColorPaletteType paletteType;
+  final ColorOption? colorOption;
+  final String? fallbackLabel;
+
+  const _ColorPreview({
+    required this.paletteType,
+    this.colorOption,
+    this.fallbackLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = fallbackLabel ?? colorOption?.name ?? 'Color';
+    if (colorOption == null) {
+      return Center(
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppTheme.darkTextPrimary,
+                fontWeight: FontWeight.w600,
               ),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    if (paletteType == _EditorColorPaletteType.marker) {
+      final background = colorOption!.colorWithOpacity;
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            'Marked',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: colorOption!.isLight ? Colors.black87 : Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: Text(
+        colorOption!.name,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: colorOption!.color,
+              fontWeight: FontWeight.w700,
+            ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+class _PaletteEditorDialog extends StatefulWidget {
+  final _EditorColorPaletteType paletteType;
+  final List<ColorOption> initialColors;
+
+  const _PaletteEditorDialog({
+    required this.paletteType,
+    required this.initialColors,
+  });
+
+  @override
+  State<_PaletteEditorDialog> createState() => _PaletteEditorDialogState();
+}
+
+class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
+  late final List<ColorOption> _colors;
+
+  @override
+  void initState() {
+    super.initState();
+    _colors = widget.initialColors
+        .map((color) => color.copyWith())
+        .toList(growable: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.paletteType == _EditorColorPaletteType.text
+        ? 'Edit Text Colors'
+        : 'Edit Marker Colors';
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: SizedBox(
+        width: 760,
+        height: 640,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+                  IconButton(
+                    onPressed: _addColor,
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _colors.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No colors yet. Add one to start.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _colors.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final color = _colors[index];
+                          return Container(
+                            key: ValueKey(color.id),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.darkTertiary.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppTheme.darkTertiary,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _ColorOption(
+                                  onTap: () {},
+                                  paletteType: widget.paletteType,
+                                  colorOption: color,
+                                  tooltip: null,
+                                  enabled: false,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        color.name,
+                                        style: Theme.of(context).textTheme.titleSmall,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        color.hex,
+                                        style: Theme.of(context).textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AppTheme.darkTextSecondary,
+                                            ),
+                                      ),
+                                      if ((color.meaning ?? '').trim().isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          color.meaning!,
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed:
+                                          index == 0 ? null : () => _move(index, -1),
+                                      icon: const Icon(Icons.keyboard_arrow_up),
+                                    ),
+                                    IconButton(
+                                      onPressed: index == _colors.length - 1
+                                          ? null
+                                          : () => _move(index, 1),
+                                      icon: const Icon(Icons.keyboard_arrow_down),
+                                    ),
+                                  ],
+                                ),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed: () => _editColor(index),
+                                      icon: const Icon(Icons.edit_outlined),
+                                    ),
+                                    IconButton(
+                                      onPressed: () => _deleteColor(index),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, _colors),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addColor() async {
+    final color = await showDialog<ColorOption>(
+      context: context,
+      builder: (context) => _PaletteEntryEditorDialog(
+        paletteType: widget.paletteType,
+      ),
+    );
+    if (color == null) return;
+    setState(() {
+      _colors.add(color);
+    });
+  }
+
+  Future<void> _editColor(int index) async {
+    final updated = await showDialog<ColorOption>(
+      context: context,
+      builder: (context) => _PaletteEntryEditorDialog(
+        paletteType: widget.paletteType,
+        initialColor: _colors[index],
+      ),
+    );
+    if (updated == null) return;
+    setState(() {
+      _colors[index] = updated;
+    });
+  }
+
+  void _deleteColor(int index) {
+    setState(() {
+      _colors.removeAt(index);
+    });
+  }
+
+  void _move(int index, int direction) {
+    final targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= _colors.length) return;
+    setState(() {
+      final color = _colors.removeAt(index);
+      _colors.insert(targetIndex, color);
+    });
+  }
+}
+
+class _PaletteEntryEditorDialog extends StatefulWidget {
+  final _EditorColorPaletteType paletteType;
+  final ColorOption? initialColor;
+
+  const _PaletteEntryEditorDialog({
+    required this.paletteType,
+    this.initialColor,
+  });
+
+  @override
+  State<_PaletteEntryEditorDialog> createState() =>
+      _PaletteEntryEditorDialogState();
+}
+
+class _PaletteEntryEditorDialogState extends State<_PaletteEntryEditorDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _meaningController;
+  late final TextEditingController _hexController;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.initialColor?.name ?? '',
+    );
+    _meaningController = TextEditingController(
+      text: widget.initialColor?.meaning ?? '',
+    );
+    _hexController = TextEditingController(
+      text: widget.initialColor?.hex ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _meaningController.dispose();
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final previewColor = _tryParsePreviewColor(_hexController.text);
+    final previewOption = previewColor == null
+        ? null
+        : ColorOption(
+            id: widget.initialColor?.id ?? 'preview',
+            name: _nameController.text.isEmpty ? 'Preview' : _nameController.text,
+            color: previewColor,
+            hex: AppColorPalette.normalizeHex(_hexController.text),
+            isLight: AppColorPalette.isLightColorHex(_hexController.text),
+            opacity: widget.initialColor?.opacity ??
+                (widget.paletteType == _EditorColorPaletteType.marker
+                    ? 0.45
+                    : null),
+            meaning: _meaningController.text,
+          );
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: SizedBox(
+        width: 420,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.initialColor == null ? 'Add Color' : 'Edit Color',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                _ColorOption(
+                  onTap: () {},
+                  paletteType: widget.paletteType,
+                  colorOption: previewOption,
+                  previewLabel: previewOption == null ? 'Preview' : null,
+                  tooltip: null,
+                  enabled: false,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _meaningController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: 'Meaning'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _hexController,
+                  decoration: const InputDecoration(
+                    labelText: 'Hex color',
+                    hintText: '#64D2FF',
+                  ),
+                  onChanged: (_) => setState(() {
+                    _error = null;
+                  }),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _error!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: _save,
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color? _tryParsePreviewColor(String value) {
+    try {
+      return AppColorPalette.parseHexColor(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    final meaning = _meaningController.text.trim();
+    final hexInput = _hexController.text.trim();
+
+    if (name.isEmpty) {
+      setState(() {
+        _error = 'Please enter a name.';
+      });
+      return;
+    }
+
+    String normalizedHex;
+    try {
+      normalizedHex = AppColorPalette.normalizeHex(hexInput);
+    } catch (_) {
+      setState(() {
+        _error = 'Please enter a valid hex color like #64D2FF.';
+      });
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      ColorOption(
+        id: widget.initialColor?.id ??
+            'custom-${DateTime.now().microsecondsSinceEpoch}',
+        name: name,
+        color: AppColorPalette.parseHexColor(normalizedHex),
+        hex: normalizedHex,
+        isLight: AppColorPalette.isLightColorHex(normalizedHex),
+        opacity: widget.initialColor?.opacity ??
+            (widget.paletteType == _EditorColorPaletteType.marker ? 0.45 : null),
+        meaning: meaning.isEmpty ? null : meaning,
       ),
     );
   }
