@@ -85,7 +85,8 @@ class EditorColorPaletteService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final encoded = jsonEncode(
-          colors.map((color) => color.toMap()).toList(growable: false));
+        colors.map((color) => color.toMap()).toList(growable: false),
+      );
       await prefs.setString(key, encoded);
     } catch (error) {
       debugPrint('Failed to save editor color palettes: $error');
