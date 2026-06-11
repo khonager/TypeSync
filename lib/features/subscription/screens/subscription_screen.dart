@@ -173,19 +173,24 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           const SizedBox(height: 20),
           ...plans.map((plan) {
             final isCurrentPlan = plan.tier == storageService.currentTier;
+            final isPurchaseAvailable = plan.tier == SubscriptionTier.free ||
+                isCurrentPlan ||
+                billingService.canStartPurchase;
             return _PlanCard(
               plan: plan,
               isCurrentPlan: isCurrentPlan,
               isSignedIn: authService.isLoggedIn,
               isBusy: storageService.isLoading || billingService.isLoading,
-              onSelect: plan.tier == SubscriptionTier.free || isCurrentPlan
-                  ? null
-                  : () => _purchase(plan),
+              isPurchaseAvailable: isPurchaseAvailable,
+              onSelect: !isPurchaseAvailable ? null : () => _purchase(plan),
             );
           }),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: billingService.isLoading ? null : _restorePurchases,
+            onPressed:
+                billingService.isLoading || !billingService.canStartPurchase
+                    ? null
+                    : _restorePurchases,
             icon: const Icon(Icons.restore),
             label: const Text('Restore Purchases'),
           ),
@@ -326,6 +331,7 @@ class _PlanCard extends StatelessWidget {
   final bool isCurrentPlan;
   final bool isSignedIn;
   final bool isBusy;
+  final bool isPurchaseAvailable;
   final VoidCallback? onSelect;
 
   const _PlanCard({
@@ -333,6 +339,7 @@ class _PlanCard extends StatelessWidget {
     required this.isCurrentPlan,
     required this.isSignedIn,
     required this.isBusy,
+    required this.isPurchaseAvailable,
     this.onSelect,
   });
 
@@ -427,6 +434,7 @@ class _PlanCard extends StatelessWidget {
     if (!isSignedIn) return 'Sign in required';
     if (isCurrentPlan) return 'Current Plan';
     if (plan.tier == SubscriptionTier.free) return 'Included';
+    if (!isPurchaseAvailable) return 'Checkout unavailable';
     return 'Choose ${plan.name}';
   }
 }
