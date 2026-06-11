@@ -59,6 +59,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const String _rootBreadcrumbDragKey = '__typesync_root_breadcrumb__';
+  static const Duration _breadcrumbHoverNavigationDelay = Duration(
+    milliseconds: 850,
+  );
   static const List<String> _inSearchSuggestions = [
     'in:text',
     'in:title',
@@ -100,6 +104,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final GlobalKey _scrollViewKey = GlobalKey();
   Timer? _autoScrollTimer;
   double _autoScrollDelta = 0;
+  Timer? _breadcrumbNavigationTimer;
+  String? _breadcrumbHoveredTargetKey;
+  String? _breadcrumbPendingNavigationKey;
 
   Timer? _repairAuditTimer;
   String? _lastRepairPromptSignature;
@@ -741,6 +748,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _authService?.removeListener(_handleAuthStateChanged);
     _repairAuditTimer?.cancel();
     _autoScrollTimer?.cancel();
+    _breadcrumbNavigationTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _scrollController.dispose();
@@ -790,6 +798,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleGridDragStarted() {
     _updateAutoScroll(0);
+    _clearBreadcrumbDragState();
   }
 
   void _handleGridDragPositionChanged(Offset globalPosition) {
@@ -824,6 +833,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleGridDragEnded() {
     _updateAutoScroll(0);
+    _clearBreadcrumbDragState();
   }
 
   Map<String, FolderVisualStats> _buildFolderStats({
@@ -980,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
 
                 // Breadcrumb navigation
-                if (_currentFolderId != null && !isSearchActive)
+                if (!isSearchActive)
                   SliverToBoxAdapter(
                     child: _buildBreadcrumb(foldersProvider),
                   ),
@@ -1408,34 +1418,191 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            GestureDetector(
-              onTap: () => _navigateToFolder(null),
-              child: const Text(
-                'Home',
-                style: TextStyle(color: Colors.grey),
-              ),
+            _buildBreadcrumbTarget(
+              label: 'Home',
+              folderId: null,
+              isCurrent: _currentFolderId == null,
             ),
             for (final folder in path) ...[
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
                 child: Icon(Icons.chevron_right, size: 16, color: Colors.grey),
               ),
-              GestureDetector(
-                onTap: () => _navigateToFolder(folder.id),
-                child: Text(
-                  folder.name,
-                  style: TextStyle(
-                    color: folder.id == _currentFolderId
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey,
-                  ),
-                ),
+              _buildBreadcrumbTarget(
+                label: folder.name,
+                folderId: folder.id,
+                isCurrent: folder.id == _currentFolderId,
               ),
             ],
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildBreadcrumbTarget({
+    required String label,
+    required String? folderId,
+    required bool isCurrent,
+  }) {
+    final targetKey = _breadcrumbTargetKey(folderId);
+    final isHovered = _breadcrumbHoveredTargetKey == targetKey;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) =>
+          _canDropOnBreadcrumb(details.data, folderId),
+      onMove: (details) {
+        if (!_canDropOnBreadcrumb(details.data, folderId)) {
+          return;
+        }
+        _setBreadcrumbHoverTarget(folderId);
+        _scheduleBreadcrumbNavigation(folderId);
+      },
+      onLeave: (_) => _clearBreadcrumbDragState(targetFolderId: folderId),
+      onAcceptWithDetails: (details) {
+        _clearBreadcrumbDragState(targetFolderId: folderId);
+        _handleBreadcrumbDrop(details.data, folderId);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isActive = isHovered || candidateData.isNotEmpty;
+        final foregroundColor =
+            isActive || isCurrent ? colorScheme.primary : Colors.grey;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _navigateToFolder(folderId),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? colorScheme.primary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: isActive
+                    ? Border.all(
+                        color: colorScheme.primary.withValues(alpha: 0.35),
+                      )
+                    : null,
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: foregroundColor,
+                  fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _breadcrumbTargetKey(String? folderId) =>
+      folderId ?? _rootBreadcrumbDragKey;
+
+  bool _canDropOnBreadcrumb(String data, String? folderId) {
+    if (data.startsWith('note:')) {
+      final noteId = data.substring(5);
+      final note = context.read<NotesProvider>().getNoteById(noteId);
+      return note != null && note.folderId != folderId;
+    }
+
+    if (data.startsWith('folder:')) {
+      final draggedFolderId = data.substring(7);
+      final draggedFolder =
+          context.read<FoldersProvider>().getFolderById(draggedFolderId);
+      return draggedFolder != null &&
+          draggedFolder.id != folderId &&
+          draggedFolder.parentId != folderId;
+    }
+
+    return false;
+  }
+
+  void _setBreadcrumbHoverTarget(String? folderId) {
+    final targetKey = _breadcrumbTargetKey(folderId);
+    if (_breadcrumbHoveredTargetKey == targetKey) {
+      return;
+    }
+
+    setState(() {
+      _breadcrumbHoveredTargetKey = targetKey;
+    });
+  }
+
+  void _scheduleBreadcrumbNavigation(String? folderId) {
+    final targetKey = _breadcrumbTargetKey(folderId);
+    if (_breadcrumbPendingNavigationKey == targetKey ||
+        _currentFolderId == folderId) {
+      return;
+    }
+
+    _breadcrumbNavigationTimer?.cancel();
+    _breadcrumbPendingNavigationKey = targetKey;
+    _breadcrumbNavigationTimer = Timer(_breadcrumbHoverNavigationDelay, () {
+      if (!mounted || _breadcrumbPendingNavigationKey != targetKey) {
+        return;
+      }
+      _navigateToFolder(folderId);
+    });
+  }
+
+  void _clearBreadcrumbDragState({String? targetFolderId}) {
+    final targetKey =
+        targetFolderId == null ? null : _breadcrumbTargetKey(targetFolderId);
+
+    if (targetKey == null) {
+      _breadcrumbNavigationTimer?.cancel();
+      _breadcrumbNavigationTimer = null;
+      if (_breadcrumbHoveredTargetKey == null &&
+          _breadcrumbPendingNavigationKey == null) {
+        return;
+      }
+      setState(() {
+        _breadcrumbHoveredTargetKey = null;
+        _breadcrumbPendingNavigationKey = null;
+      });
+      return;
+    }
+
+    var shouldUpdate = false;
+    if (_breadcrumbHoveredTargetKey == targetKey) {
+      shouldUpdate = true;
+    }
+    if (_breadcrumbPendingNavigationKey == targetKey) {
+      _breadcrumbNavigationTimer?.cancel();
+      _breadcrumbNavigationTimer = null;
+      shouldUpdate = true;
+    }
+
+    if (!shouldUpdate) {
+      return;
+    }
+
+    setState(() {
+      if (_breadcrumbHoveredTargetKey == targetKey) {
+        _breadcrumbHoveredTargetKey = null;
+      }
+      if (_breadcrumbPendingNavigationKey == targetKey) {
+        _breadcrumbPendingNavigationKey = null;
+      }
+    });
+  }
+
+  void _handleBreadcrumbDrop(String data, String? folderId) {
+    if (data.startsWith('note:')) {
+      _moveNoteWithUndo(data.substring(5), folderId);
+      return;
+    }
+
+    if (data.startsWith('folder:')) {
+      _moveFolderWithUndo(data.substring(7), folderId);
+    }
   }
 
   void _navigateToFolder(String? folderId) {
@@ -2610,7 +2777,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _moveNoteWithUndo(noteId, folderId);
   }
 
-  Future<void> _moveNoteWithUndo(String noteId, String folderId) async {
+  Future<void> _moveNoteWithUndo(String noteId, String? folderId) async {
     final notesProvider = context.read<NotesProvider>();
     final note = notesProvider.getNoteById(noteId);
     if (note == null || note.folderId == folderId) {
@@ -2629,7 +2796,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: const Text('File moved'),
+          content: Text(
+            folderId == null ? 'File moved to root' : 'File moved',
+          ),
           action: SnackBarAction(
             label: 'Undo',
             textColor: undoColor,
