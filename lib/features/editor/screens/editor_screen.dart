@@ -115,6 +115,9 @@ class _ChecklistLineState {
       listType == Attribute.unchecked.value;
 
   bool get isChecked => listType == Attribute.checked.value;
+
+  Attribute<String?> get toggledAttribute =>
+      isChecked ? Attribute.unchecked : Attribute.checked;
 }
 
 class _EditorScreenState extends State<EditorScreen>
@@ -517,6 +520,137 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     return selectedLines;
+  }
+
+  _ChecklistLineState? _currentChecklistLineState() {
+    final selection = _quillController.selection;
+    if (!selection.isValid || !selection.isCollapsed) {
+      return null;
+    }
+
+    final selectedLines = _selectedChecklistLineStates();
+    if (selectedLines.length != 1) {
+      return null;
+    }
+
+    final line = selectedLines.first;
+    return line.isChecklist ? line : null;
+  }
+
+  void _insertEditorNewline() {
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final replacementLength = selection.end - selection.start;
+    _quillController.replaceText(
+      selection.start,
+      replacementLength,
+      '\n',
+      null,
+    );
+    _quillController.updateSelection(
+      TextSelection.collapsed(offset: selection.start + 1),
+      ChangeSource.local,
+    );
+  }
+
+  void _handleChecklistContinuationShortcut() {
+    if (!_focusNode.hasFocus) return;
+
+    final checklistLine = _currentChecklistLineState();
+    _insertEditorNewline();
+
+    if (checklistLine == null) {
+      return;
+    }
+
+    final continuationOffset = _quillController.selection.baseOffset;
+    _isApplyingChecklistMetadata = true;
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        Attribute.clone(
+          checklistLine.isChecked ? Attribute.checked : Attribute.unchecked,
+          null,
+        ),
+      );
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        _checklistMetadataAttribute(_checklistCreatedAtAttributeKey, null),
+      );
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        _checklistMetadataAttribute(_checklistCheckedAtAttributeKey, null),
+      );
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+      _isApplyingChecklistMetadata = false;
+    }
+
+    _ensureChecklistMetadata();
+    _updateStats();
+    _refreshSearchMatches();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
+  }
+
+  void _handleChecklistOppositeStateShortcut() {
+    if (!_focusNode.hasFocus) return;
+
+    final checklistLine = _currentChecklistLineState();
+    _insertEditorNewline();
+
+    if (checklistLine == null) {
+      return;
+    }
+
+    final newLineOffset = _quillController.selection.baseOffset;
+    final now = DateTime.now().toIso8601String();
+    final targetAttribute = checklistLine.toggledAttribute;
+    final targetCheckedAt =
+        targetAttribute.value == Attribute.checked.value ? now : null;
+
+    _isApplyingChecklistMetadata = true;
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      _quillController.formatText(newLineOffset, 0, targetAttribute);
+      _quillController.formatText(
+        newLineOffset,
+        0,
+        _checklistMetadataAttribute(_checklistCreatedAtAttributeKey, now),
+      );
+      _quillController.formatText(
+        newLineOffset,
+        0,
+        _checklistMetadataAttribute(
+          _checklistCheckedAtAttributeKey,
+          targetCheckedAt,
+        ),
+      );
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+      _isApplyingChecklistMetadata = false;
+    }
+
+    _ensureChecklistMetadata();
+    _updateStats();
+    _refreshSearchMatches();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
   }
 
   void _toggleChecklistCycle() {
@@ -2178,18 +2312,34 @@ class _EditorScreenState extends State<EditorScreen>
         key: _editorSurfaceKey,
         children: [
           Positioned.fill(
-            child: QuillEditor(
-              controller: _quillController,
-              focusNode: _focusNode,
-              scrollController: _scrollController,
-              configurations: QuillEditorConfigurations(
-                editorKey: _editorKey,
-                embedBuilders: const [
-                  TypeSyncKanbanEmbedBuilder(),
-                  TypeSyncTableEmbedBuilder(),
-                  MarkdownTableEmbedBuilder(),
-                ],
-                customLeadingBlockBuilder: _buildChecklistHoverLeading,
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(
+                  LogicalKeyboardKey.enter,
+                  shift: true,
+                ): _handleChecklistContinuationShortcut,
+                const SingleActivator(
+                  LogicalKeyboardKey.enter,
+                  control: true,
+                ): _handleChecklistOppositeStateShortcut,
+                const SingleActivator(
+                  LogicalKeyboardKey.enter,
+                  meta: true,
+                ): _handleChecklistOppositeStateShortcut,
+              },
+              child: QuillEditor(
+                controller: _quillController,
+                focusNode: _focusNode,
+                scrollController: _scrollController,
+                configurations: QuillEditorConfigurations(
+                  editorKey: _editorKey,
+                  embedBuilders: const [
+                    TypeSyncKanbanEmbedBuilder(),
+                    TypeSyncTableEmbedBuilder(),
+                    MarkdownTableEmbedBuilder(),
+                  ],
+                  customLeadingBlockBuilder: _buildChecklistHoverLeading,
+                ),
               ),
             ),
           ),
