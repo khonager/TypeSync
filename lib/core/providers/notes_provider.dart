@@ -144,32 +144,7 @@ class NotesProvider extends ChangeNotifier {
     final buffer = StringBuffer()
       ..write(note.title)
       ..write(' ')
-      ..write(RichTextPlainTextService.extractPlainText(note.content))
-      ..write(' ')
-      ..write(note.pdfPath ?? '');
-
-    if (note.pdfPath != null && note.pdfPath!.isNotEmpty) {
-      buffer
-        ..write(' ')
-        ..write(p.basename(note.pdfPath!));
-    }
-
-    for (final attachment in note.attachments) {
-      buffer
-        ..write(' ')
-        ..write(attachment.name)
-        ..write(' ')
-        ..write(attachment.path)
-        ..write(' ')
-        ..write(attachment.mimeType ?? '');
-
-      if (attachment.path.isNotEmpty) {
-        buffer
-          ..write(' ')
-          ..write(p.basename(attachment.path));
-      }
-    }
-
+      ..write(RichTextPlainTextService.extractPlainText(note.content));
     return buffer.toString().toLowerCase();
   }
 
@@ -841,12 +816,12 @@ class NotesProvider extends ChangeNotifier {
   }
 
   /// Move note to a folder
-  Future<void> moveToFolder(String noteId, String? folderId) async {
+  Future<bool> moveToFolder(String noteId, String? folderId) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
-    if (index < 0) return;
+    if (index < 0) return false;
 
     final note = _notes[index];
-    await updateNote(note.copyWith(folderId: folderId));
+    return updateNote(note.copyWith(folderId: folderId));
   }
 
   /// Add tag to note

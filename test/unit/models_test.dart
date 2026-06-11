@@ -12,23 +12,37 @@ import 'package:typesync/core/models/user.dart';
 void main() {
   group('User Model', () {
     test('storage limit returns correct values for each tier', () {
-      expect(SubscriptionTier.free.storageLimitBytes, 1 * 1024 * 1024 * 1024);
-      expect(SubscriptionTier.basic.storageLimitBytes, 5 * 1024 * 1024 * 1024);
+      expect(SubscriptionTier.free.storageLimitBytes, 5 * 1024 * 1024);
+      expect(SubscriptionTier.basic.storageLimitBytes, 1 * 1024 * 1024 * 1024);
       expect(
         SubscriptionTier.standard.storageLimitBytes,
-        50 * 1024 * 1024 * 1024,
+        25 * 1024 * 1024 * 1024,
       );
       expect(
         SubscriptionTier.premium.storageLimitBytes,
-        200 * 1024 * 1024 * 1024,
+        100 * 1024 * 1024 * 1024,
       );
     });
 
     test('price returns correct values for each tier', () {
       expect(SubscriptionTier.free.priceEuros, 0.0);
-      expect(SubscriptionTier.basic.priceEuros, 1.99);
-      expect(SubscriptionTier.standard.priceEuros, 4.99);
-      expect(SubscriptionTier.premium.priceEuros, 9.99);
+      expect(SubscriptionTier.basic.priceEuros, 2.99);
+      expect(SubscriptionTier.standard.priceEuros, 5.99);
+      expect(SubscriptionTier.premium.priceEuros, 11.99);
+    });
+
+    test('legacy enum values map to new plan ids', () {
+      expect(SubscriptionTier.free.planId, 'free');
+      expect(SubscriptionTier.basic.planId, 'TypeSync Lite');
+      expect(SubscriptionTier.standard.planId, 'plus');
+      expect(SubscriptionTier.premium.planId, 'pro');
+      expect(
+        subscriptionTierFromPlanId('TypeSync Lite'),
+        SubscriptionTier.basic,
+      );
+      expect(subscriptionTierFromPlanId('light'), SubscriptionTier.basic);
+      expect(subscriptionTierFromPlanId('plus'), SubscriptionTier.standard);
+      expect(subscriptionTierFromPlanId('pro'), SubscriptionTier.premium);
     });
 
     test('User.isStorageFull returns correct value', () {
@@ -36,7 +50,7 @@ void main() {
         id: 'test',
         email: 'test@test.com',
         createdAt: DateTime.now(),
-        storageUsedBytes: 500 * 1024 * 1024, // 500 MB
+        storageUsedBytes: 4 * 1024 * 1024,
         subscriptionTier: SubscriptionTier.free,
       );
       expect(userNotFull.isStorageFull, isFalse);
@@ -45,7 +59,7 @@ void main() {
         id: 'test',
         email: 'test@test.com',
         createdAt: DateTime.now(),
-        storageUsedBytes: 1024 * 1024 * 1024, // 1 GB (full for free tier)
+        storageUsedBytes: 5 * 1024 * 1024,
         subscriptionTier: SubscriptionTier.free,
       );
       expect(userFull.isStorageFull, isTrue);

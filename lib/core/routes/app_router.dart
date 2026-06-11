@@ -135,16 +135,24 @@ class AppRouter {
     required String primaryNoteId,
     String? secondaryNoteId,
     String? initialSecondaryFolderId,
+    bool replaceCurrent = false,
   }) {
+    final route = MaterialPageRoute(
+      builder: (_) => SplitEditorScreen(
+        primaryNoteId: primaryNoteId,
+        secondaryNoteId: secondaryNoteId,
+        initialSecondaryFolderId: initialSecondaryFolderId,
+      ),
+    );
+    if (replaceCurrent) {
+      return Navigator.pushReplacement(
+        context,
+        route,
+      );
+    }
     return Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => SplitEditorScreen(
-          primaryNoteId: primaryNoteId,
-          secondaryNoteId: secondaryNoteId,
-          initialSecondaryFolderId: initialSecondaryFolderId,
-        ),
-      ),
+      route,
     );
   }
 

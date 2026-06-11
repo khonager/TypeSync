@@ -111,6 +111,13 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
     return Scaffold(
       appBar: AppBar(
         flexibleSpace: desktopWindowDragArea(),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios),
+          tooltip: 'Back to home',
+          onPressed: () {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+        ),
         title: const Text('Side by Side'),
         actions: withDesktopWindowControls([
           if (secondaryNote != null)
@@ -822,7 +829,11 @@ class _SecondaryBrowserPaneState extends State<_SecondaryBrowserPane> {
     );
     if (note == null || !mounted) return;
 
-    widget.onNoteSelected(note.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onNoteSelected(note.id);
+      }
+    });
   }
 
   Future<void> _createNewFolder() async {

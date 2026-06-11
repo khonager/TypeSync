@@ -18,10 +18,62 @@ service cloud.firestore {
       return request.resource.data.userId == resource.data.userId;
     }
 
+    function billingFields() {
+      return [
+        'subscriptionTier',
+        'planId',
+        'entitlementSource',
+        'subscriptionSource',
+        'subscriptionStatus',
+        'subscriptionExpiresAt',
+        'currentPeriodEnd',
+        'cloudStorageLimitBytes',
+        'revenueCatEventType',
+        'revenueCatProductId',
+        'revenueCatEntitlementIds',
+        'gumroadLicenseKey',
+        'patreonTierName'
+      ];
+    }
+
+    function hasOnlyFreeBillingDefaults() {
+      return (!('subscriptionTier' in request.resource.data) ||
+          request.resource.data.subscriptionTier == 0) &&
+        (!('planId' in request.resource.data) ||
+          request.resource.data.planId == 'free') &&
+        (!('cloudStorageLimitBytes' in request.resource.data) ||
+          request.resource.data.cloudStorageLimitBytes == 5 * 1024 * 1024) &&
+        (!('subscriptionExpiresAt' in request.resource.data) ||
+          request.resource.data.subscriptionExpiresAt == null) &&
+        (!('currentPeriodEnd' in request.resource.data) ||
+          request.resource.data.currentPeriodEnd == null) &&
+        !request.resource.data.keys().hasAny([
+          'entitlementSource',
+          'subscriptionSource',
+          'subscriptionStatus',
+          'revenueCatEventType',
+          'revenueCatProductId',
+          'revenueCatEntitlementIds',
+          'gumroadLicenseKey',
+          'patreonTierName'
+        ]);
+    }
+
+    function billingUnchanged() {
+      return !request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny(billingFields());
+    }
+
     // User profile document
     match /users/{userId} {
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow read, update, delete: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        hasOnlyFreeBillingDefaults();
+      allow read, delete: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        billingUnchanged();
 
       // Nested app settings
       match /settings/{settingId} {

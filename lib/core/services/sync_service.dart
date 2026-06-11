@@ -159,22 +159,39 @@ class SyncService extends ChangeNotifier {
 
   /// Initialize connectivity listener
   void _initConnectivityListener() {
+    // Check initial connectivity
+    _connectivity.checkConnectivity().then((results) {
+      _updateConnectivity(results);
+    }).catchError((e) {
+      if (kDebugMode) {
+        debugPrint('Failed to check initial connectivity: $e');
+      }
+    });
+
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (result) {
-        final wasOffline = !_isOnline;
-        _isOnline = result.any((r) => r != ConnectivityResult.none);
-
-        if (_isOnline && wasOffline) {
-          // Came back online, trigger sync
-          _status = SyncStatus.idle;
-          triggerSync();
-        } else if (!_isOnline) {
-          _status = SyncStatus.offline;
-        }
-
-        notifyListeners();
+      (results) {
+        _updateConnectivity(results);
       },
     );
+  }
+
+  void _updateConnectivity(List<ConnectivityResult> results) {
+    final wasOffline = !_isOnline;
+    _isOnline = results.any((r) => r != ConnectivityResult.none);
+
+    if (_isOnline && wasOffline) {
+      // Came back online, trigger sync and restart listeners if we have a user
+      _status = SyncStatus.idle;
+      if (_currentUserId != null && _syncEnabled) {
+        startCoreListening(_currentUserId!);
+        unawaited(fetchWorkspaceSnapshot(_currentUserId!));
+      }
+      triggerSync();
+    } else if (!_isOnline) {
+      _status = SyncStatus.offline;
+    }
+
+    notifyListeners();
   }
 
   /// Initialize sync debouncer (batches rapid updates)
@@ -219,6 +236,20 @@ class SyncService extends ChangeNotifier {
     }
 
     _currentUserId = userId;
+
+    if (!_isOnline) {
+      _diagnostics.info(
+        'SyncService',
+        'SYNC_LIFECYCLE offline; listeners deferred for user=$userId',
+      );
+      _status = SyncStatus.offline;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        _listenersActive = false;
+        notifyListeners();
+        return;
+      }
+    }
+
     final generation = ++_listenerGeneration;
     _listenersActive = true;
     _setStatus(SyncStatus.syncing);
@@ -280,6 +311,22 @@ class SyncService extends ChangeNotifier {
   }
 
   Future<bool> fetchWorkspaceSnapshot(String userId) async {
+    // Ensure we have correct connectivity status
+    try {
+      final results = await _connectivity.checkConnectivity();
+      _isOnline = results.any((r) => r != ConnectivityResult.none);
+      if (!_isOnline) {
+        _status = SyncStatus.offline;
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'Failed to check connectivity in fetchWorkspaceSnapshot: $e',
+        );
+      }
+    }
+
     if (!_isOnline || !_syncEnabled) {
       return true;
     }

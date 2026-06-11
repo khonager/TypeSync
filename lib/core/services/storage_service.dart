@@ -18,6 +18,34 @@ import '../models/user.dart';
 import '../../firebase_options.dart';
 import 'diagnostics_service.dart';
 
+String? resolveStorageObjectPath(
+  String path, {
+  required String userId,
+}) {
+  if (path.startsWith('gs://')) {
+    final uri = Uri.parse(path);
+    final objectPath =
+        uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+    return objectPath.isEmpty ? null : objectPath;
+  }
+
+  if (!path.startsWith('http://') && !path.startsWith('https://')) {
+    if (path.startsWith('users/')) {
+      return path;
+    }
+    return 'users/$userId/$path';
+  }
+
+  final uri = Uri.tryParse(path);
+  if (uri == null) return null;
+  final segments = uri.pathSegments;
+  final objectIndex = segments.indexOf('o');
+  if (objectIndex == -1 || objectIndex + 1 >= segments.length) {
+    return null;
+  }
+  return Uri.decodeComponent(segments[objectIndex + 1]);
+}
+
 /// Service for managing cloud storage and subscriptions
 ///
 /// Tracks storage usage against subscription limits and handles
@@ -106,37 +134,23 @@ class StorageService extends ChangeNotifier {
         const SubscriptionInfo(
           tier: SubscriptionTier.free,
           name: 'Free',
-          storage: '1 GB',
+          storage: '5 MB',
           priceEuros: 0,
-          features: ['Basic sync', '1 GB storage', 'All core features'],
-        ),
-        const SubscriptionInfo(
-          tier: SubscriptionTier.basic,
-          name: 'Basic',
-          storage: '5 GB',
-          priceEuros: 1.99,
-          features: ['Everything in Free', '5 GB storage', 'Priority sync'],
-        ),
-        const SubscriptionInfo(
-          tier: SubscriptionTier.standard,
-          name: 'Standard',
-          storage: '50 GB',
-          priceEuros: 4.99,
           features: [
-            'Everything in Basic',
-            '50 GB storage',
-            'Advanced features',
+            'Unlimited local notes',
+            'Small cloud trial',
+            'Core productivity tools',
           ],
         ),
         const SubscriptionInfo(
-          tier: SubscriptionTier.premium,
-          name: 'Premium',
-          storage: '200 GB',
-          priceEuros: 9.99,
+          tier: SubscriptionTier.basic,
+          name: 'TypeSync Lite',
+          storage: '1 GB',
+          priceEuros: 2.99,
           features: [
-            'Everything in Standard',
-            '200 GB storage',
-            'Priority support',
+            'Unlimited synced notes',
+            '1 GB cloud storage',
+            'Cloud attachments',
           ],
         ),
       ];
@@ -175,8 +189,8 @@ class StorageService extends ChangeNotifier {
             final userDoc =
                 await fdFirestore.collection('users').document(userId).get();
             if (userDoc.map.isNotEmpty) {
-              _currentTier = _subscriptionTierFromDynamic(
-                userDoc.map['subscriptionTier'],
+              _currentTier = _subscriptionTierFromUserData(
+                userDoc.map,
                 fallback: _currentTier,
               );
               recordedBytes = _intFromDynamic(
@@ -221,8 +235,8 @@ class StorageService extends ChangeNotifier {
               await _firebaseFirestore.collection('users').doc(userId).get();
           if (userDoc.exists) {
             final data = userDoc.data()!;
-            _currentTier = _subscriptionTierFromDynamic(
-              data['subscriptionTier'],
+            _currentTier = _subscriptionTierFromUserData(
+              data,
               fallback: _currentTier,
             );
             recordedBytes = _intFromDynamic(
@@ -493,11 +507,24 @@ class StorageService extends ChangeNotifier {
     required String filePath,
   }) async {
     try {
+      final normalizedObjectPath = resolveStorageObjectPath(
+        filePath,
+        userId: userId,
+      );
+      if (normalizedObjectPath == null || normalizedObjectPath.isEmpty) {
+        throw Exception('Could not resolve storage object path');
+      }
+
+      _diagnostics.info(
+        'StorageService',
+        'ATTACHMENT_DELETE resolved delete target user=$userId input=$filePath object=$normalizedObjectPath linuxRest=$_shouldUseLinuxStorageRest',
+      );
+
       if (_shouldUseLinuxStorageRest) {
-        final fileSize = await _fetchLinuxObjectSize(
-          _storageObjectPath(userId, filePath),
+        final fileSize = await _deleteLinuxObjectViaFunction(
+          userId: userId,
+          objectPath: normalizedObjectPath,
         );
-        await _deleteLinuxObject(_storageObjectPath(userId, filePath));
         _storageUsedBytes =
             (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
         await _writeStorageUsage(userId);
@@ -505,7 +532,7 @@ class StorageService extends ChangeNotifier {
         return true;
       }
 
-      final ref = _firebaseStorage.ref().child('users/$userId/$filePath');
+      final ref = _firebaseStorage.ref().child(normalizedObjectPath);
 
       // Get file size before deleting
       final metadata = await ref.getMetadata();
@@ -571,48 +598,16 @@ class StorageService extends ChangeNotifier {
 
   /// Upgrade subscription tier
   ///
-  /// Note: In production, this would integrate with a payment provider
-  /// like Stripe or Google Play Billing.
+  /// Legacy prototype method. Paid entitlements are now granted only through
+  /// RevenueCat webhooks, never by direct client writes.
   Future<bool> upgradeSubscription(
     String userId,
     SubscriptionTier newTier,
   ) async {
-    _isLoading = true;
+    _errorMessage =
+        'Plan changes are handled by RevenueCat checkout and webhooks.';
     notifyListeners();
-
-    try {
-      // TODO: Integrate with payment provider
-      // For now, just update the tier in Firestore
-
-      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-        final fdFirestore = _firedartFirestore;
-        if (fdFirestore != null) {
-          await fdFirestore.collection('users').document(userId).update({
-            'subscriptionTier': newTier.index,
-            'subscriptionExpiresAt':
-                DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-          });
-        }
-      } else {
-        await _firebaseFirestore.collection('users').doc(userId).update({
-          'subscriptionTier': newTier.index,
-          'subscriptionExpiresAt':
-              DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-        });
-      }
-
-      _currentTier = newTier;
-      _errorMessage = null;
-      _isLoading = false;
-      notifyListeners();
-
-      return true;
-    } catch (e) {
-      _errorMessage = 'Failed to upgrade subscription';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
+    return false;
   }
 
   /// Calculate total storage used by recalculating from Firestore note sizes
@@ -812,28 +807,7 @@ class StorageService extends ChangeNotifier {
     String path, {
     required String userId,
   }) {
-    if (path.startsWith('gs://')) {
-      final uri = Uri.parse(path);
-      final objectPath =
-          uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
-      return objectPath.isEmpty ? null : objectPath;
-    }
-
-    if (!path.startsWith('http://') && !path.startsWith('https://')) {
-      if (path.startsWith('users/')) {
-        return path;
-      }
-      return _storageObjectPath(userId, path);
-    }
-
-    final uri = Uri.tryParse(path);
-    if (uri == null) return null;
-    final segments = uri.pathSegments;
-    final objectIndex = segments.indexOf('o');
-    if (objectIndex == -1 || objectIndex + 1 >= segments.length) {
-      return null;
-    }
-    return Uri.decodeComponent(segments[objectIndex + 1]);
+    return resolveStorageObjectPath(path, userId: userId);
   }
 
   int? _intFromDynamic(dynamic value, {int? fallback}) {
@@ -854,6 +828,20 @@ class StorageService extends ChangeNotifier {
       return fallback;
     }
     return SubscriptionTier.values[tierIndex];
+  }
+
+  SubscriptionTier _subscriptionTierFromUserData(
+    Map<dynamic, dynamic> data, {
+    SubscriptionTier fallback = SubscriptionTier.free,
+  }) {
+    final planId = data['planId'];
+    if (planId is String && planId.isNotEmpty) {
+      return subscriptionTierFromPlanId(planId, fallback: fallback);
+    }
+    return _subscriptionTierFromDynamic(
+      data['subscriptionTier'],
+      fallback: fallback,
+    );
   }
 
   bool get _shouldUseLinuxStorageRest =>
@@ -1005,19 +993,34 @@ class StorageService extends ChangeNotifier {
     return 0;
   }
 
-  Future<void> _deleteLinuxObject(String objectPath) async {
+  Future<int> _deleteLinuxObjectViaFunction({
+    required String userId,
+    required String objectPath,
+  }) async {
     final idToken = await _linuxIdToken();
-    final uri = Uri.https(
-      'firebasestorage.googleapis.com',
-      '/v0/b/$_storageBucket/o/${Uri.encodeComponent(objectPath)}',
+    final deleteUri = _linuxFunctionUri('delete_storage_object');
+
+    final response = await _httpClient.post(
+      deleteUri,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode({
+        'userId': userId,
+        'objectPath': objectPath,
+      }),
     );
-    final response = await _httpClient.delete(
-      uri,
-      headers: {'Authorization': 'Bearer $idToken'},
-    );
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_extractHttpError(response));
     }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final sizeValue = body['size'];
+    if (sizeValue is int) return sizeValue;
+    if (sizeValue is String) return int.tryParse(sizeValue) ?? 0;
+    return 0;
   }
 
   String _buildDownloadUrl(String objectPath, {String? downloadToken}) {
@@ -1218,6 +1221,7 @@ class SubscriptionInfo {
   final String storage;
   final double priceEuros;
   final List<String> features;
+  final bool isRecommended;
 
   const SubscriptionInfo({
     required this.tier,
@@ -1225,6 +1229,7 @@ class SubscriptionInfo {
     required this.storage,
     required this.priceEuros,
     required this.features,
+    this.isRecommended = false,
   });
 
   String get priceFormatted =>

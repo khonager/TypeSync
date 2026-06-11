@@ -759,9 +759,6 @@ class _TypeSyncKanbanEditorDialogState
       );
     }
 
-    titleController.addListener(syncCardFromControllers);
-    descriptionController.addListener(syncCardFromControllers);
-
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -804,7 +801,7 @@ class _TypeSyncKanbanEditorDialogState
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Changes save and sync automatically',
+                  'Changes save and sync when you close this dialog',
                   style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
                         color: Theme.of(dialogContext).colorScheme.primary,
                         fontWeight: FontWeight.w600,
@@ -817,8 +814,7 @@ class _TypeSyncKanbanEditorDialogState
       ),
     );
 
-    titleController.removeListener(syncCardFromControllers);
-    descriptionController.removeListener(syncCardFromControllers);
+    syncCardFromControllers();
     titleController.dispose();
     descriptionController.dispose();
   }

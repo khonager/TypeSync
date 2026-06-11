@@ -74,6 +74,8 @@ dependencies:
   material_design_icons_flutter: ^7.0.7296
 
   url_launcher: any
+  purchases_flutter: ^10.1.1
+  purchases_ui_flutter: ^10.1.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
