@@ -1120,7 +1120,7 @@ class _ColorPreview extends StatelessWidget {
     }
 
     if (paletteType == _EditorColorPaletteType.marker) {
-      final background = colorOption!.colorWithOpacity;
+      final background = colorOption!.color;
       return Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1131,7 +1131,7 @@ class _ColorPreview extends StatelessWidget {
           child: Text(
             'Marked',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colorOption!.isLight ? Colors.black87 : Colors.white,
+                  color: AppColorPalette.getContrastingTextColor(background),
                   fontWeight: FontWeight.w700,
                 ),
           ),

@@ -2339,6 +2339,7 @@ class _EditorScreenState extends State<EditorScreen>
                     MarkdownTableEmbedBuilder(),
                   ],
                   customLeadingBlockBuilder: _buildChecklistHoverLeading,
+                  customStyleBuilder: _buildCustomEditorStyle,
                 ),
               ),
             ),
@@ -2348,6 +2349,23 @@ class _EditorScreenState extends State<EditorScreen>
         ],
       ),
     );
+  }
+
+  TextStyle _buildCustomEditorStyle(Attribute<dynamic> attribute) {
+    if (attribute.key != Attribute.background.key ||
+        attribute.value is! String) {
+      return const TextStyle();
+    }
+
+    try {
+      final backgroundColor =
+          AppColorPalette.parseHexColor(attribute.value! as String);
+      return TextStyle(
+        color: AppColorPalette.getContrastingTextColor(backgroundColor),
+      );
+    } catch (_) {
+      return const TextStyle();
+    }
   }
 
   Widget _buildMatchGlowOverlay() {
