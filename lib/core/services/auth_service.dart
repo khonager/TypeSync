@@ -226,8 +226,13 @@ class AuthService extends ChangeNotifier {
           // Asynchronously fetch complete user data
           _firedartAuth.getUser().then((fdUser) {
             _onFiredartAuthChanged(fdUser);
-          }).catchError((_) {
-            // Silently handle get user error
+          }).catchError((e) {
+            // Silently handle get user error but ensure we mark as initialized
+            if (kDebugMode) {
+              debugPrint('Firedart getUser failed: $e');
+            }
+            _isInitialized = true;
+            notifyListeners();
           });
         } else {
           // Mark as initialized if not signed in
@@ -239,8 +244,16 @@ class AuthService extends ChangeNotifier {
         try {
           _firedartAuth.signInState.listen((signedIn) async {
             if (signedIn) {
-              final fdUser = await _firedartAuth.getUser();
-              _onFiredartAuthChanged(fdUser);
+              try {
+                final fdUser = await _firedartAuth.getUser();
+                _onFiredartAuthChanged(fdUser);
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('Firedart listen getUser failed: $e');
+                }
+                _isInitialized = true;
+                notifyListeners();
+              }
             } else {
               _onFiredartAuthChanged(null);
             }
