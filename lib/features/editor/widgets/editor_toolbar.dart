@@ -1194,7 +1194,9 @@ class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+                  Expanded(
+                      child: Text(title,
+                          style: Theme.of(context).textTheme.titleLarge)),
                   IconButton(
                     onPressed: _addColor,
                     icon: const Icon(Icons.add),
@@ -1220,7 +1222,8 @@ class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
                             key: ValueKey(color.id),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppTheme.darkTertiary.withValues(alpha: 0.5),
+                              color:
+                                  AppTheme.darkTertiary.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: AppTheme.darkTertiary,
@@ -1239,25 +1242,34 @@ class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         color.name,
-                                        style: Theme.of(context).textTheme.titleSmall,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall,
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         color.hex,
-                                        style: Theme.of(context).textTheme.bodySmall
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
                                             ?.copyWith(
                                               color: AppTheme.darkTextSecondary,
                                             ),
                                       ),
-                                      if ((color.meaning ?? '').trim().isNotEmpty) ...[
+                                      if ((color.meaning ?? '')
+                                          .trim()
+                                          .isNotEmpty) ...[
                                         const SizedBox(height: 4),
                                         Text(
                                           color.meaning!,
-                                          style: Theme.of(context).textTheme.bodySmall,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
                                         ),
                                       ],
                                     ],
@@ -1268,15 +1280,17 @@ class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
-                                      onPressed:
-                                          index == 0 ? null : () => _move(index, -1),
+                                      onPressed: index == 0
+                                          ? null
+                                          : () => _move(index, -1),
                                       icon: const Icon(Icons.keyboard_arrow_up),
                                     ),
                                     IconButton(
                                       onPressed: index == _colors.length - 1
                                           ? null
                                           : () => _move(index, 1),
-                                      icon: const Icon(Icons.keyboard_arrow_down),
+                                      icon:
+                                          const Icon(Icons.keyboard_arrow_down),
                                     ),
                                   ],
                                 ),
@@ -1412,7 +1426,8 @@ class _PaletteEntryEditorDialogState extends State<_PaletteEntryEditorDialog> {
         ? null
         : ColorOption(
             id: widget.initialColor?.id ?? 'preview',
-            name: _nameController.text.isEmpty ? 'Preview' : _nameController.text,
+            name:
+                _nameController.text.isEmpty ? 'Preview' : _nameController.text,
             color: previewColor,
             hex: AppColorPalette.normalizeHex(_hexController.text),
             isLight: AppColorPalette.isLightColorHex(_hexController.text),
@@ -1541,7 +1556,9 @@ class _PaletteEntryEditorDialogState extends State<_PaletteEntryEditorDialog> {
         hex: normalizedHex,
         isLight: AppColorPalette.isLightColorHex(normalizedHex),
         opacity: widget.initialColor?.opacity ??
-            (widget.paletteType == _EditorColorPaletteType.marker ? 0.45 : null),
+            (widget.paletteType == _EditorColorPaletteType.marker
+                ? 0.45
+                : null),
         meaning: meaning.isEmpty ? null : meaning,
       ),
     );

@@ -417,15 +417,15 @@ class ColorOption {
   String toJson() => jsonEncode(toMap());
 
   factory ColorOption.fromMap(Map<String, dynamic> map) {
-    final hex = AppColorPalette.normalizeHex((map['hex'] as String?) ?? '#000000');
+    final hex =
+        AppColorPalette.normalizeHex((map['hex'] as String?) ?? '#000000');
     return ColorOption(
       id: (map['id'] as String?) ??
           DateTime.now().microsecondsSinceEpoch.toString(),
       name: (map['name'] as String?) ?? 'Unnamed',
       color: AppColorPalette.parseHexColor(hex),
       hex: hex,
-      isLight:
-          map['isLight'] as bool? ?? AppColorPalette.isLightColorHex(hex),
+      isLight: map['isLight'] as bool? ?? AppColorPalette.isLightColorHex(hex),
       opacity: (map['opacity'] as num?)?.toDouble(),
       meaning: map['meaning'] as String?,
     );

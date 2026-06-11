@@ -28,7 +28,8 @@ class EditorColorPaletteService extends ChangeNotifier {
   bool get isLoaded => _isLoaded;
 
   Future<void> setTextColors(List<ColorOption> colors) async {
-    _textColors = colors.map((color) => color.copyWith()).toList(growable: false);
+    _textColors =
+        colors.map((color) => color.copyWith()).toList(growable: false);
     notifyListeners();
     await _saveList(_textColorsKey, _textColors);
   }
@@ -83,8 +84,8 @@ class EditorColorPaletteService extends ChangeNotifier {
   Future<void> _saveList(String key, List<ColorOption> colors) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final encoded =
-          jsonEncode(colors.map((color) => color.toMap()).toList(growable: false));
+      final encoded = jsonEncode(
+          colors.map((color) => color.toMap()).toList(growable: false));
       await prefs.setString(key, encoded);
     } catch (error) {
       debugPrint('Failed to save editor color palettes: $error');

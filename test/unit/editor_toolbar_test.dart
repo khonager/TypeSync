@@ -23,7 +23,9 @@ void main() {
                     .attributes
                     .containsKey(Attribute.list.key);
                 controller.formatSelection(
-                  hasChecklist ? Attribute.clone(Attribute.checked, null) : Attribute.checked,
+                  hasChecklist
+                      ? Attribute.clone(Attribute.checked, null)
+                      : Attribute.checked,
                 );
               },
               placement: EditorToolbarPlacement.top,
