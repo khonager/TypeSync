@@ -27,6 +27,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
+  final VoidCallback onToggleChecklist;
   final EditorToolbarPlacement placement;
   final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
   final Offset initialPosition;
@@ -37,6 +38,7 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertPdf,
     required this.onInsertTable,
     required this.onInsertKanban,
+    required this.onToggleChecklist,
     required this.placement,
     required this.onPlacementChanged,
     required this.initialPosition,
@@ -614,7 +616,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.check_box,
         tooltip: 'Checklist',
         isActive: _hasFormat(Attribute.checked),
-        onTap: () => _toggleAttribute(Attribute.checked),
+        onTap: widget.onToggleChecklist,
       ),
       _ToolbarButton(
         icon: Icons.format_list_numbered,
@@ -701,7 +703,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.check_box,
         tooltip: 'Checklist',
         isActive: _hasFormat(Attribute.checked),
-        onTap: () => _toggleAttribute(Attribute.checked),
+        onTap: widget.onToggleChecklist,
       ),
       _ToolbarButton(
         icon: Icons.format_list_numbered,

@@ -99,6 +99,24 @@ class _EditorSearchMatch {
   int get length => endOffset - startOffset;
 }
 
+class _ChecklistLineState {
+  const _ChecklistLineState({
+    required this.startOffset,
+    required this.endOffset,
+    required this.listType,
+  });
+
+  final int startOffset;
+  final int endOffset;
+  final String? listType;
+
+  bool get isChecklist =>
+      listType == Attribute.checked.value ||
+      listType == Attribute.unchecked.value;
+
+  bool get isChecked => listType == Attribute.checked.value;
+}
+
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
@@ -444,6 +462,130 @@ class _EditorScreenState extends State<EditorScreen>
 
   Attribute<String?> _checklistMetadataAttribute(String key, String? value) {
     return Attribute<String?>(key, AttributeScope.block, value);
+  }
+
+  List<_ChecklistLineState> _selectedChecklistLineStates() {
+    final selection = _quillController.selection;
+    if (!selection.isValid) {
+      return const <_ChecklistLineState>[];
+    }
+
+    final operations = _quillController.document.toDelta().toJson();
+    final selectedLines = <_ChecklistLineState>[];
+    final selectionStart = selection.start;
+    final selectionEnd = selection.end;
+    var documentOffset = 0;
+    var lineStartOffset = 0;
+
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      final attributes = operation['attributes'] is Map
+          ? Map<String, dynamic>.from(operation['attributes'] as Map)
+          : const <String, dynamic>{};
+
+      if (insert is String) {
+        for (final rune in insert.runes) {
+          final character = String.fromCharCode(rune);
+          if (character == '\n') {
+            final lineEndOffset = documentOffset;
+            final lineSelectionEnd = lineEndOffset + 1;
+            final isSelected = selection.isCollapsed
+                ? selectionStart >= lineStartOffset &&
+                    selectionStart <= lineEndOffset
+                : selectionStart < lineSelectionEnd &&
+                    selectionEnd > lineStartOffset;
+
+            if (isSelected) {
+              selectedLines.add(
+                _ChecklistLineState(
+                  startOffset: lineStartOffset,
+                  endOffset: lineEndOffset,
+                  listType: attributes[Attribute.list.key] as String?,
+                ),
+              );
+            }
+
+            lineStartOffset = documentOffset + 1;
+          }
+
+          documentOffset++;
+        }
+        continue;
+      }
+
+      documentOffset++;
+    }
+
+    return selectedLines;
+  }
+
+  void _toggleChecklistCycle() {
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final selectedLines = _selectedChecklistLineStates();
+    if (selectedLines.isEmpty) return;
+
+    final hasNonChecklist = selectedLines.any((line) => !line.isChecklist);
+    final allChecklist = !hasNonChecklist;
+    final allChecked =
+        allChecklist && selectedLines.every((line) => line.isChecked);
+    final targetOffsets = hasNonChecklist
+        ? selectedLines
+            .where((line) => !line.isChecklist)
+            .map((line) => line.startOffset)
+            .toList(growable: false)
+        : selectedLines.map((line) => line.startOffset).toList(growable: false);
+
+    if (targetOffsets.isEmpty) return;
+
+    _isApplyingChecklistMetadata = true;
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      if (hasNonChecklist) {
+        for (final offset in targetOffsets) {
+          _quillController.formatText(offset, 0, Attribute.unchecked);
+        }
+      } else if (allChecked) {
+        for (final offset in targetOffsets) {
+          _quillController.formatText(
+            offset,
+            0,
+            Attribute.clone(Attribute.unchecked, null),
+          );
+          _quillController.formatText(
+            offset,
+            0,
+            _checklistMetadataAttribute(_checklistCreatedAtAttributeKey, null),
+          );
+          _quillController.formatText(
+            offset,
+            0,
+            _checklistMetadataAttribute(_checklistCheckedAtAttributeKey, null),
+          );
+        }
+      } else {
+        for (final offset in targetOffsets) {
+          _quillController.formatText(offset, 0, Attribute.checked);
+        }
+      }
+
+      _quillController.updateSelection(selection, ChangeSource.local);
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+      _isApplyingChecklistMetadata = false;
+    }
+
+    _ensureChecklistMetadata();
+    _updateStats();
+    _refreshSearchMatches();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
   }
 
   DateTime? _parseChecklistMetadataTimestamp(Object? rawValue) {
@@ -1510,6 +1652,7 @@ class _EditorScreenState extends State<EditorScreen>
       onInsertPdf: _insertPdf,
       onInsertTable: _insertTable,
       onInsertKanban: _insertKanban,
+      onToggleChecklist: _toggleChecklistCycle,
       placement: _toolbarPlacement,
       onPlacementChanged: _setToolbarPlacement,
       initialPosition: _toolbarPosition,
