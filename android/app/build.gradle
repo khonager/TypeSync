@@ -58,8 +58,8 @@ android {
 
     defaultConfig {
         applicationId "de.khonager.typesync"
-        // Firebase Auth 23.x requires Android API 23+.
-        minSdkVersion flutter.minSdkVersion
+        // RevenueCat UI requires Android API 24+.
+        minSdkVersion 24
         targetSdk flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
