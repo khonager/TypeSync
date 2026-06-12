@@ -191,12 +191,12 @@ class AuthService extends ChangeNotifier {
           _loadUserData(firebaseUser.uid).catchError((_) {
             // Silently handle get user error
           });
-        } else if (kIsWeb) {
-          // On Web, wait a short moment for Firebase to restore session
-          // before assuming the user is logged out.
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (!_isInitialized && _firebaseAuth.currentUser == null) {
-              _onAuthStateChanged(null);
+        } else if (_shouldDelayInitialNullAuthDecision) {
+          // Give Firebase a short window to restore native sessions before
+          // the first null auth callback is treated as a real logout.
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (!_isInitialized) {
+              _onAuthStateChanged(_firebaseAuth.currentUser);
             }
           });
         }
@@ -1028,6 +1028,10 @@ class AuthService extends ChangeNotifier {
 
   bool _webInitialized = false;
 
+  bool get _shouldDelayInitialNullAuthDecision =>
+      Firebase.apps.isNotEmpty &&
+      ((!kIsWeb && defaultTargetPlatform != TargetPlatform.linux) || kIsWeb);
+
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
     _diagnostics.info(
@@ -1040,8 +1044,9 @@ class AuthService extends ChangeNotifier {
       _isInitialized = true;
       notifyListeners();
     } else if (firebaseUser == null && !_isGuestMode) {
-      if (kIsWeb && !_webInitialized) {
-        // Skip the first null event on Web to allow for session restoration delay
+      if (_shouldDelayInitialNullAuthDecision && !_webInitialized) {
+        // Skip the first null event while Firebase restores any persisted
+        // session. This applies to Web and native Firebase platforms.
         _webInitialized = true;
         return;
       }
