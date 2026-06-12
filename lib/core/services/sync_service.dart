@@ -322,7 +322,8 @@ class SyncService extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
-            'Failed to check connectivity in fetchWorkspaceSnapshot: $e');
+          'Failed to check connectivity in fetchWorkspaceSnapshot: $e',
+        );
       }
     }
 

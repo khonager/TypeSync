@@ -1195,8 +1195,11 @@ class _PaletteEditorDialogState extends State<_PaletteEditorDialog> {
               Row(
                 children: [
                   Expanded(
-                      child: Text(title,
-                          style: Theme.of(context).textTheme.titleLarge)),
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
                   IconButton(
                     onPressed: _addColor,
                     icon: const Icon(Icons.add),
