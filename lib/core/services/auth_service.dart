@@ -298,6 +298,31 @@ class AuthService extends ChangeNotifier {
         'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId pendingEmailLink=$_pendingEmailLinkEmail isAuthenticated=$isAuthenticated',
       );
 
+      final shouldDelayGuestRestore = !kIsWeb &&
+          defaultTargetPlatform != TargetPlatform.linux &&
+          Firebase.apps.isNotEmpty;
+      if (shouldDelayGuestRestore && !isAuthenticated) {
+        try {
+          final restoredUser = await _firebaseAuth
+              .authStateChanges()
+              .first
+              .timeout(const Duration(seconds: 2), onTimeout: () => null);
+          if (restoredUser != null || _firebaseAuth.currentUser != null) {
+            _diagnostics.info(
+              'AuthService',
+              'AUTH_FLOW skipped guest workspace restore because Firebase session restored user=${restoredUser?.uid ?? _firebaseAuth.currentUser?.uid}',
+            );
+            notifyListeners();
+            return;
+          }
+        } catch (e) {
+          _diagnostics.warning(
+            'AuthService',
+            'AUTH_FLOW guest workspace restore auth wait failed: $e',
+          );
+        }
+      }
+
       if (!isAuthenticated &&
           _guestWorkspaceId != null &&
           _guestWorkspaceId!.isNotEmpty) {
@@ -373,6 +398,7 @@ class AuthService extends ChangeNotifier {
           previousGuestWorkspaceId,
           fdUser.id,
         );
+        await _clearGuestWorkspacePreference();
         await _loadUserData(fdUser.id);
 
         _diagnostics.info(
@@ -398,6 +424,7 @@ class AuthService extends ChangeNotifier {
           previousGuestWorkspaceId,
           credential.user!.uid,
         );
+        await _clearGuestWorkspacePreference();
         await _loadUserData(credential.user!.uid);
         _diagnostics.info(
           'AuthService',
@@ -458,6 +485,7 @@ class AuthService extends ChangeNotifier {
           previousGuestWorkspaceId,
           fdUser.id,
         );
+        await _clearGuestWorkspacePreference();
 
         // Create user object for Firestore
         final user = User(
@@ -500,6 +528,7 @@ class AuthService extends ChangeNotifier {
           previousGuestWorkspaceId,
           credential.user!.uid,
         );
+        await _clearGuestWorkspacePreference();
         // Update display name if provided
         if (displayName != null && displayName.isNotEmpty) {
           await credential.user!.updateDisplayName(displayName);
@@ -808,6 +837,7 @@ class AuthService extends ChangeNotifier {
           previousGuestWorkspaceId,
           credential.user!.uid,
         );
+        await _clearGuestWorkspacePreference();
         await _loadUserData(
           credential.user!.uid,
           firebaseUser: credential.user,
@@ -1427,13 +1457,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> clearGuestWorkspaceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('guest_workspace_id');
-    _guestWorkspaceId = null;
-    _diagnostics.info(
-      'AuthService',
-      'AUTH_FLOW cleared guest workspace preference',
-    );
+    await _clearGuestWorkspacePreference();
     notifyListeners();
   }
 
@@ -1467,6 +1491,16 @@ class AuthService extends ChangeNotifier {
     _diagnostics.info(
       'AuthService',
       'AUTH_FLOW set pending guest import workspace=$workspaceId targetUser=$targetUserId',
+    );
+  }
+
+  Future<void> _clearGuestWorkspacePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('guest_workspace_id');
+    _guestWorkspaceId = null;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW cleared guest workspace preference',
     );
   }
 }
