@@ -89,5 +89,34 @@ void main() {
       expect(updated!.isCompleted, isFalse);
       expect(updated.completedAt, isNull);
     });
+
+    test('creating events for multiple dates links them with one series id', () async {
+      final provider = CalendarProvider();
+      await provider.initialize('user-3');
+
+      final created = await provider.createEventsForDates(
+        userId: 'user-3',
+        title: 'Revision block',
+        dates: [
+          DateTime(2026, 6, 17),
+          DateTime(2026, 6, 18),
+          DateTime(2026, 6, 20),
+        ],
+        startTimeTemplate: DateTime(2026, 6, 17, 9, 30),
+        type: EventType.reminder,
+      );
+
+      expect(created, hasLength(3));
+      expect(created.map((event) => event.seriesId).toSet(), hasLength(1));
+      expect(created.first.seriesId, isNotNull);
+      expect(
+        created.map((event) => event.startTime.day).toList()..sort(),
+        [17, 18, 20],
+      );
+      expect(
+        created.every((event) => event.startTime.hour == 9 && event.startTime.minute == 30),
+        isTrue,
+      );
+    });
   });
 }

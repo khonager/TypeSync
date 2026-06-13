@@ -187,6 +187,7 @@ class CalendarProvider extends ChangeNotifier {
     String? color,
     bool hasReminder = true,
     int reminderMinutesBefore = 30,
+    String? seriesId,
   }) async {
     try {
       final now = DateTime.now();
@@ -204,6 +205,7 @@ class CalendarProvider extends ChangeNotifier {
         hasReminder: hasReminder,
         reminderMinutesBefore: reminderMinutesBefore,
         createdAt: now,
+        seriesId: seriesId,
       );
 
       await _eventsBox?.put(event.id, event);
@@ -217,6 +219,66 @@ class CalendarProvider extends ChangeNotifier {
       _errorMessage = 'Failed to create calendar event';
       notifyListeners();
       return null;
+    }
+  }
+
+  Future<List<CalendarEvent>> createEventsForDates({
+    required String userId,
+    required String title,
+    required Iterable<DateTime> dates,
+    required DateTime startTimeTemplate,
+    String? description,
+    EventType type = EventType.todo,
+    DateTime? endTimeTemplate,
+    String? subject,
+    String? location,
+    String? color,
+    bool hasReminder = true,
+    int reminderMinutesBefore = 30,
+  }) async {
+    final uniqueDates = dates.map(_dateOnly).toSet().toList()
+      ..sort((a, b) => a.compareTo(b));
+    if (uniqueDates.isEmpty) {
+      return [];
+    }
+
+    final now = DateTime.now();
+    final batchSeriesId = uniqueDates.length > 1 ? _uuid.v4() : null;
+    final createdEvents = <CalendarEvent>[];
+
+    try {
+      for (final date in uniqueDates) {
+        final event = CalendarEvent(
+          id: _uuid.v4(),
+          userId: userId,
+          title: title,
+          description: description,
+          type: type,
+          startTime: _replaceDateKeepingTime(startTimeTemplate, date),
+          endTime: endTimeTemplate == null
+              ? null
+              : _replaceDateKeepingTime(endTimeTemplate, date),
+          subject: subject,
+          location: location,
+          color: color,
+          hasReminder: hasReminder,
+          reminderMinutesBefore: reminderMinutesBefore,
+          createdAt: now,
+          seriesId: batchSeriesId,
+        );
+
+        await _eventsBox?.put(event.id, event);
+        _events.add(event);
+        _syncService?.syncCalendarEvent(event.toJson());
+        createdEvents.add(event);
+      }
+
+      notifyListeners();
+      return createdEvents;
+    } catch (e) {
+      _errorMessage = 'Failed to create calendar event';
+      notifyListeners();
+      return [];
     }
   }
 
@@ -429,6 +491,7 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
     var isCompleted = false;
     DateTime? completedAt;
     var rolloverCount = 0;
+    String? seriesId;
     try {
       isCompleted = reader.readBool();
       final nextValue = reader.read();
@@ -439,6 +502,10 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
         rolloverCount = reader.readInt();
       } else if (nextValue is int) {
         rolloverCount = nextValue;
+      }
+      final hasSeriesId = reader.readBool();
+      if (hasSeriesId) {
+        seriesId = reader.readString();
       }
     } catch (_) {}
 
@@ -455,6 +522,7 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
       hasReminder: hasReminder,
       reminderMinutesBefore: reminderMinutesBefore,
       noteId: noteId,
+      seriesId: seriesId,
       userId: userId,
       createdAt: createdAt,
       isDirty: isDirty,
@@ -507,5 +575,9 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
       writer.writeString(obj.completedAt!.toIso8601String());
     }
     writer.writeInt(obj.rolloverCount);
+    writer.writeBool(obj.seriesId != null);
+    if (obj.seriesId != null) {
+      writer.writeString(obj.seriesId!);
+    }
   }
 }

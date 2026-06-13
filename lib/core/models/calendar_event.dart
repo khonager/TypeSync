@@ -32,6 +32,7 @@ class CalendarEvent extends Equatable {
   final bool hasReminder;
   final int reminderMinutesBefore;
   final String? noteId;
+  final String? seriesId;
   final bool isCompleted;
   final DateTime? completedAt;
   final int rolloverCount;
@@ -55,6 +56,7 @@ class CalendarEvent extends Equatable {
     this.hasReminder = true,
     this.reminderMinutesBefore = 30,
     this.noteId,
+    this.seriesId,
     this.isCompleted = false,
     this.completedAt,
     this.rolloverCount = 0,
@@ -91,6 +93,7 @@ class CalendarEvent extends Equatable {
     bool? hasReminder,
     int? reminderMinutesBefore,
     String? noteId,
+    Object? seriesId = _unset,
     bool? isCompleted,
     Object? completedAt = _unset,
     int? rolloverCount,
@@ -113,6 +116,7 @@ class CalendarEvent extends Equatable {
       reminderMinutesBefore:
           reminderMinutesBefore ?? this.reminderMinutesBefore,
       noteId: noteId ?? this.noteId,
+      seriesId: seriesId == _unset ? this.seriesId : seriesId as String?,
       isCompleted: isCompleted ?? this.isCompleted,
       completedAt:
           completedAt == _unset ? this.completedAt : completedAt as DateTime?,
@@ -137,6 +141,7 @@ class CalendarEvent extends Equatable {
         'hasReminder': hasReminder,
         'reminderMinutesBefore': reminderMinutesBefore,
         'noteId': noteId,
+        'seriesId': seriesId,
         'isCompleted': isCompleted,
         'completedAt': completedAt?.toIso8601String(),
         'rolloverCount': rolloverCount,
@@ -160,6 +165,7 @@ class CalendarEvent extends Equatable {
         hasReminder: json['hasReminder'] as bool? ?? true,
         reminderMinutesBefore: json['reminderMinutesBefore'] as int? ?? 30,
         noteId: json['noteId'] as String?,
+        seriesId: json['seriesId'] as String?,
         isCompleted: json['isCompleted'] as bool? ?? false,
         completedAt: json['completedAt'] != null
             ? DateTime.parse(json['completedAt'] as String)
@@ -185,6 +191,7 @@ class CalendarEvent extends Equatable {
         hasReminder,
         reminderMinutesBefore,
         noteId,
+        seriesId,
         isCompleted,
         completedAt,
         rolloverCount,
