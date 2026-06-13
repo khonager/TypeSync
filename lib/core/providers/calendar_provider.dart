@@ -52,12 +52,12 @@ class CalendarProvider extends ChangeNotifier {
         .where(
           (e) =>
               !e.isDeleted &&
-              e.startTime.year == date.year &&
-              e.startTime.month == date.month &&
-              e.startTime.day == date.day,
+              eventDateFor(e).year == date.year &&
+              eventDateFor(e).month == date.month &&
+              eventDateFor(e).day == date.day,
         )
         .toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      ..sort((a, b) => eventDateFor(a).compareTo(eventDateFor(b)));
   }
 
   /// Get upcoming events
@@ -314,9 +314,20 @@ class CalendarProvider extends ChangeNotifier {
       return false;
     }
 
+    final completedAt = isCompleted ? DateTime.now() : null;
+    final updatedStartTime = isCompleted
+        ? _replaceDateKeepingTime(event.startTime, completedAt!)
+        : event.startTime;
+    final updatedEndTime = isCompleted && event.endTime != null
+        ? _replaceDateKeepingTime(event.endTime!, completedAt!)
+        : event.endTime;
+
     return updateEvent(
       event.copyWith(
+        startTime: updatedStartTime,
+        endTime: updatedEndTime,
         isCompleted: isCompleted,
+        completedAt: completedAt,
       ),
     );
   }
@@ -353,6 +364,21 @@ class CalendarProvider extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  DateTime eventDateFor(CalendarEvent event) => _dateOnly(event.calendarDate);
+
+  DateTime _replaceDateKeepingTime(DateTime source, DateTime targetDate) {
+    return DateTime(
+      targetDate.year,
+      targetDate.month,
+      targetDate.day,
+      source.hour,
+      source.minute,
+      source.second,
+      source.millisecond,
+      source.microsecond,
+    );
   }
 
   Future<void> closeWorkspace() async {
@@ -401,10 +427,19 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
     final isDeleted = reader.readBool();
 
     var isCompleted = false;
+    DateTime? completedAt;
     var rolloverCount = 0;
     try {
       isCompleted = reader.readBool();
-      rolloverCount = reader.readInt();
+      final nextValue = reader.read();
+      if (nextValue is bool) {
+        if (nextValue) {
+          completedAt = DateTime.parse(reader.readString());
+        }
+        rolloverCount = reader.readInt();
+      } else if (nextValue is int) {
+        rolloverCount = nextValue;
+      }
     } catch (_) {}
 
     return CalendarEvent(
@@ -425,6 +460,7 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
       isDirty: isDirty,
       isDeleted: isDeleted,
       isCompleted: isCompleted,
+      completedAt: completedAt,
       rolloverCount: rolloverCount,
     );
   }
@@ -466,6 +502,10 @@ class CalendarEventAdapter extends TypeAdapter<CalendarEvent> {
     writer.writeBool(obj.isDirty);
     writer.writeBool(obj.isDeleted);
     writer.writeBool(obj.isCompleted);
+    writer.writeBool(obj.completedAt != null);
+    if (obj.completedAt != null) {
+      writer.writeString(obj.completedAt!.toIso8601String());
+    }
     writer.writeInt(obj.rolloverCount);
   }
 }

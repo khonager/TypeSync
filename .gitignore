@@ -80,3 +80,6 @@ test_driver/screenshots/
 *.tmp
 *.temp
 .github_secret_keystore_base64.txt
+
+
+local.properties

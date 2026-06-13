@@ -126,7 +126,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: Consumer<CalendarProvider>(
         builder: (context, calendarProvider, _) {
           final eventDayKeys = calendarProvider.events
-              .map((event) => _dateKey(event.startTime))
+              .map((event) => _dateKey(calendarProvider.eventDateFor(event)))
               .toSet();
 
           return GestureDetector(
@@ -655,7 +655,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   String _eventDateTimeLabel(CalendarEvent event) {
-    final date = _dateLabelFormat.format(event.startTime);
+    final date = _dateLabelFormat.format(event.calendarDate);
     if (_isAllDay(event.startTime)) {
       return '$date • All day';
     }
@@ -704,11 +704,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required DateTime end,
   }) {
     return source.where((event) {
-      final eventDate = _dateOnly(event.startTime);
+      final eventDate = _dateOnly(event.calendarDate);
       return !eventDate.isBefore(_dateOnly(start)) &&
           !eventDate.isAfter(_dateOnly(end));
     }).toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      ..sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
   }
 
   bool _weekHasEvents(
@@ -719,7 +719,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final from = _dateOnly(start);
     final to = _dateOnly(end);
     return source.any((event) {
-      final eventDate = _dateOnly(event.startTime);
+      final eventDate = _dateOnly(event.calendarDate);
       return !eventDate.isBefore(from) && !eventDate.isAfter(to);
     });
   }
