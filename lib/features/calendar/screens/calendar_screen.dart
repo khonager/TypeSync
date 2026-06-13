@@ -3,7 +3,6 @@
 /// Calendar view with test reminders and events.
 library;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -163,7 +162,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _selectionDragMoved = false;
   bool _suppressNextTap = false;
   bool _handledInitialRouteAction = false;
-  String? _debugDragHit;
 
   @override
   void initState() {
@@ -400,39 +398,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       clipBehavior: Clip.hardEdge,
       child: KeyedSubtree(
         key: ValueKey(_viewMode == CalendarViewMode.year ? 'kw-year' : 'day'),
-        child: Stack(
-          children: [
-            Container(
-              key: _calendarViewportKey,
-              child: child,
-            ),
-            if (kDebugMode && _debugDragHit != null)
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        _debugDragHit!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        child: Container(
+          key: _calendarViewportKey,
+          child: child,
         ),
       ),
     );
@@ -1214,7 +1182,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _isPointerDragSelecting = true;
     _selectionDragMoved = false;
     setState(() {
-      _debugDragHit = 'anchor ${_debugDay(day)}';
       _selectOnly(day);
     });
   }
@@ -1244,13 +1211,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final hit = _calendarHitTest(event.position);
     final hoveredDay = hit?.$1;
-    if (kDebugMode) {
-      setState(() {
-        _debugDragHit = hit == null
-            ? 'no hit @ ${event.position.dx.toStringAsFixed(0)},${event.position.dy.toStringAsFixed(0)}'
-            : '${hit.$2} ${_debugDay(hit.$1)}';
-      });
-    }
     if (hoveredDay == null) {
       return;
     }
@@ -1283,11 +1243,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _isLongPressDragSelecting = true;
     _selectionDragMoved = false;
     _suppressNextTap = true;
-    if (kDebugMode) {
-      setState(() {
-        _debugDragHit = 'long ${_debugDay(day)}';
-      });
-    }
   }
 
   void _finishLongPressSelection(DateTime day) {
@@ -1321,11 +1276,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _isPointerDragSelecting = false;
     _isLongPressDragSelecting = false;
     _selectionDragMoved = false;
-    if (kDebugMode) {
-      setState(() {
-        _debugDragHit = null;
-      });
-    }
   }
 
   (DateTime, String)? _calendarHitTest(Offset globalPosition) {
@@ -1453,10 +1403,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     return nearestRegion;
-  }
-
-  String _debugDay(DateTime day) {
-    return '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
   }
 
   void _updateDayHitRegion(_DayHitRegion region) {
