@@ -45,6 +45,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/local.properties
 
 # Generated files
 *.g.dart
@@ -80,6 +81,3 @@ test_driver/screenshots/
 *.tmp
 *.temp
 .github_secret_keystore_base64.txt
-
-
-local.properties
