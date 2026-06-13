@@ -3,6 +3,7 @@
 /// Calendar view with test reminders and events.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +44,90 @@ class _CalendarEventGroup {
   CalendarEvent get primary => events.first;
 }
 
+class _DayHitRegion {
+  final DateTime day;
+  final DateTime pageDay;
+  final Rect rect;
+
+  const _DayHitRegion({
+    required this.day,
+    required this.pageDay,
+    required this.rect,
+  });
+}
+
+class _DayBoundsReporter extends StatefulWidget {
+  final DateTime day;
+  final DateTime pageDay;
+  final ValueChanged<_DayHitRegion> onChanged;
+  final VoidCallback onRemoved;
+  final Widget child;
+
+  const _DayBoundsReporter({
+    required this.day,
+    required this.pageDay,
+    required this.onChanged,
+    required this.onRemoved,
+    required this.child,
+  });
+
+  @override
+  State<_DayBoundsReporter> createState() => _DayBoundsReporterState();
+}
+
+class _DayBoundsReporterState extends State<_DayBoundsReporter> {
+  @override
+  void initState() {
+    super.initState();
+    _scheduleReport();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DayBoundsReporter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleReport();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scheduleReport();
+  }
+
+  @override
+  void dispose() {
+    widget.onRemoved();
+    super.dispose();
+  }
+
+  void _scheduleReport() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final renderObject = context.findRenderObject() as RenderBox?;
+      if (renderObject == null || !renderObject.hasSize) {
+        return;
+      }
+
+      final rect = renderObject.localToGlobal(Offset.zero) & renderObject.size;
+      widget.onChanged(
+        _DayHitRegion(
+          day: widget.day,
+          pageDay: widget.pageDay,
+          rect: rect,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
+  }
+}
+
 /// Calendar screen for test reminders and events
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -62,28 +147,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final DateFormat _monthHeaderFormat = DateFormat.yMMMM();
   final DateFormat _dateLabelFormat = DateFormat('EEE, d MMM y');
   final Map<int, DateTime> _selectedDays = <int, DateTime>{};
+  final Map<String, _DayHitRegion> _dayHitRegions = <String, _DayHitRegion>{};
   final GlobalKey _calendarViewportKey = GlobalKey();
 
   CalendarViewMode _viewMode = CalendarViewMode.month;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   late DateTime _focusedDay;
+  late DateTime _visiblePageDay;
   late DateTime _selectedWeekStart;
   DateTime? _lastInteractedDay;
   DateTime? _dragAnchorDay;
   int? _activePointer;
-  int? _dragPageLockSlot;
-  int? _lastDragGridSlot;
   bool _isPointerDragSelecting = false;
   bool _isLongPressDragSelecting = false;
   bool _selectionDragMoved = false;
   bool _suppressNextTap = false;
   bool _handledInitialRouteAction = false;
+  String? _debugDragHit;
 
   @override
   void initState() {
     super.initState();
     final now = _dateOnly(DateTime.now());
     _focusedDay = now;
+    _visiblePageDay = now;
     _selectedWeekStart = _startOfIsoWeek(now);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
@@ -138,6 +225,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               final now = _dateOnly(DateTime.now());
               setState(() {
                 _focusedDay = now;
+                _visiblePageDay = now;
                 _selectedWeekStart = _startOfIsoWeek(now);
                 _selectOnly(now);
               });
@@ -227,6 +315,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               final baseDay = _lastInteractedDay ?? _focusedDay;
               _selectedWeekStart = _startOfIsoWeek(baseDay);
               _focusedDay = _selectedWeekStart;
+              _visiblePageDay = _selectedWeekStart;
             }
           });
         },
@@ -311,9 +400,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
       clipBehavior: Clip.hardEdge,
       child: KeyedSubtree(
         key: ValueKey(_viewMode == CalendarViewMode.year ? 'kw-year' : 'day'),
-        child: Container(
-          key: _calendarViewportKey,
-          child: child,
+        child: Stack(
+          children: [
+            Container(
+              key: _calendarViewportKey,
+              child: child,
+            ),
+            if (kDebugMode && _debugDragHit != null)
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        _debugDragHit!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -323,7 +442,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_viewMode == CalendarViewMode.year) {
       return '${_focusedDay.year}';
     }
-    return _monthHeaderFormat.format(_focusedDay);
+    return _monthHeaderFormat.format(_visiblePageDay);
   }
 
   void _goToPreviousPeriod() {
@@ -332,19 +451,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
         case CalendarViewMode.month:
           _focusedDay =
               _dateOnly(DateTime(_focusedDay.year, _focusedDay.month - 1, 1));
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.twoWeeks:
-          _focusedDay = _dateOnly(
-            _focusedDay.subtract(const Duration(days: 14)),
-          );
+          _focusedDay = _addDays(_focusedDay, -14);
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.week:
-          _focusedDay = _dateOnly(
-            _focusedDay.subtract(const Duration(days: 7)),
-          );
+          _focusedDay = _addDays(_focusedDay, -7);
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.year:
           _focusedDay = DateTime(_focusedDay.year - 1, 1, 1);
+          _visiblePageDay = _focusedDay;
           _selectedWeekStart = _startOfIsoWeek(_focusedDay);
           break;
       }
@@ -357,15 +476,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
         case CalendarViewMode.month:
           _focusedDay =
               _dateOnly(DateTime(_focusedDay.year, _focusedDay.month + 1, 1));
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.twoWeeks:
-          _focusedDay = _dateOnly(_focusedDay.add(const Duration(days: 14)));
+          _focusedDay = _addDays(_focusedDay, 14);
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.week:
-          _focusedDay = _dateOnly(_focusedDay.add(const Duration(days: 7)));
+          _focusedDay = _addDays(_focusedDay, 7);
+          _visiblePageDay = _focusedDay;
           break;
         case CalendarViewMode.year:
           _focusedDay = DateTime(_focusedDay.year + 1, 1, 1);
+          _visiblePageDay = _focusedDay;
           _selectedWeekStart = _startOfIsoWeek(_focusedDay);
           break;
       }
@@ -387,29 +510,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
       onPageChanged: (focusedDay) {
         setState(() {
           _focusedDay = _dateOnly(focusedDay);
+          _visiblePageDay = _focusedDay;
         });
       },
       headerVisible: false,
       calendarBuilders: CalendarBuilders(
-        defaultBuilder: (context, day, _) => _buildInteractiveDayCell(
+        defaultBuilder: (context, day, focusedDay) => _buildInteractiveDayCell(
           day,
+          pageDay: _dateOnly(focusedDay),
           eventDayKeys: eventDayKeys,
           hasEvents: eventDayKeys.contains(_dateKey(day)),
         ),
-        outsideBuilder: (context, day, _) => _buildInteractiveDayCell(
+        outsideBuilder: (context, day, focusedDay) => _buildInteractiveDayCell(
           day,
+          pageDay: _dateOnly(focusedDay),
           eventDayKeys: eventDayKeys,
           hasEvents: eventDayKeys.contains(_dateKey(day)),
           isOutside: true,
         ),
-        todayBuilder: (context, day, _) => _buildInteractiveDayCell(
+        todayBuilder: (context, day, focusedDay) => _buildInteractiveDayCell(
           day,
+          pageDay: _dateOnly(focusedDay),
           eventDayKeys: eventDayKeys,
           hasEvents: eventDayKeys.contains(_dateKey(day)),
           isToday: true,
         ),
-        selectedBuilder: (context, day, _) => _buildInteractiveDayCell(
+        selectedBuilder: (context, day, focusedDay) => _buildInteractiveDayCell(
           day,
+          pageDay: _dateOnly(focusedDay),
           eventDayKeys: eventDayKeys,
           hasEvents: eventDayKeys.contains(_dateKey(day)),
           isSelectedOverride: true,
@@ -420,6 +548,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildInteractiveDayCell(
     DateTime day, {
+    required DateTime pageDay,
     required Set<int> eventDayKeys,
     required bool hasEvents,
     bool isToday = false,
@@ -429,7 +558,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final normalizedDay = _dateOnly(day);
     final isSelected = isSelectedOverride || _isDateSelected(normalizedDay);
 
-    return Listener(
+    final cell = Listener(
       onPointerDown: (event) => _handleDayPointerDown(
         day: normalizedDay,
         event: event,
@@ -448,6 +577,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
           isOutside: isOutside,
         ),
       ),
+    );
+
+    if (_viewMode != CalendarViewMode.month) {
+      return cell;
+    }
+
+    return _DayBoundsReporter(
+      day: normalizedDay,
+      pageDay: pageDay,
+      onChanged: _updateDayHitRegion,
+      onRemoved: () => _removeDayHitRegion(pageDay, normalizedDay),
+      child: cell,
     );
   }
 
@@ -572,7 +713,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     var length = 1;
     var cursor = _dateOnly(startDay);
     while (cursor.weekday != DateTime.sunday) {
-      final nextDay = cursor.add(const Duration(days: 1));
+      final nextDay = _addDays(cursor, 1);
       if (!_isDateSelected(nextDay)) {
         break;
       }
@@ -585,7 +726,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _selectionRunHasEvents(DateTime startDay, Set<int> eventDayKeys) {
     final runLength = _selectionRunLength(startDay);
     for (var index = 0; index < runLength; index++) {
-      final day = startDay.add(Duration(days: index));
+      final day = _addDays(startDay, index);
       if (eventDayKeys.contains(_dateKey(day))) {
         return true;
       }
@@ -865,7 +1006,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   String _eventsHeaderForRange(DateTime start, DateTime end) {
     if (_viewMode == CalendarViewMode.month) {
-      return 'Events in ${_monthHeaderFormat.format(_focusedDay)}';
+      return 'Events in ${_monthHeaderFormat.format(_visiblePageDay)}';
     }
     if (_viewMode == CalendarViewMode.year) {
       final week = _isoWeekNumber(start);
@@ -882,20 +1023,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final start = _selectedWeekStart;
       return DateTimeRange(
         start: start,
-        end: start.add(const Duration(days: 6)),
+        end: _addDays(start, 6),
       );
     }
 
     if (_viewMode == CalendarViewMode.month) {
-      final start = DateTime(_focusedDay.year, _focusedDay.month, 1);
-      final end = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
+      final start = DateTime(_visiblePageDay.year, _visiblePageDay.month, 1);
+      final end = DateTime(_visiblePageDay.year, _visiblePageDay.month + 1, 0);
       return DateTimeRange(start: start, end: end);
     }
 
     final start = _startOfIsoWeek(_focusedDay);
     final end = _viewMode == CalendarViewMode.twoWeeks
-        ? start.add(const Duration(days: 13))
-        : start.add(const Duration(days: 6));
+        ? _addDays(start, 13)
+        : _addDays(start, 6);
     return DateTimeRange(start: start, end: end);
   }
 
@@ -966,8 +1107,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final firstWeekStart = _startOfIsoWeek(DateTime(year, 1, 4));
 
     return List<_YearWeekItem>.generate(totalWeeks, (index) {
-      final start = firstWeekStart.add(Duration(days: index * 7));
-      final end = start.add(const Duration(days: 6));
+      final start = _addDays(firstWeekStart, index * 7);
+      final end = _addDays(start, 6);
       return _YearWeekItem(
         weekNumber: index + 1,
         start: _dateOnly(start),
@@ -992,14 +1133,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (day.weekday == DateTime.monday) {
       return false;
     }
-    return _isDateSelected(day.subtract(const Duration(days: 1)));
+    return _isDateSelected(_addDays(day, -1));
   }
 
   bool _selectionConnectsRight(DateTime day) {
     if (day.weekday == DateTime.sunday) {
       return false;
     }
-    return _isDateSelected(day.add(const Duration(days: 1)));
+    return _isDateSelected(_addDays(day, 1));
+  }
+
+  bool _isOutsideVisibleMonth(DateTime day) {
+    if (_viewMode != CalendarViewMode.month) {
+      return false;
+    }
+    return day.month != _visiblePageDay.month || day.year != _visiblePageDay.year;
   }
 
   List<DateTime> _sortedSelectedDays() {
@@ -1029,6 +1177,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     setState(() {
+      if (_isOutsideVisibleMonth(day) &&
+          !_isShiftPressed() &&
+          !_isToggleModifierPressed()) {
+        return;
+      }
       if (_isShiftPressed() && _lastInteractedDay != null) {
         _addRangeToSelection(_lastInteractedDay!, day);
       } else if (_isToggleModifierPressed()) {
@@ -1052,12 +1205,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _isToggleModifierPressed()) {
       return;
     }
+    if (_isOutsideVisibleMonth(day)) {
+      return;
+    }
 
     _activePointer = event.pointer;
     _dragAnchorDay = day;
     _isPointerDragSelecting = true;
     _selectionDragMoved = false;
     setState(() {
+      _debugDragHit = 'anchor ${_debugDay(day)}';
       _selectOnly(day);
     });
   }
@@ -1087,23 +1244,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final hit = _calendarHitTest(event.position);
     final hoveredDay = hit?.$1;
-    final hoveredSlot = hit?.$2;
-    if (hoveredDay == null || hoveredSlot == null) {
+    if (kDebugMode) {
+      setState(() {
+        _debugDragHit = hit == null
+            ? 'no hit @ ${event.position.dx.toStringAsFixed(0)},${event.position.dy.toStringAsFixed(0)}'
+            : '${hit.$2} ${_debugDay(hit.$1)}';
+      });
+    }
+    if (hoveredDay == null) {
       return;
     }
-
-    if (_lastDragGridSlot != hoveredSlot) {
-      if (_dragPageLockSlot != null && _dragPageLockSlot != hoveredSlot) {
-        _dragPageLockSlot = null;
-      }
-      _lastDragGridSlot = hoveredSlot;
-    }
-
-    final isCrossMonthHover =
-        _viewMode == CalendarViewMode.month &&
-        (hoveredDay.month != _focusedDay.month ||
-            hoveredDay.year != _focusedDay.year);
-    if (isCrossMonthHover && _dragPageLockSlot == hoveredSlot) {
+    if (_isOutsideVisibleMonth(hoveredDay)) {
       return;
     }
 
@@ -1114,11 +1265,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     if (_selectionDragMoved || isTouchDrag) {
+      final effectiveHoveredDay = hoveredDay;
       setState(() {
-        if (isCrossMonthHover) {
-          _dragPageLockSlot = hoveredSlot;
-        }
-        _setSelectionRange(_dragAnchorDay!, hoveredDay);
+        _setSelectionRange(_dragAnchorDay!, effectiveHoveredDay);
       });
     }
   }
@@ -1127,10 +1276,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_viewMode == CalendarViewMode.year) {
       return;
     }
+    if (_isOutsideVisibleMonth(day)) {
+      return;
+    }
     _dragAnchorDay = day;
     _isLongPressDragSelecting = true;
     _selectionDragMoved = false;
     _suppressNextTap = true;
+    if (kDebugMode) {
+      setState(() {
+        _debugDragHit = 'long ${_debugDay(day)}';
+      });
+    }
   }
 
   void _finishLongPressSelection(DateTime day) {
@@ -1161,14 +1318,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _resetSelectionGesture() {
     _activePointer = null;
     _dragAnchorDay = null;
-    _dragPageLockSlot = null;
-    _lastDragGridSlot = null;
     _isPointerDragSelecting = false;
     _isLongPressDragSelecting = false;
     _selectionDragMoved = false;
+    if (kDebugMode) {
+      setState(() {
+        _debugDragHit = null;
+      });
+    }
   }
 
-  (DateTime, int)? _calendarHitTest(Offset globalPosition) {
+  (DateTime, String)? _calendarHitTest(Offset globalPosition) {
+    if (_viewMode == CalendarViewMode.month) {
+      final region = _hitTestCurrentMonthRegion(globalPosition);
+      if (region != null) {
+        return (region.day, 'month');
+      }
+      return null;
+    }
+
     final viewportContext = _calendarViewportKey.currentContext;
     final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.hasSize) {
@@ -1203,11 +1371,109 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     final gridStart = _visibleGridStart();
-    final candidate = gridStart.add(Duration(days: row * 7 + column));
+    final candidate = _addDays(gridStart, row * 7 + column);
     if (candidate.isBefore(_firstCalendarDay) || candidate.isAfter(_lastCalendarDay)) {
       return null;
     }
-    return (_dateOnly(candidate), row * 7 + column);
+    return (_dateOnly(candidate), 'grid r$row c$column');
+  }
+
+  _DayHitRegion? _hitTestCurrentMonthRegion(Offset globalPosition) {
+    final viewportContext = _calendarViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) {
+      return null;
+    }
+
+    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    if (!viewportRect.contains(globalPosition)) {
+      return null;
+    }
+
+    final regions = _dayHitRegions.values
+        .where(_isCurrentMonthRegion)
+        .where((region) => region.rect.overlaps(viewportRect))
+        .toList();
+
+    for (final region in regions) {
+      if (region.rect.contains(globalPosition)) {
+        return region;
+      }
+    }
+
+    if (regions.isEmpty) {
+      return null;
+    }
+
+    final rowBuckets = <double, List<_DayHitRegion>>{};
+    for (final region in regions) {
+      final centerY = region.rect.center.dy;
+      double? bucketKey;
+      for (final key in rowBuckets.keys) {
+        if ((key - centerY).abs() <= 12) {
+          bucketKey = key;
+          break;
+        }
+      }
+      rowBuckets.putIfAbsent(bucketKey ?? centerY, () => <_DayHitRegion>[]).add(region);
+    }
+
+    final rows = rowBuckets.values.toList()
+      ..sort((a, b) => a.first.rect.center.dy.compareTo(b.first.rect.center.dy));
+
+    List<_DayHitRegion>? nearestRow;
+    var nearestRowDistance = double.infinity;
+    for (final row in rows) {
+      final distance = (row.first.rect.center.dy - globalPosition.dy).abs();
+      if (distance < nearestRowDistance) {
+        nearestRowDistance = distance;
+        nearestRow = row;
+      }
+    }
+
+    if (nearestRow == null || nearestRowDistance > (_calendarRowHeight / 2)) {
+      return null;
+    }
+
+    nearestRow.sort((a, b) => a.rect.center.dx.compareTo(b.rect.center.dx));
+
+    _DayHitRegion? nearestRegion;
+    var nearestColumnDistance = double.infinity;
+    for (final region in nearestRow) {
+      final distance = (region.rect.center.dx - globalPosition.dx).abs();
+      if (distance < nearestColumnDistance) {
+        nearestColumnDistance = distance;
+        nearestRegion = region;
+      }
+    }
+
+    if (nearestRegion == null ||
+        nearestColumnDistance > (nearestRegion.rect.width / 2)) {
+      return null;
+    }
+
+    return nearestRegion;
+  }
+
+  String _debugDay(DateTime day) {
+    return '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+  }
+
+  void _updateDayHitRegion(_DayHitRegion region) {
+    _dayHitRegions[_dayHitRegionId(region.pageDay, region.day)] = region;
+  }
+
+  void _removeDayHitRegion(DateTime pageDay, DateTime day) {
+    _dayHitRegions.remove(_dayHitRegionId(pageDay, day));
+  }
+
+  bool _isCurrentMonthRegion(_DayHitRegion region) {
+    return region.pageDay.year == _visiblePageDay.year &&
+        region.pageDay.month == _visiblePageDay.month;
+  }
+
+  String _dayHitRegionId(DateTime pageDay, DateTime day) {
+    return '${pageDay.year}-${pageDay.month}-${_dateKey(day)}';
   }
 
   void _selectOnly(DateTime day) {
@@ -1256,7 +1522,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   DateTime _visibleGridStart() {
     if (_viewMode == CalendarViewMode.month) {
-      final firstOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
+      final firstOfMonth = DateTime(
+        _visiblePageDay.year,
+        _visiblePageDay.month,
+        1,
+      );
       return _startOfIsoWeek(firstOfMonth);
     }
 
@@ -1275,10 +1545,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Iterable<DateTime> _daysBetween(DateTime a, DateTime b) sync* {
     final start = _dateOnly(a.isBefore(b) ? a : b);
     final end = _dateOnly(a.isBefore(b) ? b : a);
-    final totalDays = end.difference(start).inDays;
-    for (var i = 0; i <= totalDays; i++) {
-      yield start.add(Duration(days: i));
+    var cursor = start;
+    while (!cursor.isAfter(end)) {
+      yield cursor;
+      cursor = _addDays(cursor, 1);
     }
+  }
+
+  DateTime _addDays(DateTime value, int days) {
+    final date = _dateOnly(value);
+    return DateTime(date.year, date.month, date.day + days);
   }
 
   DateTime _dateOnly(DateTime value) {
@@ -1299,12 +1575,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   DateTime _startOfIsoWeek(DateTime value) {
     final date = _dateOnly(value);
-    return date.subtract(Duration(days: date.weekday - DateTime.monday));
+    return _addDays(date, DateTime.monday - date.weekday);
   }
 
   int _isoWeekNumber(DateTime value) {
     final date = _dateOnly(value);
-    final thursday = date.add(Duration(days: DateTime.thursday - date.weekday));
+    final thursday = _addDays(date, DateTime.thursday - date.weekday);
     final firstThursday = DateTime(thursday.year, 1, 4);
     final firstWeekStart = _startOfIsoWeek(firstThursday);
     return (thursday.difference(firstWeekStart).inDays ~/ 7) + 1;
