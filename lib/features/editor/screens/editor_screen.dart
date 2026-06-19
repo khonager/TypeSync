@@ -964,7 +964,10 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       );
 
-      if (selection.isValid) {
+      final currentSelection = _quillController.selection;
+      if (selection.isValid && currentSelection != selection) {
+        // Restoring an unchanged selection can make Quill scroll the caret
+        // into view after a checkbox tap.
         _quillController.updateSelection(selection, ChangeSource.local);
       }
     } finally {
