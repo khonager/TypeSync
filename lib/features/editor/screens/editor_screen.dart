@@ -157,6 +157,13 @@ class _ChecklistLeading extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? () => onChanged(!value) : null,
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll<Color>(
+            Colors.transparent,
+          ),
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1055,9 +1062,8 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final expanded = expandedKey == null ? null : prefs.getBool(expandedKey);
-      final previewHidden = previewHiddenKey == null
-          ? null
-          : prefs.getBool(previewHiddenKey);
+      final previewHidden =
+          previewHiddenKey == null ? null : prefs.getBool(previewHiddenKey);
 
       if (!mounted) return;
       setState(() {
