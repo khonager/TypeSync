@@ -120,6 +120,18 @@ class _ChecklistLineState {
       isChecked ? Attribute.unchecked : Attribute.checked;
 }
 
+class _SelectedLineRange {
+  const _SelectedLineRange({
+    required this.startOffset,
+    required this.endOffset,
+    this.attributes = const <String, dynamic>{},
+  });
+
+  final int startOffset;
+  final int endOffset;
+  final Map<String, dynamic> attributes;
+}
+
 class _ChecklistLeading extends StatelessWidget {
   const _ChecklistLeading({
     required this.size,
@@ -578,15 +590,29 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   List<_ChecklistLineState> _selectedChecklistLineStates() {
+    return _selectedLineRanges().map((line) {
+      return _ChecklistLineState(
+        startOffset: line.startOffset,
+        endOffset: line.endOffset,
+        listType: line.attributes[Attribute.list.key] as String?,
+      );
+    }).toList(growable: false);
+  }
+
+  List<_SelectedLineRange> _selectedLineRanges({
+    bool wholeDocumentIfCollapsed = false,
+  }) {
     final selection = _quillController.selection;
     if (!selection.isValid) {
-      return const <_ChecklistLineState>[];
+      return const <_SelectedLineRange>[];
     }
 
     final operations = _quillController.document.toDelta().toJson();
-    final selectedLines = <_ChecklistLineState>[];
+    final selectedLines = <_SelectedLineRange>[];
     final selectionStart = selection.start;
     final selectionEnd = selection.end;
+    final selectWholeDocument =
+        wholeDocumentIfCollapsed && selection.isCollapsed;
     var documentOffset = 0;
     var lineStartOffset = 0;
 
@@ -602,18 +628,20 @@ class _EditorScreenState extends State<EditorScreen>
           if (character == '\n') {
             final lineEndOffset = documentOffset;
             final lineSelectionEnd = lineEndOffset + 1;
-            final isSelected = selection.isCollapsed
-                ? selectionStart >= lineStartOffset &&
-                    selectionStart <= lineEndOffset
-                : selectionStart < lineSelectionEnd &&
-                    selectionEnd > lineStartOffset;
+            final isSelected = selectWholeDocument
+                ? true
+                : selection.isCollapsed
+                    ? selectionStart >= lineStartOffset &&
+                        selectionStart <= lineEndOffset
+                    : selectionStart < lineSelectionEnd &&
+                        selectionEnd > lineStartOffset;
 
             if (isSelected) {
               selectedLines.add(
-                _ChecklistLineState(
+                _SelectedLineRange(
                   startOffset: lineStartOffset,
                   endOffset: lineEndOffset,
-                  listType: attributes[Attribute.list.key] as String?,
+                  attributes: attributes,
                 ),
               );
             }
@@ -826,6 +854,34 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     _ensureChecklistMetadata();
+    _updateStats();
+    _refreshSearchMatches();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
+  }
+
+  void _applyAlignment(Attribute<String?> alignment) {
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final targetLines = _selectedLineRanges(wholeDocumentIfCollapsed: true);
+    if (targetLines.isEmpty) return;
+
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      for (final line in targetLines) {
+        _quillController.formatText(line.startOffset, 0, alignment);
+      }
+      _quillController.updateSelection(selection, ChangeSource.local);
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+    }
+
     _updateStats();
     _refreshSearchMatches();
     _scheduleSave();
@@ -1939,6 +1995,7 @@ class _EditorScreenState extends State<EditorScreen>
       onInsertTable: _insertTable,
       onInsertKanban: _insertKanban,
       onToggleChecklist: _toggleChecklistCycle,
+      onSetAlignment: _applyAlignment,
       placement: _toolbarPlacement,
       onPlacementChanged: _setToolbarPlacement,
       initialPosition: _toolbarPosition,

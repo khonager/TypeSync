@@ -33,6 +33,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
   final VoidCallback onToggleChecklist;
+  final ValueChanged<Attribute<String?>> onSetAlignment;
   final EditorToolbarPlacement placement;
   final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
   final Offset initialPosition;
@@ -44,6 +45,7 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertTable,
     required this.onInsertKanban,
     required this.onToggleChecklist,
+    required this.onSetAlignment,
     required this.placement,
     required this.onPlacementChanged,
     required this.initialPosition,
@@ -607,17 +609,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_align_left,
         tooltip: 'Align left',
-        onTap: () => _setAlignment(TextAlign.left),
+        isActive: _isAlignmentActive(Attribute.leftAlignment),
+        onTap: () => _setAlignment(Attribute.leftAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_center,
         tooltip: 'Align center',
-        onTap: () => _setAlignment(TextAlign.center),
+        isActive: _isAlignmentActive(Attribute.centerAlignment),
+        onTap: () => _setAlignment(Attribute.centerAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_right,
         tooltip: 'Align right',
-        onTap: () => _setAlignment(TextAlign.right),
+        isActive: _isAlignmentActive(Attribute.rightAlignment),
+        onTap: () => _setAlignment(Attribute.rightAlignment),
       ),
       divider,
       _ToolbarButton(
@@ -695,17 +700,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_align_left,
         tooltip: 'Align left',
-        onTap: () => _setAlignment(TextAlign.left),
+        isActive: _isAlignmentActive(Attribute.leftAlignment),
+        onTap: () => _setAlignment(Attribute.leftAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_center,
         tooltip: 'Align center',
-        onTap: () => _setAlignment(TextAlign.center),
+        isActive: _isAlignmentActive(Attribute.centerAlignment),
+        onTap: () => _setAlignment(Attribute.centerAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_right,
         tooltip: 'Align right',
-        onTap: () => _setAlignment(TextAlign.right),
+        isActive: _isAlignmentActive(Attribute.rightAlignment),
+        onTap: () => _setAlignment(Attribute.rightAlignment),
       ),
       _ToolbarButton(
         icon: Icons.picture_as_pdf_outlined,
@@ -744,6 +752,21 @@ class _EditorToolbarState extends State<EditorToolbar> {
     }
   }
 
+  bool _isAlignmentActive(Attribute<String?> attribute) {
+    try {
+      final currentAlignment =
+          widget.controller.getSelectionStyle().attributes[Attribute.align.key];
+      if (attribute == Attribute.leftAlignment) {
+        return currentAlignment == null ||
+            currentAlignment.value == Attribute.leftAlignment.value;
+      }
+
+      return currentAlignment?.value == attribute.value;
+    } catch (_) {
+      return attribute == Attribute.leftAlignment;
+    }
+  }
+
   void _toggleAttribute(Attribute<dynamic> attribute) {
     widget.controller.skipRequestKeyboard = !attribute.isInline;
     widget.controller.formatSelection(
@@ -755,10 +778,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
     _toggleAttribute(Attribute.codeBlock);
   }
 
-  void _setAlignment(TextAlign align) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Alignment: $align')));
+  void _setAlignment(Attribute<String?> alignment) {
+    widget.onSetAlignment(alignment);
   }
 
   void _showColorPicker() {
