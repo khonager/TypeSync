@@ -120,6 +120,89 @@ class _ChecklistLineState {
       isChecked ? Attribute.unchecked : Attribute.checked;
 }
 
+class _ChecklistLeading extends StatelessWidget {
+  const _ChecklistLeading({
+    required this.size,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final double size;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final railColor = value
+        ? theme.colorScheme.primary.withValues(alpha: 0.18)
+        : Colors.transparent;
+    final fillColor = value
+        ? (enabled
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurface.withValues(alpha: 0.5))
+        : theme.colorScheme.surface;
+    final borderColor = value
+        ? (enabled
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurface.withValues(alpha: 0))
+        : (enabled
+            ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
+            : theme.colorScheme.onSurface.withValues(alpha: 0.3));
+
+    return SizedBox.expand(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? () => onChanged(!value) : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 3,
+                  margin: const EdgeInsetsDirectional.only(top: 2, bottom: 2),
+                  decoration: BoxDecoration(
+                    color: railColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.topEnd,
+                child: Container(
+                  width: size,
+                  height: size,
+                  margin: EdgeInsetsDirectional.only(
+                    top: 1,
+                    end: size * 0.35,
+                  ),
+                  decoration: BoxDecoration(
+                    color: fillColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: value
+                      ? Icon(
+                          Icons.check,
+                          size: size * 0.82,
+                          color: theme.colorScheme.onPrimary,
+                        )
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
@@ -831,11 +914,10 @@ class _EditorScreenState extends State<EditorScreen>
         fontSize: 14,
         height: 1.35,
       ),
-      child: QuillEditorCheckboxPoint(
+      child: _ChecklistLeading(
         size: config.lineSize!,
         value: config.value,
         enabled: config.enabled ?? false,
-        uiBuilder: config.uiBuilder,
         onChanged: (value) {
           _handleChecklistCheckboxTap(
             node.documentOffset,
