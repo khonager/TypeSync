@@ -99,6 +99,7 @@ class AuthService extends ChangeNotifier {
   String? _guestWorkspaceId;
   String? _pendingGuestImportWorkspaceId;
   String? _pendingEmailLinkEmail;
+  bool _hasResolvedInitialFirebaseAuthState = false;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -177,6 +178,7 @@ class AuthService extends ChangeNotifier {
         // Sync check for signed in state to prevent login screen flash on Android/iOS/Web
         final firebaseUser = _firebaseAuth.currentUser;
         if (firebaseUser != null) {
+          _hasResolvedInitialFirebaseAuthState = true;
           _currentUser = User(
             id: firebaseUser.uid,
             email: firebaseUser.email ?? '',
@@ -191,14 +193,8 @@ class AuthService extends ChangeNotifier {
           _loadUserData(firebaseUser.uid).catchError((_) {
             // Silently handle get user error
           });
-        } else if (kIsWeb) {
-          // On Web, wait a short moment for Firebase to restore session
-          // before assuming the user is logged out.
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (!_isInitialized && _firebaseAuth.currentUser == null) {
-              _onAuthStateChanged(null);
-            }
-          });
+        } else {
+          unawaited(_resolveInitialFirebaseSignedOutState());
         }
 
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
@@ -1026,8 +1022,6 @@ class AuthService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
-  bool _webInitialized = false;
-
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
     _diagnostics.info(
@@ -1035,14 +1029,17 @@ class AuthService extends ChangeNotifier {
       'AUTH_FLOW firebase auth state changed user=${firebaseUser?.uid} guestMode=$_isGuestMode initialized=$_isInitialized',
     );
     if (firebaseUser != null) {
+      _hasResolvedInitialFirebaseAuthState = true;
       _isGuestMode = false;
       await _loadUserData(firebaseUser.uid);
       _isInitialized = true;
       notifyListeners();
     } else if (firebaseUser == null && !_isGuestMode) {
-      if (kIsWeb && !_webInitialized) {
-        // Skip the first null event on Web to allow for session restoration delay
-        _webInitialized = true;
+      if (!_hasResolvedInitialFirebaseAuthState) {
+        _diagnostics.info(
+          'AuthService',
+          'AUTH_FLOW ignoring initial null auth state while waiting for Firebase session restore',
+        );
         return;
       }
       // Only clear user if not in guest mode
@@ -1050,6 +1047,35 @@ class AuthService extends ChangeNotifier {
       _isInitialized = true;
       notifyListeners();
     }
+  }
+
+  Future<void> _resolveInitialFirebaseSignedOutState() async {
+    await Future<void>.delayed(
+      const Duration(milliseconds: kIsWeb ? 500 : 1500),
+    );
+
+    if (_hasResolvedInitialFirebaseAuthState || _isGuestMode || _isInitialized) {
+      return;
+    }
+
+    final restoredUser = _firebaseAuth.currentUser;
+    if (restoredUser != null) {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW restored Firebase session after startup delay user=${restoredUser.uid}',
+      );
+      await _onAuthStateChanged(restoredUser);
+      return;
+    }
+
+    _hasResolvedInitialFirebaseAuthState = true;
+    _currentUser = null;
+    _isInitialized = true;
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW confirmed signed-out state after Firebase startup delay',
+    );
+    notifyListeners();
   }
 
   /// Load user data from Firestore
