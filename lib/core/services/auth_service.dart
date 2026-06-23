@@ -1054,7 +1054,9 @@ class AuthService extends ChangeNotifier {
       const Duration(milliseconds: kIsWeb ? 500 : 1500),
     );
 
-    if (_hasResolvedInitialFirebaseAuthState || _isGuestMode || _isInitialized) {
+    if (_hasResolvedInitialFirebaseAuthState ||
+        _isGuestMode ||
+        _isInitialized) {
       return;
     }
 

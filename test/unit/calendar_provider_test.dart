@@ -90,7 +90,8 @@ void main() {
       expect(updated.completedAt, isNull);
     });
 
-    test('creating events for multiple dates links them with one series id', () async {
+    test('creating events for multiple dates links them with one series id',
+        () async {
       final provider = CalendarProvider();
       await provider.initialize('user-3');
 
@@ -114,7 +115,9 @@ void main() {
         [17, 18, 20],
       );
       expect(
-        created.every((event) => event.startTime.hour == 9 && event.startTime.minute == 30),
+        created.every(
+          (event) => event.startTime.hour == 9 && event.startTime.minute == 30,
+        ),
         isTrue,
       );
     });

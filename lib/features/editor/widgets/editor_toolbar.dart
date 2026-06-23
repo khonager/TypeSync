@@ -545,7 +545,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
   List<Widget> _buildToolbarItems(Axis axis) {
     final divider = _ToolbarDivider(axis: axis);
     final activeTextColor = _currentPaletteColor(_EditorColorPaletteType.text);
-    final activeMarkerColor = _currentPaletteColor(_EditorColorPaletteType.marker);
+    final activeMarkerColor =
+        _currentPaletteColor(_EditorColorPaletteType.marker);
 
     return [
       _ToolbarButton(
@@ -652,7 +653,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   List<Widget> _buildFloatingToolbarItems() {
     final activeTextColor = _currentPaletteColor(_EditorColorPaletteType.text);
-    final activeMarkerColor = _currentPaletteColor(_EditorColorPaletteType.marker);
+    final activeMarkerColor =
+        _currentPaletteColor(_EditorColorPaletteType.marker);
 
     return [
       _ToolbarButton(
@@ -1025,7 +1027,9 @@ class _ToolbarButton extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final hasColorPreview = activeFillColor != null || activeIconColor != null;
     final buttonColor = activeFillColor ??
-        (isActive ? colors.primary.withValues(alpha: 0.14) : Colors.transparent);
+        (isActive
+            ? colors.primary.withValues(alpha: 0.14)
+            : Colors.transparent);
     final iconColor = activeIconColor ??
         (isActive ? colors.primary : Theme.of(context).iconTheme.color);
 
