@@ -120,6 +120,108 @@ class _ChecklistLineState {
       isChecked ? Attribute.unchecked : Attribute.checked;
 }
 
+class _SelectedLineRange {
+  const _SelectedLineRange({
+    required this.startOffset,
+    required this.endOffset,
+    this.attributes = const <String, dynamic>{},
+  });
+
+  final int startOffset;
+  final int endOffset;
+  final Map<String, dynamic> attributes;
+}
+
+class _ChecklistLeading extends StatelessWidget {
+  const _ChecklistLeading({
+    required this.size,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final double size;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final railColor = value
+        ? theme.colorScheme.primary.withValues(alpha: 0.18)
+        : Colors.transparent;
+    final fillColor = value
+        ? (enabled
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurface.withValues(alpha: 0.5))
+        : theme.colorScheme.surface;
+    final borderColor = value
+        ? (enabled
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurface.withValues(alpha: 0))
+        : (enabled
+            ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
+            : theme.colorScheme.onSurface.withValues(alpha: 0.3));
+
+    return SizedBox.expand(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? () => onChanged(!value) : null,
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll<Color>(
+            Colors.transparent,
+          ),
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 3,
+                  margin: const EdgeInsetsDirectional.only(top: 2, bottom: 2),
+                  decoration: BoxDecoration(
+                    color: railColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.topEnd,
+                child: Container(
+                  width: size,
+                  height: size,
+                  margin: EdgeInsetsDirectional.only(
+                    top: 1,
+                    end: size * 0.35,
+                  ),
+                  decoration: BoxDecoration(
+                    color: fillColor,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: value
+                      ? Icon(
+                          Icons.check,
+                          size: size * 0.82,
+                          color: theme.colorScheme.onPrimary,
+                        )
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
@@ -134,6 +236,10 @@ class _EditorScreenState extends State<EditorScreen>
       'typesync_editor_offset_x_v1';
   static const String _toolbarOffsetYPreferenceKey =
       'typesync_editor_offset_y_v1';
+  static const String _attachmentsExpandedPreferencePrefix =
+      'typesync_editor_attachments_expanded_';
+  static const String _attachmentsPreviewHiddenPreferencePrefix =
+      'typesync_editor_attachments_preview_hidden_';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -207,10 +313,28 @@ class _EditorScreenState extends State<EditorScreen>
     return query != null && query.isNotEmpty;
   }
 
+  String? get _initialRouteSearchQuery {
+    final query = widget.searchQuery?.trim();
+    if (query == null || query.isEmpty) return null;
+    return query;
+  }
+
   String? get _caretOffsetPreferenceKey {
     final noteId = _note?.id;
     if (noteId == null || noteId.isEmpty) return null;
     return '$_caretOffsetPreferencePrefix$noteId';
+  }
+
+  String? get _attachmentsExpandedPreferenceKey {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return null;
+    return '$_attachmentsExpandedPreferencePrefix$noteId';
+  }
+
+  String? get _attachmentsPreviewHiddenPreferenceKey {
+    final noteId = _note?.id;
+    if (noteId == null || noteId.isEmpty) return null;
+    return '$_attachmentsPreviewHiddenPreferencePrefix$noteId';
   }
 
   bool _isAutoGeneratedTitle(String title) {
@@ -232,10 +356,6 @@ class _EditorScreenState extends State<EditorScreen>
   void initState() {
     super.initState();
     _syncService = context.read<SyncService>();
-    _isSearchPanelVisible = _openedFromSearch;
-    if (_openedFromSearch) {
-      _findController.text = widget.searchQuery!.trim();
-    }
     _findController.addListener(_handleSearchQueryChanged);
     _focusNode.addListener(_onEditorFocusChanged);
     _matchGlowController = AnimationController(
@@ -313,6 +433,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     await _loadToolbarPreferences();
+    await _loadAttachmentPreferences();
 
     // Listen for content changes
     _quillController.addListener(_onContentChanged);
@@ -326,6 +447,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isCurrentAppVersionCompatibleWithNote()) {
       if (_openedFromSearch) {
         _maybeNavigateToInitialSearchMatch();
+        _requestInitialEditorFocus(force: true);
       } else {
         _requestInitialEditorFocus();
       }
@@ -468,15 +590,29 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   List<_ChecklistLineState> _selectedChecklistLineStates() {
+    return _selectedLineRanges().map((line) {
+      return _ChecklistLineState(
+        startOffset: line.startOffset,
+        endOffset: line.endOffset,
+        listType: line.attributes[Attribute.list.key] as String?,
+      );
+    }).toList(growable: false);
+  }
+
+  List<_SelectedLineRange> _selectedLineRanges({
+    bool wholeDocumentIfCollapsed = false,
+  }) {
     final selection = _quillController.selection;
     if (!selection.isValid) {
-      return const <_ChecklistLineState>[];
+      return const <_SelectedLineRange>[];
     }
 
     final operations = _quillController.document.toDelta().toJson();
-    final selectedLines = <_ChecklistLineState>[];
+    final selectedLines = <_SelectedLineRange>[];
     final selectionStart = selection.start;
     final selectionEnd = selection.end;
+    final selectWholeDocument =
+        wholeDocumentIfCollapsed && selection.isCollapsed;
     var documentOffset = 0;
     var lineStartOffset = 0;
 
@@ -492,18 +628,20 @@ class _EditorScreenState extends State<EditorScreen>
           if (character == '\n') {
             final lineEndOffset = documentOffset;
             final lineSelectionEnd = lineEndOffset + 1;
-            final isSelected = selection.isCollapsed
-                ? selectionStart >= lineStartOffset &&
-                    selectionStart <= lineEndOffset
-                : selectionStart < lineSelectionEnd &&
-                    selectionEnd > lineStartOffset;
+            final isSelected = selectWholeDocument
+                ? true
+                : selection.isCollapsed
+                    ? selectionStart >= lineStartOffset &&
+                        selectionStart <= lineEndOffset
+                    : selectionStart < lineSelectionEnd &&
+                        selectionEnd > lineStartOffset;
 
             if (isSelected) {
               selectedLines.add(
-                _ChecklistLineState(
+                _SelectedLineRange(
                   startOffset: lineStartOffset,
                   endOffset: lineEndOffset,
-                  listType: attributes[Attribute.list.key] as String?,
+                  attributes: attributes,
                 ),
               );
             }
@@ -722,6 +860,34 @@ class _EditorScreenState extends State<EditorScreen>
     _scheduleCaretOffsetPersist();
   }
 
+  void _applyAlignment(Attribute<String?> alignment) {
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final targetLines = _selectedLineRanges(wholeDocumentIfCollapsed: true);
+    if (targetLines.isEmpty) return;
+
+    _quillController
+      ..ignoreFocusOnTextChange = true
+      ..skipRequestKeyboard = true;
+
+    try {
+      for (final line in targetLines) {
+        _quillController.formatText(line.startOffset, 0, alignment);
+      }
+      _quillController.updateSelection(selection, ChangeSource.local);
+    } finally {
+      _quillController
+        ..ignoreFocusOnTextChange = false
+        ..skipRequestKeyboard = false;
+    }
+
+    _updateStats();
+    _refreshSearchMatches();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
+  }
+
   DateTime? _parseChecklistMetadataTimestamp(Object? rawValue) {
     if (rawValue is! String || rawValue.trim().isEmpty) {
       return null;
@@ -798,7 +964,10 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       );
 
-      if (selection.isValid) {
+      final currentSelection = _quillController.selection;
+      if (selection.isValid && currentSelection != selection) {
+        // Restoring an unchanged selection can make Quill scroll the caret
+        // into view after a checkbox tap.
         _quillController.updateSelection(selection, ChangeSource.local);
       }
     } finally {
@@ -831,11 +1000,10 @@ class _EditorScreenState extends State<EditorScreen>
         fontSize: 14,
         height: 1.35,
       ),
-      child: QuillEditorCheckboxPoint(
+      child: _ChecklistLeading(
         size: config.lineSize!,
         value: config.value,
         enabled: config.enabled ?? false,
-        uiBuilder: config.uiBuilder,
         onChanged: (value) {
           _handleChecklistCheckboxTap(
             node.documentOffset,
@@ -869,9 +1037,9 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  void _requestInitialEditorFocus() {
+  void _requestInitialEditorFocus({bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _openedFromSearch) return;
+      if (!mounted || (!force && _openedFromSearch)) return;
       _focusNode.requestFocus();
     });
   }
@@ -942,6 +1110,49 @@ class _EditorScreenState extends State<EditorScreen>
       }
     } catch (_) {
       // Best-effort preference loading.
+    }
+  }
+
+  Future<void> _loadAttachmentPreferences() async {
+    final expandedKey = _attachmentsExpandedPreferenceKey;
+    final previewHiddenKey = _attachmentsPreviewHiddenPreferenceKey;
+    if (expandedKey == null && previewHiddenKey == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final expanded = expandedKey == null ? null : prefs.getBool(expandedKey);
+      final previewHidden =
+          previewHiddenKey == null ? null : prefs.getBool(previewHiddenKey);
+
+      if (!mounted) return;
+      setState(() {
+        if (expanded != null) {
+          _attachmentsExpanded = expanded;
+        }
+        if (previewHidden != null) {
+          _hideAttachmentPreview = previewHidden;
+        }
+      });
+    } catch (_) {
+      // Best-effort preference loading.
+    }
+  }
+
+  Future<void> _persistAttachmentPreferences() async {
+    final expandedKey = _attachmentsExpandedPreferenceKey;
+    final previewHiddenKey = _attachmentsPreviewHiddenPreferenceKey;
+    if (expandedKey == null && previewHiddenKey == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (expandedKey != null) {
+        await prefs.setBool(expandedKey, _attachmentsExpanded);
+      }
+      if (previewHiddenKey != null) {
+        await prefs.setBool(previewHiddenKey, _hideAttachmentPreview);
+      }
+    } catch (_) {
+      // Best-effort preference persistence.
     }
   }
 
@@ -1787,6 +1998,7 @@ class _EditorScreenState extends State<EditorScreen>
       onInsertTable: _insertTable,
       onInsertKanban: _insertKanban,
       onToggleChecklist: _toggleChecklistCycle,
+      onSetAlignment: _applyAlignment,
       placement: _toolbarPlacement,
       onPlacementChanged: _setToolbarPlacement,
       initialPosition: _toolbarPosition,
@@ -2410,6 +2622,12 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _openSearchPanel({bool focusReplace = false}) {
     if (!_isSearchPanelVisible) {
+      final initialQuery = _selectedPlainTextForSearch();
+      _findController.value = TextEditingValue(
+        text: initialQuery,
+        selection: TextSelection.collapsed(offset: initialQuery.length),
+      );
+      _replaceController.clear();
       setState(() {
         _isSearchPanelVisible = true;
       });
@@ -2428,6 +2646,17 @@ class _EditorScreenState extends State<EditorScreen>
         );
       }
     });
+  }
+
+  String _selectedPlainTextForSearch() {
+    final selection = _quillController.selection;
+    if (!selection.isValid || selection.isCollapsed) {
+      return '';
+    }
+
+    final start = selection.start < 0 ? 0 : selection.start;
+    final end = selection.end < start ? start : selection.end;
+    return _quillController.document.getPlainText(start, end - start).trim();
   }
 
   void _closeSearchPanel() {
@@ -2576,7 +2805,10 @@ class _EditorScreenState extends State<EditorScreen>
     unawaited(_focusAndPulseSearchMatch(_searchMatches[nextIndex]));
   }
 
-  Future<void> _focusAndPulseSearchMatch(_EditorSearchMatch match) async {
+  Future<void> _focusAndPulseSearchMatch(
+    _EditorSearchMatch match, {
+    bool selectMatch = true,
+  }) async {
     if (!mounted) return;
 
     final documentLength = _quillController.document.length;
@@ -2586,7 +2818,9 @@ class _EditorScreenState extends State<EditorScreen>
     final safeEnd = match.endOffset.clamp(safeStart + 1, documentLength);
     if (safeEnd <= safeStart) return;
     _quillController.updateSelection(
-      TextSelection(baseOffset: safeStart, extentOffset: safeEnd),
+      selectMatch
+          ? TextSelection(baseOffset: safeStart, extentOffset: safeEnd)
+          : TextSelection.collapsed(offset: safeStart),
       ChangeSource.local,
     );
 
@@ -2699,7 +2933,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (_didAttemptInitialSearchJump) return;
     _didAttemptInitialSearchJump = true;
 
-    final query = widget.searchQuery?.trim();
+    final query = _initialRouteSearchQuery;
     if (query == null || query.isEmpty) return;
 
     final initialMatches = _findAllSearchMatches(query);
@@ -2707,7 +2941,9 @@ class _EditorScreenState extends State<EditorScreen>
     final initialMatch = initialMatches.first;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_focusAndPulseSearchMatch(initialMatch));
+      unawaited(
+        _focusAndPulseSearchMatch(initialMatch, selectMatch: false),
+      );
     });
   }
 
@@ -2901,7 +3137,9 @@ class _EditorScreenState extends State<EditorScreen>
                   onPressed: () {
                     setState(() {
                       _attachmentsExpanded = !_attachmentsExpanded;
+                      _hideAttachmentPreview = !_attachmentsExpanded;
                     });
+                    unawaited(_persistAttachmentPreferences());
                   },
                   child: Text(_attachmentsExpanded ? 'Collapse' : 'Expand'),
                 ),
@@ -2984,9 +3222,11 @@ class _EditorScreenState extends State<EditorScreen>
                                   _activeAttachmentId =
                                       selected ? attachment.id : null;
                                   if (selected) {
+                                    _attachmentsExpanded = true;
                                     _hideAttachmentPreview = false;
                                   }
                                 });
+                                unawaited(_persistAttachmentPreferences());
                               },
                             ),
                           ),
@@ -3032,7 +3272,9 @@ class _EditorScreenState extends State<EditorScreen>
           onPressed: () {
             setState(() {
               _hideAttachmentPreview = !_hideAttachmentPreview;
+              _attachmentsExpanded = !_hideAttachmentPreview;
             });
+            unawaited(_persistAttachmentPreferences());
           },
           icon: Icon(
             showAttachmentPreview
@@ -4410,7 +4652,10 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {
       _note = updatedNote;
       _activeAttachmentId = attachment.id;
+      _attachmentsExpanded = true;
+      _hideAttachmentPreview = false;
     });
+    unawaited(_persistAttachmentPreferences());
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Attached: $fileName')),

@@ -33,6 +33,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
   final VoidCallback onToggleChecklist;
+  final ValueChanged<Attribute<String?>> onSetAlignment;
   final EditorToolbarPlacement placement;
   final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
   final Offset initialPosition;
@@ -44,6 +45,7 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertTable,
     required this.onInsertKanban,
     required this.onToggleChecklist,
+    required this.onSetAlignment,
     required this.placement,
     required this.onPlacementChanged,
     required this.initialPosition,
@@ -542,6 +544,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   List<Widget> _buildToolbarItems(Axis axis) {
     final divider = _ToolbarDivider(axis: axis);
+    final activeTextColor = _currentPaletteColor(_EditorColorPaletteType.text);
+    final activeMarkerColor = _currentPaletteColor(_EditorColorPaletteType.marker);
 
     return [
       _ToolbarButton(
@@ -577,11 +581,16 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_color_text,
         tooltip: 'Text color',
+        activeIconColor: activeTextColor,
         onTap: _showColorPicker,
       ),
       _ToolbarButton(
         icon: Icons.border_color,
         tooltip: 'Highlight',
+        activeFillColor: activeMarkerColor,
+        activeIconColor: activeMarkerColor == null
+            ? null
+            : AppColorPalette.getContrastingTextColor(activeMarkerColor),
         onTap: _showMarkerColorPicker,
       ),
       _ToolbarButton(
@@ -607,17 +616,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_align_left,
         tooltip: 'Align left',
-        onTap: () => _setAlignment(TextAlign.left),
+        isActive: _isAlignmentActive(Attribute.leftAlignment),
+        onTap: () => _setAlignment(Attribute.leftAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_center,
         tooltip: 'Align center',
-        onTap: () => _setAlignment(TextAlign.center),
+        isActive: _isAlignmentActive(Attribute.centerAlignment),
+        onTap: () => _setAlignment(Attribute.centerAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_right,
         tooltip: 'Align right',
-        onTap: () => _setAlignment(TextAlign.right),
+        isActive: _isAlignmentActive(Attribute.rightAlignment),
+        onTap: () => _setAlignment(Attribute.rightAlignment),
       ),
       divider,
       _ToolbarButton(
@@ -639,6 +651,9 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   List<Widget> _buildFloatingToolbarItems() {
+    final activeTextColor = _currentPaletteColor(_EditorColorPaletteType.text);
+    final activeMarkerColor = _currentPaletteColor(_EditorColorPaletteType.marker);
+
     return [
       _ToolbarButton(
         icon: Icons.format_bold,
@@ -667,11 +682,16 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_color_text,
         tooltip: 'Text color',
+        activeIconColor: activeTextColor,
         onTap: _showColorPicker,
       ),
       _ToolbarButton(
         icon: Icons.border_color,
         tooltip: 'Highlight',
+        activeFillColor: activeMarkerColor,
+        activeIconColor: activeMarkerColor == null
+            ? null
+            : AppColorPalette.getContrastingTextColor(activeMarkerColor),
         onTap: _showMarkerColorPicker,
       ),
       _ToolbarButton(
@@ -695,17 +715,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
       _ToolbarButton(
         icon: Icons.format_align_left,
         tooltip: 'Align left',
-        onTap: () => _setAlignment(TextAlign.left),
+        isActive: _isAlignmentActive(Attribute.leftAlignment),
+        onTap: () => _setAlignment(Attribute.leftAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_center,
         tooltip: 'Align center',
-        onTap: () => _setAlignment(TextAlign.center),
+        isActive: _isAlignmentActive(Attribute.centerAlignment),
+        onTap: () => _setAlignment(Attribute.centerAlignment),
       ),
       _ToolbarButton(
         icon: Icons.format_align_right,
         tooltip: 'Align right',
-        onTap: () => _setAlignment(TextAlign.right),
+        isActive: _isAlignmentActive(Attribute.rightAlignment),
+        onTap: () => _setAlignment(Attribute.rightAlignment),
       ),
       _ToolbarButton(
         icon: Icons.picture_as_pdf_outlined,
@@ -744,6 +767,21 @@ class _EditorToolbarState extends State<EditorToolbar> {
     }
   }
 
+  bool _isAlignmentActive(Attribute<String?> attribute) {
+    try {
+      final currentAlignment =
+          widget.controller.getSelectionStyle().attributes[Attribute.align.key];
+      if (attribute == Attribute.leftAlignment) {
+        return currentAlignment == null ||
+            currentAlignment.value == Attribute.leftAlignment.value;
+      }
+
+      return currentAlignment?.value == attribute.value;
+    } catch (_) {
+      return attribute == Attribute.leftAlignment;
+    }
+  }
+
   void _toggleAttribute(Attribute<dynamic> attribute) {
     widget.controller.skipRequestKeyboard = !attribute.isInline;
     widget.controller.formatSelection(
@@ -755,10 +793,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
     _toggleAttribute(Attribute.codeBlock);
   }
 
-  void _setAlignment(TextAlign align) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Alignment: $align')));
+  void _setAlignment(Attribute<String?> alignment) {
+    widget.onSetAlignment(alignment);
   }
 
   void _showColorPicker() {
@@ -770,13 +806,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   void _showPalettePicker(_EditorColorPaletteType type) {
-    final currentStyle = widget.controller.getSelectionStyle();
-    final currentColor = switch (type) {
-      _EditorColorPaletteType.text =>
-        currentStyle.attributes[Attribute.color.key]?.value as String?,
-      _EditorColorPaletteType.marker =>
-        currentStyle.attributes[Attribute.background.key]?.value as String?,
-    };
+    final currentColorHex = _currentPaletteHex(type);
 
     showDialog<void>(
       context: context,
@@ -823,7 +853,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           onTap: () => type == _EditorColorPaletteType.text
                               ? _setTextColor(null, dialogContext)
                               : _setMarkerColor(null, dialogContext),
-                          isSelected: currentColor == null,
+                          isSelected: currentColorHex == null,
                           tooltip: type == _EditorColorPaletteType.text
                               ? 'Default\nNormal text'
                               : 'None\nRemove the highlight',
@@ -840,7 +870,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                                     colorOption.hex,
                                     dialogContext,
                                   ),
-                            isSelected: currentColor == colorOption.hex,
+                            isSelected: currentColorHex == colorOption.hex,
                             tooltip: _buildColorTooltip(colorOption),
                             paletteType: type,
                             colorOption: colorOption,
@@ -904,6 +934,33 @@ class _EditorToolbarState extends State<EditorToolbar> {
     widget.controller.formatSelection(BackgroundAttribute(colorHex));
   }
 
+  String? _currentPaletteHex(_EditorColorPaletteType type) {
+    final attributes = widget.controller.getSelectionStyle().attributes;
+    return switch (type) {
+      _EditorColorPaletteType.text =>
+        attributes[Attribute.color.key]?.value as String?,
+      _EditorColorPaletteType.marker =>
+        attributes[Attribute.background.key]?.value as String?,
+    };
+  }
+
+  Color? _currentPaletteColor(_EditorColorPaletteType type) {
+    final hex = _currentPaletteHex(type);
+    if (hex == null || hex.isEmpty) {
+      return null;
+    }
+
+    try {
+      final normalized = hex.replaceFirst('#', '');
+      if (normalized.length != 6) {
+        return null;
+      }
+      return Color(int.parse('FF$normalized', radix: 16));
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _buildColorTooltip(ColorOption colorOption) {
     if (colorOption.meaning == null || colorOption.meaning!.isEmpty) {
       return colorOption.name;
@@ -951,27 +1008,43 @@ class _ToolbarButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool isActive;
   final String tooltip;
+  final Color? activeFillColor;
+  final Color? activeIconColor;
 
   const _ToolbarButton({
     required this.icon,
     required this.onTap,
     required this.tooltip,
     this.isActive = false,
+    this.activeFillColor,
+    this.activeIconColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final hasColorPreview = activeFillColor != null || activeIconColor != null;
+    final buttonColor = activeFillColor ??
+        (isActive ? colors.primary.withValues(alpha: 0.14) : Colors.transparent);
+    final iconColor = activeIconColor ??
+        (isActive ? colors.primary : Theme.of(context).iconTheme.color);
 
     return Padding(
       padding: const EdgeInsets.all(2),
       child: Tooltip(
         message: tooltip,
         child: Material(
-          color: isActive
-              ? colors.primary.withValues(alpha: 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: buttonColor,
+          shape: RoundedRectangleBorder(
+            side: hasColorPreview && activeFillColor == null
+                ? BorderSide(
+                    color: (activeIconColor ?? colors.primary).withValues(
+                      alpha: 0.35,
+                    ),
+                  )
+                : BorderSide.none,
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(12),
@@ -981,9 +1054,7 @@ class _ToolbarButton extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 20,
-                color: isActive
-                    ? colors.primary
-                    : Theme.of(context).iconTheme.color,
+                color: iconColor,
               ),
             ),
           ),
