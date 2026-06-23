@@ -115,8 +115,9 @@ void main() {
         [17, 18, 20],
       );
       expect(
-        created.every((event) =>
-            event.startTime.hour == 9 && event.startTime.minute == 30),
+        created.every(
+          (event) => event.startTime.hour == 9 && event.startTime.minute == 30,
+        ),
         isTrue,
       );
     });

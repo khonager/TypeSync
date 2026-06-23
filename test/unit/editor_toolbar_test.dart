@@ -32,6 +32,7 @@ void main() {
               onPlacementChanged: (_) {},
               initialPosition: Offset.zero,
               onPositionChanged: (_) {},
+              onSetAlignment: (Attribute<String?> value) {},
             ),
           ),
         ),

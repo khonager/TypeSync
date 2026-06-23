@@ -612,7 +612,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ? BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: theme.colorScheme.primary, width: 1.3),
+                      color: theme.colorScheme.primary,
+                      width: 1.3,
+                    ),
                   )
                 : null;
 
@@ -1054,7 +1056,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return _CalendarEventGroup(items);
     }).toList()
       ..sort(
-          (a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate));
+        (a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate),
+      );
 
     return groups;
   }
@@ -1377,7 +1380,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final rows = rowBuckets.values.toList()
       ..sort(
-          (a, b) => a.first.rect.center.dy.compareTo(b.first.rect.center.dy));
+        (a, b) => a.first.rect.center.dy.compareTo(b.first.rect.center.dy),
+      );
 
     List<_DayHitRegion>? nearestRow;
     var nearestRowDistance = double.infinity;
@@ -1727,8 +1731,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.calendar_today,
-                                          size: 16),
+                                      const Icon(
+                                        Icons.calendar_today,
+                                        size: 16,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
