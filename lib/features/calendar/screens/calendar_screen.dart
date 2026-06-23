@@ -245,7 +245,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () {
-                if (_viewMode != CalendarViewMode.year && _selectedDays.isNotEmpty) {
+                if (_viewMode != CalendarViewMode.year &&
+                    _selectedDays.isNotEmpty) {
                   setState(() {
                     _selectedDays.clear();
                   });
@@ -574,7 +575,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final isIsolatedSelection = isSelected && !connectsLeft && !connectsRight;
     final isRunLeader = isSelected && !connectsLeft;
     final runLength = isRunLeader ? _selectionRunLength(day) : 0;
-    final runHasEvents = isRunLeader && _selectionRunHasEvents(day, eventDayKeys);
+    final runHasEvents =
+        isRunLeader && _selectionRunHasEvents(day, eventDayKeys);
     final textColor = isSelected
         ? theme.colorScheme.onPrimary
         : isOutside
@@ -609,8 +611,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             : hasEvents
                 ? BoxDecoration(
                     shape: BoxShape.circle,
-                    border:
-                        Border.all(color: theme.colorScheme.primary, width: 1.3),
+                    border: Border.all(
+                        color: theme.colorScheme.primary, width: 1.3),
                   )
                 : null;
 
@@ -786,8 +788,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildVisibleRangeEventsList(CalendarProvider calendarProvider) {
-    final selectedDates =
-        _viewMode == CalendarViewMode.year ? <DateTime>[] : _sortedSelectedDays();
+    final selectedDates = _viewMode == CalendarViewMode.year
+        ? <DateTime>[]
+        : _sortedSelectedDays();
     final hasExplicitSelection = selectedDates.isNotEmpty;
     final range = hasExplicitSelection ? null : _visibleRange();
     final events = hasExplicitSelection
@@ -855,7 +858,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final titleStyle = event.isTodo && event.isCompleted
         ? TextStyle(
             decoration: TextDecoration.lineThrough,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
           )
         : null;
 
@@ -897,7 +901,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _eventGroupDateTimeLabel(group),
               style: titleStyle,
             ),
-            if (event.description != null && event.description!.trim().isNotEmpty)
+            if (event.description != null &&
+                event.description!.trim().isNotEmpty)
               Text(event.description!, style: titleStyle),
             if (group.events.length > 1)
               Padding(
@@ -910,9 +915,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                 ),
               ),
-            if (event.isTodo &&
-                !event.isCompleted &&
-                event.rolloverCount > 0)
+            if (event.isTodo && !event.isCompleted && event.rolloverCount > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
@@ -1046,13 +1049,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       grouped.putIfAbsent(key, () => <CalendarEvent>[]).add(event);
     }
 
-    final groups = grouped.values
-        .map((items) {
-          items.sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
-          return _CalendarEventGroup(items);
-        })
-        .toList()
-      ..sort((a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate));
+    final groups = grouped.values.map((items) {
+      items.sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      return _CalendarEventGroup(items);
+    }).toList()
+      ..sort(
+          (a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate));
 
     return groups;
   }
@@ -1115,12 +1117,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_viewMode != CalendarViewMode.month) {
       return false;
     }
-    return day.month != _visiblePageDay.month || day.year != _visiblePageDay.year;
+    return day.month != _visiblePageDay.month ||
+        day.year != _visiblePageDay.year;
   }
 
   List<DateTime> _sortedSelectedDays() {
-    final dates = _selectedDays.values.toList()
-      ..sort((a, b) => a.compareTo(b));
+    final dates = _selectedDays.values.toList()..sort((a, b) => a.compareTo(b));
     return dates;
   }
 
@@ -1196,8 +1198,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    final isMouseDrag =
-        _isPointerDragSelecting &&
+    final isMouseDrag = _isPointerDragSelecting &&
         event.kind == PointerDeviceKind.mouse &&
         isTrackedMousePointer;
     final isTouchDrag = _isLongPressDragSelecting;
@@ -1293,7 +1294,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return null;
     }
 
-    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    final viewportRect =
+        viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
     if (!viewportRect.contains(globalPosition)) {
       return null;
     }
@@ -1308,7 +1310,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return null;
     }
 
-    final row = ((local.dy - _calendarDaysOfWeekHeight) / _calendarRowHeight).floor();
+    final row =
+        ((local.dy - _calendarDaysOfWeekHeight) / _calendarRowHeight).floor();
     final column = (local.dx / columnWidth).floor();
 
     if (column < 0 || column > 6 || row < 0) {
@@ -1322,7 +1325,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final gridStart = _visibleGridStart();
     final candidate = _addDays(gridStart, row * 7 + column);
-    if (candidate.isBefore(_firstCalendarDay) || candidate.isAfter(_lastCalendarDay)) {
+    if (candidate.isBefore(_firstCalendarDay) ||
+        candidate.isAfter(_lastCalendarDay)) {
       return null;
     }
     return (_dateOnly(candidate), 'grid r$row c$column');
@@ -1335,7 +1339,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return null;
     }
 
-    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    final viewportRect =
+        viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
     if (!viewportRect.contains(globalPosition)) {
       return null;
     }
@@ -1365,11 +1370,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           break;
         }
       }
-      rowBuckets.putIfAbsent(bucketKey ?? centerY, () => <_DayHitRegion>[]).add(region);
+      rowBuckets
+          .putIfAbsent(bucketKey ?? centerY, () => <_DayHitRegion>[])
+          .add(region);
     }
 
     final rows = rowBuckets.values.toList()
-      ..sort((a, b) => a.first.rect.center.dy.compareTo(b.first.rect.center.dy));
+      ..sort(
+          (a, b) => a.first.rect.center.dy.compareTo(b.first.rect.center.dy));
 
     List<_DayHitRegion>? nearestRow;
     var nearestRowDistance = double.infinity;
@@ -1484,7 +1492,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       CalendarViewMode.week => 1,
       CalendarViewMode.twoWeeks => 2,
       CalendarViewMode.year => 0,
-      CalendarViewMode.month => ((_visibleRange().duration.inDays + 1) / 7).ceil(),
+      CalendarViewMode.month =>
+        ((_visibleRange().duration.inDays + 1) / 7).ceil(),
     };
   }
 
@@ -1718,7 +1727,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.calendar_today, size: 16),
+                                      const Icon(Icons.calendar_today,
+                                          size: 16),
                                       const SizedBox(width: 8),
                                       Text(
                                         '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
@@ -1847,27 +1857,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         }
                       } else if (isEditing) {
                         await provider.updateEvent(
-                              existingEvent.copyWith(
-                                title: titleController.text,
-                                description: descriptionController.text.isEmpty
-                                    ? null
-                                    : descriptionController.text,
-                                type: selectedType,
-                                startTime: startTime,
-                                subject: subjectController.text.isEmpty
-                                    ? null
-                                    : subjectController.text,
-                                isCompleted: selectedType == EventType.todo
-                                    ? existingEvent.isCompleted
-                                    : false,
-                                completedAt: selectedType == EventType.todo
-                                    ? existingEvent.completedAt
-                                    : null,
-                                rolloverCount: selectedType == EventType.todo
-                                    ? existingEvent.rolloverCount
-                                    : 0,
-                              ),
-                            );
+                          existingEvent.copyWith(
+                            title: titleController.text,
+                            description: descriptionController.text.isEmpty
+                                ? null
+                                : descriptionController.text,
+                            type: selectedType,
+                            startTime: startTime,
+                            subject: subjectController.text.isEmpty
+                                ? null
+                                : subjectController.text,
+                            isCompleted: selectedType == EventType.todo
+                                ? existingEvent.isCompleted
+                                : false,
+                            completedAt: selectedType == EventType.todo
+                                ? existingEvent.completedAt
+                                : null,
+                            rolloverCount: selectedType == EventType.todo
+                                ? existingEvent.rolloverCount
+                                : 0,
+                          ),
+                        );
                       } else if (isMultiCreate) {
                         await provider.createEventsForDates(
                           userId: userId,
@@ -1884,17 +1894,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         );
                       } else {
                         await provider.createEvent(
-                              userId: userId,
-                              title: titleController.text,
-                              description: descriptionController.text.isEmpty
-                                  ? null
-                                  : descriptionController.text,
-                              type: selectedType,
-                              startTime: startTime,
-                              subject: subjectController.text.isEmpty
-                                  ? null
-                                  : subjectController.text,
-                            );
+                          userId: userId,
+                          title: titleController.text,
+                          description: descriptionController.text.isEmpty
+                              ? null
+                              : descriptionController.text,
+                          type: selectedType,
+                          startTime: startTime,
+                          subject: subjectController.text.isEmpty
+                              ? null
+                              : subjectController.text,
+                        );
                       }
 
                       if (context.mounted) {
@@ -1923,7 +1933,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         }
                       },
                       child: Text(
-                        isBatchEdit ? 'Delete All Linked Events' : 'Delete Event',
+                        isBatchEdit
+                            ? 'Delete All Linked Events'
+                            : 'Delete Event',
                         style: const TextStyle(color: Colors.red),
                       ),
                     ),
