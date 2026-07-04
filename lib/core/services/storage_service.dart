@@ -14,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firedart/firedart.dart' as fd;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user.dart';
 import '../../firebase_options.dart';
@@ -52,6 +53,8 @@ String? resolveStorageObjectPath(
 /// Tracks storage usage against subscription limits and handles
 /// file upload/download operations to Firebase Storage.
 class StorageService extends ChangeNotifier {
+  static const String _storageUsagePrefsPrefix = 'cloud_storage_usage_';
+
   // Lazy Firebase instances
   FirebaseStorage? _storage;
   FirebaseFirestore? _firestore;
@@ -184,6 +187,12 @@ class StorageService extends ChangeNotifier {
     var loadFailed = false;
 
     try {
+      final cachedBytes = await _readCachedStorageUsage(userId);
+      if (cachedBytes != null && cachedBytes > _storageUsedBytes) {
+        _applyRecordedUsage(cachedBytes);
+        notifyListeners();
+      }
+
       var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
       final userSnapshot = await _loadUserStorageSnapshot(
         userId,
@@ -192,7 +201,10 @@ class StorageService extends ChangeNotifier {
       );
 
       _currentTier = userSnapshot.tier;
-      recordedBytes = userSnapshot.recordedBytes;
+      recordedBytes = [
+        userSnapshot.recordedBytes,
+        cachedBytes ?? 0,
+      ].reduce((max, value) => value > max ? value : max);
       _storageUsedBytes = recordedBytes;
       _cloudRecordedBytes = recordedBytes;
       _hasLoadedStorageInfo = true;
@@ -224,15 +236,19 @@ class StorageService extends ChangeNotifier {
         final attachmentCount = noteTotals?.attachmentCount ?? 0;
         final storedFileBytes = objectMetrics?.bytes ?? 0;
         final storedFileCount = objectMetrics?.count ?? 0;
+        final effectiveRecordedBytes = [
+          recordedBytes,
+          storedFileBytes,
+        ].reduce((max, value) => value > max ? value : max);
 
         _storageUsedBytes = [
           totalBytes,
-          recordedBytes,
+          effectiveRecordedBytes,
           storedFileBytes,
         ].reduce((max, value) => value > max ? value : max);
         _cloudContentBytes = contentBytes;
         _cloudAttachmentBytes = attachmentBytes;
-        _cloudRecordedBytes = recordedBytes;
+        _cloudRecordedBytes = effectiveRecordedBytes;
         _cloudNoteCount = noteCount;
         _cloudAttachmentCount = attachmentCount;
         _cloudStoredFileBytes = storedFileBytes;
@@ -243,6 +259,7 @@ class StorageService extends ChangeNotifier {
       _errorMessage = loadFailed
           ? 'Loaded partial storage info; using best available data.'
           : null;
+      await _persistCachedStorageUsage(userId, _storageUsedBytes);
     } catch (e) {
       _errorMessage = 'Failed to load storage info: $e';
       debugPrint('StorageService.loadStorageInfo error: $e');
@@ -289,6 +306,7 @@ class StorageService extends ChangeNotifier {
           contentType: contentType,
         );
         _applyRecordedUsage(uploadResult.storageUsedBytes);
+        await _persistCachedStorageUsage(userId, _storageUsedBytes);
         _errorMessage = null;
         _isLoading = false;
         _diagnostics.info(
@@ -387,6 +405,7 @@ class StorageService extends ChangeNotifier {
           contentType: contentType,
         );
         _applyRecordedUsage(uploadResult.storageUsedBytes);
+        await _persistCachedStorageUsage(userId, _storageUsedBytes);
         _errorMessage = null;
         _isLoading = false;
         _diagnostics.info(
@@ -470,6 +489,7 @@ class StorageService extends ChangeNotifier {
           objectPath: normalizedObjectPath,
         );
         _applyRecordedUsage(deleteResult.storageUsedBytes);
+        await _persistCachedStorageUsage(userId, _storageUsedBytes);
         notifyListeners();
         return true;
       }
@@ -1012,6 +1032,31 @@ class StorageService extends ChangeNotifier {
     _storageUsedBytes = storageUsedBytes;
     _cloudRecordedBytes = storageUsedBytes;
     _hasLoadedStorageInfo = true;
+  }
+
+  String _storageUsagePrefsKey(String userId) {
+    return '$_storageUsagePrefsPrefix$userId';
+  }
+
+  Future<int?> _readCachedStorageUsage(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(_storageUsagePrefsKey(userId));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistCachedStorageUsage(
+    String userId,
+    int storageUsedBytes,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_storageUsagePrefsKey(userId), storageUsedBytes);
+    } catch (_) {
+      // Missing this cache write should never interrupt storage operations.
+    }
   }
 
   String _extractHttpError(http.Response response) {
