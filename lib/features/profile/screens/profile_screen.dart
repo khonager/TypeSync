@@ -251,7 +251,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadCachedLocalStorageInfo();
       if (!mounted) return;
-      await _refreshStorageInfo(refreshLocal: false);
+      await _refreshStorageInfo(
+        refreshLocal: false,
+        runCloudAudit: true,
+      );
     });
   }
 
@@ -286,7 +289,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !context.read<AuthService>().isGuestMode) {
-      _refreshStorageInfo(showLocalLoadingState: false);
+      _refreshStorageInfo(
+        showLocalLoadingState: false,
+        runCloudAudit: true,
+      );
     }
   }
 
@@ -452,37 +458,22 @@ class _ProfileScreenState extends State<ProfileScreen>
                       'Plan: ${storageService.currentTier.displayName}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        TextButton.icon(
-                          onPressed: storageService.isLoading
-                              ? null
-                              : () => _refreshStorageInfo(
-                                    refreshLocal: false,
-                                    runCloudAudit: true,
-                                  ),
-                          icon: const Icon(Icons.manage_search, size: 18),
-                          label: const Text('Audit'),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            AppRouter.navigateTo(
-                              context,
-                              AppRouter.subscription,
-                            );
-                          },
-                          child: const Text('Upgrade'),
-                        ),
-                      ],
+                    TextButton(
+                      onPressed: () {
+                        AppRouter.navigateTo(
+                          context,
+                          AppRouter.subscription,
+                        );
+                      },
+                      child: const Text('Upgrade'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   storageService.hasAuditedStorageInfo
-                      ? 'Quota checks use the saved account total. The breakdown below is from the latest audit.'
-                      : 'Quota checks use this saved account total. Run an audit to recalculate the detailed breakdown.',
+                      ? 'Quota checks use the saved account total. The breakdown below was verified automatically.'
+                      : 'Showing the latest saved total now. Cloud usage details are being verified automatically.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey,
                       ),
