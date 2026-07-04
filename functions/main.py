@@ -66,6 +66,50 @@ FREE_PLAN = {
     "limit": 5 * 1024 * 1024,
 }
 
+PLAN_LIMIT_BY_ID = {
+    "free": FREE_PLAN["limit"],
+    "TypeSync Lite": REVENUECAT_PLAN_BY_ENTITLEMENT["TypeSync Lite"]["limit"],
+    "light": REVENUECAT_PLAN_BY_ENTITLEMENT["light"]["limit"],
+    "plus": REVENUECAT_PLAN_BY_ENTITLEMENT["plus"]["limit"],
+    "pro": REVENUECAT_PLAN_BY_ENTITLEMENT["pro"]["limit"],
+}
+
+PLAN_LIMIT_BY_TIER = {
+    0: FREE_PLAN["limit"],
+    1: REVENUECAT_PLAN_BY_ENTITLEMENT["TypeSync Lite"]["limit"],
+    2: REVENUECAT_PLAN_BY_ENTITLEMENT["plus"]["limit"],
+    3: REVENUECAT_PLAN_BY_ENTITLEMENT["pro"]["limit"],
+}
+
+
+def _int_value(value, fallback=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _storage_limit_from_user(user_data: dict) -> int:
+    explicit_limit = _int_value(user_data.get("cloudStorageLimitBytes"), 0)
+    if explicit_limit > 0:
+        return explicit_limit
+
+    plan_id = user_data.get("planId")
+    if isinstance(plan_id, str) and plan_id in PLAN_LIMIT_BY_ID:
+        return PLAN_LIMIT_BY_ID[plan_id]
+
+    tier = _int_value(user_data.get("subscriptionTier"), FREE_PLAN["tier"])
+    return PLAN_LIMIT_BY_TIER.get(tier, FREE_PLAN["limit"])
+
+
+def _storage_usage_for_prefix(bucket, uid: str) -> tuple[int, int]:
+    total_bytes = 0
+    object_count = 0
+    for blob in bucket.list_blobs(prefix=f"users/{uid}/"):
+        total_bytes += int(blob.size or 0)
+        object_count += 1
+    return total_bytes, object_count
+
 
 def _json_response(
     payload: dict,
@@ -629,10 +673,77 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
         )
 
     download_token = str(uuid.uuid4())
+    bucket = _storage().bucket()
+    blob = bucket.blob(object_path)
 
     try:
-        bucket = _storage().bucket()
-        blob = bucket.blob(object_path)
+        existing_size = 0
+        if blob.exists():
+            blob.reload()
+            existing_size = int(blob.size or 0)
+    except Exception as exc:
+        print(f"Existing object lookup failed: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": f"Could not inspect existing object: {exc}"}),
+            status=500,
+            content_type="application/json",
+        )
+
+    upload_size = len(file_bytes)
+    quota_delta = max(upload_size - existing_size, 0)
+    db = _firestore().client()
+    firestore_module = _firestore()
+    user_ref = db.collection("users").document(uid)
+    user_snapshot = user_ref.get()
+    user_data = user_snapshot.to_dict() or {}
+    baseline_usage = None
+    if not user_snapshot.exists or "storageUsedBytes" not in user_data:
+        baseline_usage, _ = _storage_usage_for_prefix(bucket, uid)
+    transaction = db.transaction()
+
+    @firestore_module.transactional
+    def reserve_storage(transaction):
+        snapshot = user_ref.get(transaction=transaction)
+        user_data = snapshot.to_dict() or {}
+        current_usage = _int_value(
+            user_data.get("storageUsedBytes"),
+            baseline_usage or 0,
+        )
+        storage_limit = _storage_limit_from_user(user_data)
+        next_usage = current_usage + quota_delta
+        if next_usage > storage_limit:
+            raise ValueError(
+                json.dumps(
+                    {
+                        "code": "quota-exceeded",
+                        "usedBytes": current_usage,
+                        "requestedBytes": upload_size,
+                        "limitBytes": storage_limit,
+                    }
+                )
+            )
+        if quota_delta > 0 or baseline_usage is not None:
+            transaction.set(
+                user_ref,
+                {"storageUsedBytes": next_usage},
+                merge=True,
+            )
+        return next_usage, storage_limit
+
+    try:
+        storage_used_bytes, storage_limit_bytes = reserve_storage(transaction)
+    except ValueError as exc:
+        try:
+            payload = json.loads(str(exc))
+        except Exception:
+            payload = {"error": str(exc)}
+        return https_fn.Response(
+            json.dumps(payload),
+            status=403,
+            content_type="application/json",
+        )
+
+    try:
         blob.metadata = {"firebaseStorageDownloadTokens": download_token}
         blob.upload_from_string(file_bytes, content_type=content_type)
 
@@ -649,12 +760,21 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
                     "size": len(file_bytes),
                     "bucket": bucket_name,
                     "path": object_path,
+                    "storageUsedBytes": storage_used_bytes,
+                    "storageLimitBytes": storage_limit_bytes,
                 }
             ),
             status=200,
             content_type="application/json",
         )
     except Exception as exc:
+        if quota_delta > 0:
+            try:
+                user_ref.update(
+                    {"storageUsedBytes": max(storage_used_bytes - quota_delta, 0)}
+                )
+            except Exception as rollback_exc:
+                print(f"Storage usage rollback failed: {rollback_exc}")
         print(f"Storage upload failed: {exc}")
         return https_fn.Response(
             json.dumps({"error": f"Upload failed: {exc}"}),
@@ -719,6 +839,13 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
         blob.reload()
         size = int(blob.size or 0)
         blob.delete()
+        db = _firestore().client()
+        user_ref = db.collection("users").document(uid)
+        user_snapshot = user_ref.get()
+        user_data = user_snapshot.to_dict() or {}
+        current_usage = _int_value(user_data.get("storageUsedBytes"), 0)
+        storage_used_bytes = max(current_usage - size, 0)
+        user_ref.set({"storageUsedBytes": storage_used_bytes}, merge=True)
 
         return https_fn.Response(
             json.dumps(
@@ -727,6 +854,7 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
                     "size": size,
                     "bucket": bucket.name,
                     "path": object_path,
+                    "storageUsedBytes": storage_used_bytes,
                 }
             ),
             status=200,
@@ -736,6 +864,60 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
         print(f"Delete storage object failed: {exc}")
         return https_fn.Response(
             json.dumps({"error": f"Delete failed: {exc}"}),
+            status=500,
+            content_type="application/json",
+        )
+
+
+@https_fn.on_request()
+def audit_storage_usage(req: https_fn.Request) -> https_fn.Response:
+    if req.method != "POST":
+        return https_fn.Response("Method not allowed", status=405)
+
+    uid = _verified_uid(req)
+
+    try:
+        payload = req.get_json(silent=True) or {}
+        target_uid = payload.get("userId")
+    except Exception as exc:
+        print(f"Bad audit payload: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": "Invalid JSON body"}),
+            status=400,
+            content_type="application/json",
+        )
+
+    if target_uid != uid:
+        return https_fn.Response(
+            json.dumps({"error": "userId does not match authenticated user"}),
+            status=403,
+            content_type="application/json",
+        )
+
+    try:
+        bucket = _storage().bucket()
+        total_bytes, object_count = _storage_usage_for_prefix(bucket, uid)
+
+        _firestore().client().collection("users").document(uid).set(
+            {"storageUsedBytes": total_bytes},
+            merge=True,
+        )
+
+        return https_fn.Response(
+            json.dumps(
+                {
+                    "storageUsedBytes": total_bytes,
+                    "storedFileBytes": total_bytes,
+                    "storedFileCount": object_count,
+                }
+            ),
+            status=200,
+            content_type="application/json",
+        )
+    except Exception as exc:
+        print(f"Storage audit failed: {exc}")
+        return https_fn.Response(
+            json.dumps({"error": f"Audit failed: {exc}"}),
             status=500,
             content_type="application/json",
         )

@@ -7,6 +7,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -98,6 +99,7 @@ class StorageService extends ChangeNotifier {
   int _cloudStoredFileCount = 0;
   bool _isLoading = false;
   bool _hasLoadedStorageInfo = false;
+  bool _hasAuditedStorageInfo = false;
   String? _errorMessage;
 
   // ===========================================
@@ -121,6 +123,7 @@ class StorageService extends ChangeNotifier {
   bool get isStorageFull => _storageUsedBytes >= storageLimitBytes;
   bool get isLoading => _isLoading;
   bool get hasLoadedStorageInfo => _hasLoadedStorageInfo;
+  bool get hasAuditedStorageInfo => _hasAuditedStorageInfo;
   String? get errorMessage => _errorMessage;
 
   /// Formatted storage usage string
@@ -163,13 +166,18 @@ class StorageService extends ChangeNotifier {
 
   /// Load storage info for a user
   ///
-  /// Calculates actual storage usage from cloud-synced documents.
-  Future<void> loadStorageInfo(String userId, {User? fallbackUser}) async {
+  /// Loads the saved account storage total, with an optional full audit.
+  Future<void> loadStorageInfo(
+    String userId, {
+    User? fallbackUser,
+    bool runAudit = false,
+  }) async {
     _isLoading = true;
     if (fallbackUser != null) {
       _currentTier = fallbackUser.subscriptionTier;
       _storageUsedBytes = fallbackUser.storageUsedBytes;
       _cloudRecordedBytes = fallbackUser.storageUsedBytes;
+      _hasLoadedStorageInfo = true;
     }
     notifyListeners();
 
@@ -177,65 +185,61 @@ class StorageService extends ChangeNotifier {
 
     try {
       var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
-      final userSnapshotFuture = _loadUserStorageSnapshot(
+      final userSnapshot = await _loadUserStorageSnapshot(
         userId,
         fallbackTier: _currentTier,
         fallbackRecordedBytes: recordedBytes,
       );
-      final notesMetricsFuture = _loadNoteStorageMetrics(userId);
-      final objectMetricsFuture = _loadCloudObjectMetrics(userId);
 
-      _UserStorageSnapshot? userSnapshot;
-      _StorageUsageTotals? noteTotals;
-      _AttachmentMetrics? objectMetrics;
-
-      try {
-        userSnapshot = await userSnapshotFuture;
-        _currentTier = userSnapshot.tier;
-        recordedBytes = userSnapshot.recordedBytes;
-        _storageUsedBytes = recordedBytes;
-        _cloudRecordedBytes = recordedBytes;
-        notifyListeners();
-      } catch (e) {
-        loadFailed = true;
-        debugPrint('StorageService.loadStorageInfo user doc error: $e');
-      }
-
-      try {
-        noteTotals = await notesMetricsFuture;
-      } catch (e) {
-        loadFailed = true;
-        debugPrint('StorageService.loadStorageInfo notes error: $e');
-      }
-
-      try {
-        objectMetrics = await objectMetricsFuture;
-      } catch (e) {
-        loadFailed = true;
-        debugPrint('StorageService.loadStorageInfo object listing error: $e');
-      }
-
-      final totalBytes = noteTotals?.totalBytes ?? 0;
-      final contentBytes = noteTotals?.contentBytes ?? 0;
-      final attachmentBytes = noteTotals?.attachmentBytes ?? 0;
-      final noteCount = noteTotals?.noteCount ?? 0;
-      final attachmentCount = noteTotals?.attachmentCount ?? 0;
-      final storedFileBytes = objectMetrics?.bytes ?? 0;
-      final storedFileCount = objectMetrics?.count ?? 0;
-
-      _storageUsedBytes = [
-        totalBytes,
-        recordedBytes,
-        storedFileBytes,
-      ].reduce((max, value) => value > max ? value : max);
-      _cloudContentBytes = contentBytes;
-      _cloudAttachmentBytes = attachmentBytes;
+      _currentTier = userSnapshot.tier;
+      recordedBytes = userSnapshot.recordedBytes;
+      _storageUsedBytes = recordedBytes;
       _cloudRecordedBytes = recordedBytes;
-      _cloudNoteCount = noteCount;
-      _cloudAttachmentCount = attachmentCount;
-      _cloudStoredFileBytes = storedFileBytes;
-      _cloudStoredFileCount = storedFileCount;
       _hasLoadedStorageInfo = true;
+
+      if (runAudit) {
+        final notesMetricsFuture = _loadNoteStorageMetrics(userId);
+        final objectMetricsFuture = _auditStorageUsageViaFunction(userId);
+        _StorageUsageTotals? noteTotals;
+        _AttachmentMetrics? objectMetrics;
+
+        try {
+          noteTotals = await notesMetricsFuture;
+        } catch (e) {
+          loadFailed = true;
+          debugPrint('StorageService.loadStorageInfo notes error: $e');
+        }
+
+        try {
+          objectMetrics = await objectMetricsFuture;
+        } catch (e) {
+          loadFailed = true;
+          debugPrint('StorageService.loadStorageInfo object listing error: $e');
+        }
+
+        final totalBytes = noteTotals?.totalBytes ?? 0;
+        final contentBytes = noteTotals?.contentBytes ?? 0;
+        final attachmentBytes = noteTotals?.attachmentBytes ?? 0;
+        final noteCount = noteTotals?.noteCount ?? 0;
+        final attachmentCount = noteTotals?.attachmentCount ?? 0;
+        final storedFileBytes = objectMetrics?.bytes ?? 0;
+        final storedFileCount = objectMetrics?.count ?? 0;
+
+        _storageUsedBytes = [
+          totalBytes,
+          recordedBytes,
+          storedFileBytes,
+        ].reduce((max, value) => value > max ? value : max);
+        _cloudContentBytes = contentBytes;
+        _cloudAttachmentBytes = attachmentBytes;
+        _cloudRecordedBytes = recordedBytes;
+        _cloudNoteCount = noteCount;
+        _cloudAttachmentCount = attachmentCount;
+        _cloudStoredFileBytes = storedFileBytes;
+        _cloudStoredFileCount = storedFileCount;
+        _hasAuditedStorageInfo = true;
+      }
+
       _errorMessage = loadFailed
           ? 'Loaded partial storage info; using best available data.'
           : null;
@@ -277,14 +281,14 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_shouldUseLinuxStorageRest) {
-        final downloadUrl = await _uploadDataLinux(
+      if (_shouldUseFunctionStorageUploads) {
+        final uploadResult = await _uploadDataViaFunction(
           userId: userId,
           destinationPath: destinationPath,
           data: await file.readAsBytes(),
           contentType: contentType,
         );
-        await _incrementStorageUsage(userId, fileSize);
+        _applyRecordedUsage(uploadResult.storageUsedBytes);
         _errorMessage = null;
         _isLoading = false;
         _diagnostics.info(
@@ -292,7 +296,7 @@ class StorageService extends ChangeNotifier {
           'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
         );
         notifyListeners();
-        return downloadUrl;
+        return uploadResult.downloadUrl;
       }
 
       // Upload to Firebase Storage
@@ -375,14 +379,14 @@ class StorageService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_shouldUseLinuxStorageRest) {
-        final downloadUrl = await _uploadDataLinux(
+      if (_shouldUseFunctionStorageUploads) {
+        final uploadResult = await _uploadDataViaFunction(
           userId: userId,
           destinationPath: destinationPath,
           data: data,
           contentType: contentType,
         );
-        await _incrementStorageUsage(userId, fileSize);
+        _applyRecordedUsage(uploadResult.storageUsedBytes);
         _errorMessage = null;
         _isLoading = false;
         _diagnostics.info(
@@ -390,7 +394,7 @@ class StorageService extends ChangeNotifier {
           'Uploaded users/$userId/$destinationPath (${_formatBytes(fileSize)})',
         );
         notifyListeners();
-        return downloadUrl;
+        return uploadResult.downloadUrl;
       }
 
       final ref =
@@ -460,14 +464,12 @@ class StorageService extends ChangeNotifier {
         'ATTACHMENT_DELETE resolved delete target user=$userId input=$filePath object=$normalizedObjectPath linuxRest=$_shouldUseLinuxStorageRest',
       );
 
-      if (_shouldUseLinuxStorageRest) {
-        final fileSize = await _deleteLinuxObjectViaFunction(
+      if (_shouldUseFunctionStorageUploads) {
+        final deleteResult = await _deleteObjectViaFunction(
           userId: userId,
           objectPath: normalizedObjectPath,
         );
-        _storageUsedBytes =
-            (_storageUsedBytes - fileSize).clamp(0, storageLimitBytes);
-        await _writeStorageUsage(userId);
+        _applyRecordedUsage(deleteResult.storageUsedBytes);
         notifyListeners();
         return true;
       }
@@ -552,89 +554,7 @@ class StorageService extends ChangeNotifier {
 
   /// Calculate total storage used by recalculating from Firestore note sizes
   Future<void> recalculateStorage(String userId) async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      int totalBytes = 0;
-      int contentBytes = 0;
-      int attachmentBytes = 0;
-      int noteCount = 0;
-      int attachmentCount = 0;
-      int storedFileBytes = 0;
-      int storedFileCount = 0;
-
-      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-        final fdFirestore = _firedartFirestore;
-        if (fdFirestore != null) {
-          final notes = await fdFirestore
-              .collection('notes')
-              .where('userId', isEqualTo: userId)
-              .where('isDeleted', isEqualTo: false)
-              .get();
-          for (final doc in notes) {
-            final noteMetrics = await _noteStorageMetricsFromDynamic(
-              doc.map,
-              userId: userId,
-            );
-            totalBytes +=
-                noteMetrics.contentBytes + noteMetrics.attachmentBytes;
-            contentBytes += noteMetrics.contentBytes;
-            attachmentBytes += noteMetrics.attachmentBytes;
-            attachmentCount += noteMetrics.attachmentCount;
-            noteCount++;
-          }
-
-          await fdFirestore.collection('users').document(userId).update({
-            'storageUsedBytes': totalBytes,
-          });
-        }
-      } else {
-        final notesSnapshot = await _firebaseFirestore
-            .collection('notes')
-            .where('userId', isEqualTo: userId)
-            .where('isDeleted', isEqualTo: false)
-            .get();
-        for (final doc in notesSnapshot.docs) {
-          final data = doc.data();
-          final noteMetrics = await _noteStorageMetricsFromDynamic(
-            data,
-            userId: userId,
-          );
-          totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
-          contentBytes += noteMetrics.contentBytes;
-          attachmentBytes += noteMetrics.attachmentBytes;
-          attachmentCount += noteMetrics.attachmentCount;
-          noteCount++;
-        }
-
-        await _firebaseFirestore.collection('users').doc(userId).update({
-          'storageUsedBytes': totalBytes,
-        });
-      }
-
-      final objectMetrics = await _loadCloudObjectMetrics(userId);
-      storedFileBytes = objectMetrics.bytes;
-      storedFileCount = objectMetrics.count;
-
-      _storageUsedBytes = [
-        totalBytes,
-        storedFileBytes,
-      ].reduce((max, value) => value > max ? value : max);
-      _cloudContentBytes = contentBytes;
-      _cloudAttachmentBytes = attachmentBytes;
-      _cloudRecordedBytes = totalBytes;
-      _cloudNoteCount = noteCount;
-      _cloudAttachmentCount = attachmentCount;
-      _cloudStoredFileBytes = storedFileBytes;
-      _cloudStoredFileCount = storedFileCount;
-      _errorMessage = null;
-    } catch (e) {
-      _errorMessage = 'Failed to recalculate storage: $e';
-    }
-
-    _isLoading = false;
-    notifyListeners();
+    await loadStorageInfo(userId, runAudit: true);
   }
 
   // ===========================================
@@ -900,6 +820,8 @@ class StorageService extends ChangeNotifier {
   bool get _shouldUseLinuxStorageRest =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
 
+  bool get _shouldUseFunctionStorageUploads => true;
+
   String get _storageBucket {
     if (Firebase.apps.isNotEmpty) {
       return Firebase.app().options.storageBucket ??
@@ -912,92 +834,50 @@ class StorageService extends ChangeNotifier {
   String _storageObjectPath(String userId, String path) =>
       'users/$userId/$path';
 
-  Future<_AttachmentMetrics> _loadCloudObjectMetrics(String userId) async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-      return _listLinuxStorageObjects(
-        prefix: 'users/$userId/',
-      );
+  Future<_AttachmentMetrics> _auditStorageUsageViaFunction(
+    String userId,
+  ) async {
+    final idToken = await _idToken();
+    final auditUri = _linuxFunctionUri('audit_storage_usage');
+
+    final response = await _httpClient.post(
+      auditUri,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode({'userId': userId}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractHttpError(response));
     }
 
-    final rootRef = _firebaseStorage.ref().child('users/$userId');
-    return _listFirebaseStorageObjects(rootRef);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final storageUsedBytes = _intFromDynamic(
+          body['storageUsedBytes'],
+          fallback: _storageUsedBytes,
+        ) ??
+        _storageUsedBytes;
+    _applyRecordedUsage(storageUsedBytes);
+
+    return _AttachmentMetrics(
+      bytes: _intFromDynamic(
+            body['storedFileBytes'],
+            fallback: storageUsedBytes,
+          ) ??
+          storageUsedBytes,
+      count: _intFromDynamic(body['storedFileCount']) ?? 0,
+    );
   }
 
-  Future<_AttachmentMetrics> _listFirebaseStorageObjects(Reference ref) async {
-    final result = await ref.listAll();
-    var totalBytes = 0;
-    var count = 0;
-
-    for (final item in result.items) {
-      final metadata = await item.getMetadata();
-      totalBytes += metadata.size ?? 0;
-      count++;
-    }
-
-    for (final prefix in result.prefixes) {
-      final nested = await _listFirebaseStorageObjects(prefix);
-      totalBytes += nested.bytes;
-      count += nested.count;
-    }
-
-    return _AttachmentMetrics(bytes: totalBytes, count: count);
-  }
-
-  Future<_AttachmentMetrics> _listLinuxStorageObjects({
-    required String prefix,
-  }) async {
-    final idToken = await _linuxIdToken();
-    String? pageToken;
-    var totalBytes = 0;
-    var count = 0;
-
-    do {
-      final query = <String, String>{
-        'prefix': prefix,
-      };
-      if (pageToken != null && pageToken.isNotEmpty) {
-        query['pageToken'] = pageToken;
-      }
-      final uri = Uri.https(
-        'firebasestorage.googleapis.com',
-        '/v0/b/$_storageBucket/o',
-        query,
-      );
-      final response = await _httpClient.get(
-        uri,
-        headers: {'Authorization': 'Bearer $idToken'},
-      );
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(_extractHttpError(response));
-      }
-
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final items = body['items'];
-      if (items is List) {
-        for (final item in items) {
-          if (item is Map<String, dynamic>) {
-            totalBytes += _intFromDynamic(item['size']) ?? 0;
-            count++;
-          } else if (item is Map) {
-            totalBytes += _intFromDynamic(item['size']) ?? 0;
-            count++;
-          }
-        }
-      }
-
-      pageToken = body['nextPageToken'] as String?;
-    } while (pageToken != null && pageToken.isNotEmpty);
-
-    return _AttachmentMetrics(bytes: totalBytes, count: count);
-  }
-
-  Future<String> _uploadDataLinux({
+  Future<_FunctionUploadResult> _uploadDataViaFunction({
     required String userId,
     required String destinationPath,
     required List<int> data,
     String? contentType,
   }) async {
-    final idToken = await _linuxIdToken();
+    final idToken = await _idToken();
     final uploadUri = _linuxFunctionUri('upload_storage_object');
 
     final response = await _httpClient.post(
@@ -1023,7 +903,14 @@ class StorageService extends ChangeNotifier {
     if (downloadUrl == null || downloadUrl.isEmpty) {
       throw Exception('Upload succeeded without a download URL');
     }
-    return downloadUrl;
+    return _FunctionUploadResult(
+      downloadUrl: downloadUrl,
+      storageUsedBytes: _intFromDynamic(
+            body['storageUsedBytes'],
+            fallback: _storageUsedBytes,
+          ) ??
+          _storageUsedBytes,
+    );
   }
 
   Future<int> _fetchLinuxObjectSize(String objectPath) async {
@@ -1046,11 +933,11 @@ class StorageService extends ChangeNotifier {
     return 0;
   }
 
-  Future<int> _deleteLinuxObjectViaFunction({
+  Future<_FunctionDeleteResult> _deleteObjectViaFunction({
     required String userId,
     required String objectPath,
   }) async {
-    final idToken = await _linuxIdToken();
+    final idToken = await _idToken();
     final deleteUri = _linuxFunctionUri('delete_storage_object');
 
     final response = await _httpClient.post(
@@ -1070,10 +957,13 @@ class StorageService extends ChangeNotifier {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final sizeValue = body['size'];
-    if (sizeValue is int) return sizeValue;
-    if (sizeValue is String) return int.tryParse(sizeValue) ?? 0;
-    return 0;
+    return _FunctionDeleteResult(
+      storageUsedBytes: _intFromDynamic(
+            body['storageUsedBytes'],
+            fallback: _storageUsedBytes,
+          ) ??
+          _storageUsedBytes,
+    );
   }
 
   String _buildDownloadUrl(String objectPath, {String? downloadToken}) {
@@ -1105,30 +995,43 @@ class StorageService extends ChangeNotifier {
     return auth.tokenProvider.idToken;
   }
 
-  Future<void> _incrementStorageUsage(String userId, int fileSize) async {
-    _storageUsedBytes += fileSize;
-    await _writeStorageUsage(userId);
+  Future<String> _idToken() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      return _linuxIdToken();
+    }
+
+    final user = fb_auth.FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('No signed-in Firebase user for storage upload');
+    }
+    return idToken;
   }
 
-  Future<void> _writeStorageUsage(String userId) async {
-    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-      final fdFirestore = _firedartFirestore;
-      if (fdFirestore != null) {
-        await fdFirestore.collection('users').document(userId).update({
-          'storageUsedBytes': _storageUsedBytes,
-        });
-      }
-    } else {
-      await _firebaseFirestore.collection('users').doc(userId).update({
-        'storageUsedBytes': _storageUsedBytes,
-      });
-    }
+  void _applyRecordedUsage(int storageUsedBytes) {
+    _storageUsedBytes = storageUsedBytes;
+    _cloudRecordedBytes = storageUsedBytes;
+    _hasLoadedStorageInfo = true;
   }
 
   String _extractHttpError(http.Response response) {
     try {
       final json = jsonDecode(response.body);
       if (json is Map<String, dynamic>) {
+        if (json['code'] == 'quota-exceeded') {
+          final usedBytes = _intFromDynamic(json['usedBytes']);
+          final requestedBytes = _intFromDynamic(json['requestedBytes']);
+          final limitBytes = _intFromDynamic(json['limitBytes']);
+          if (usedBytes != null &&
+              requestedBytes != null &&
+              limitBytes != null) {
+            return 'Storage quota exceeded '
+                '(${_formatBytes(usedBytes)} used, '
+                '${_formatBytes(requestedBytes)} requested, '
+                '${_formatBytes(limitBytes)} limit)';
+          }
+          return 'Storage quota exceeded';
+        }
         final error = json['error'];
         if (error is Map<String, dynamic>) {
           final message = error['message'];
@@ -1278,6 +1181,24 @@ class _StorageUsageTotals {
     required this.attachmentBytes,
     required this.noteCount,
     required this.attachmentCount,
+  });
+}
+
+class _FunctionUploadResult {
+  final String downloadUrl;
+  final int storageUsedBytes;
+
+  const _FunctionUploadResult({
+    required this.downloadUrl,
+    required this.storageUsedBytes,
+  });
+}
+
+class _FunctionDeleteResult {
+  final int storageUsedBytes;
+
+  const _FunctionDeleteResult({
+    required this.storageUsedBytes,
   });
 }
 

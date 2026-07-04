@@ -43,7 +43,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     await billing.refreshCustomerInfo();
     final userId = auth.userId;
     if (userId != null) {
-      await storage.loadStorageInfo(userId, fallbackUser: auth.currentUser);
+      await storage.loadStorageInfo(
+        userId,
+        fallbackUser: auth.currentUser,
+        runAudit: true,
+      );
     }
   }
 
