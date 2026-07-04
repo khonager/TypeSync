@@ -122,11 +122,9 @@ class FileGridItem extends StatelessWidget {
         : AppTheme.darkSurface;
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
-    final textColor = AppColorPalette.getContrastingTextColor(bgColor);
     final child = _buildFileContent(
       context,
       icon: icon,
-      textColor: textColor,
       iconColor: Colors.white54,
     );
     final childWhenDragging = Opacity(
@@ -134,7 +132,6 @@ class FileGridItem extends StatelessWidget {
       child: _buildFileContent(
         context,
         icon: icon,
-        textColor: textColor,
         iconColor: iconColor,
       ),
     );
@@ -180,10 +177,11 @@ class FileGridItem extends StatelessWidget {
   Widget _buildFileContent(
     BuildContext context, {
     required IconData icon,
-    required Color textColor,
     required Color iconColor,
   }) {
     final attachmentCount = note.attachments.length;
+    final labelColor = Theme.of(context).textTheme.bodySmall?.color ??
+        Theme.of(context).colorScheme.onSurface;
 
     return GestureDetector(
       onTap: onTap,
@@ -255,7 +253,7 @@ class FileGridItem extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: textColor,
+                  color: labelColor,
                 ),
             textAlign: TextAlign.center,
           ),
@@ -266,7 +264,7 @@ class FileGridItem extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: textColor.withValues(alpha: 0.7),
+                    color: labelColor.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
               textAlign: TextAlign.center,
