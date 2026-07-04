@@ -97,6 +97,7 @@ class StorageService extends ChangeNotifier {
   int _cloudStoredFileBytes = 0;
   int _cloudStoredFileCount = 0;
   bool _isLoading = false;
+  bool _hasLoadedStorageInfo = false;
   String? _errorMessage;
 
   // ===========================================
@@ -119,6 +120,7 @@ class StorageService extends ChangeNotifier {
   int get storageRemainingBytes => storageLimitBytes - _storageUsedBytes;
   bool get isStorageFull => _storageUsedBytes >= storageLimitBytes;
   bool get isLoading => _isLoading;
+  bool get hasLoadedStorageInfo => _hasLoadedStorageInfo;
   String? get errorMessage => _errorMessage;
 
   /// Formatted storage usage string
@@ -164,125 +166,62 @@ class StorageService extends ChangeNotifier {
   /// Calculates actual storage usage from cloud-synced documents.
   Future<void> loadStorageInfo(String userId, {User? fallbackUser}) async {
     _isLoading = true;
+    if (fallbackUser != null) {
+      _currentTier = fallbackUser.subscriptionTier;
+      _storageUsedBytes = fallbackUser.storageUsedBytes;
+      _cloudRecordedBytes = fallbackUser.storageUsedBytes;
+    }
     notifyListeners();
 
     var loadFailed = false;
 
     try {
-      int totalBytes = 0;
-      int contentBytes = 0;
-      int attachmentBytes = 0;
-      int noteCount = 0;
-      int attachmentCount = 0;
-      int storedFileBytes = 0;
-      int storedFileCount = 0;
       var recordedBytes = fallbackUser?.storageUsedBytes ?? _storageUsedBytes;
-      if (fallbackUser != null) {
-        _currentTier = fallbackUser.subscriptionTier;
-      }
+      final userSnapshotFuture = _loadUserStorageSnapshot(
+        userId,
+        fallbackTier: _currentTier,
+        fallbackRecordedBytes: recordedBytes,
+      );
+      final notesMetricsFuture = _loadNoteStorageMetrics(userId);
+      final objectMetricsFuture = _loadCloudObjectMetrics(userId);
 
-      // Load subscription tier and calculate storage from cloud
-      if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-        final fdFirestore = _firedartFirestore;
-        if (fdFirestore != null) {
-          try {
-            final userDoc =
-                await fdFirestore.collection('users').document(userId).get();
-            if (userDoc.map.isNotEmpty) {
-              _currentTier = _subscriptionTierFromUserData(
-                userDoc.map,
-                fallback: _currentTier,
-              );
-              recordedBytes = _intFromDynamic(
-                    userDoc.map['storageUsedBytes'],
-                    fallback: recordedBytes,
-                  ) ??
-                  recordedBytes;
-            }
-          } catch (e) {
-            loadFailed = true;
-            debugPrint('StorageService.loadStorageInfo user doc error: $e');
-          }
+      _UserStorageSnapshot? userSnapshot;
+      _StorageUsageTotals? noteTotals;
+      _AttachmentMetrics? objectMetrics;
 
-          try {
-            final notes = await fdFirestore
-                .collection('notes')
-                .where('userId', isEqualTo: userId)
-                .where('isDeleted', isEqualTo: false)
-                .get();
-            for (final doc in notes) {
-              final noteMetrics = await _noteStorageMetricsFromDynamic(
-                doc.map,
-                userId: userId,
-              );
-              totalBytes +=
-                  noteMetrics.contentBytes + noteMetrics.attachmentBytes;
-              contentBytes += noteMetrics.contentBytes;
-              attachmentBytes += noteMetrics.attachmentBytes;
-              attachmentCount += noteMetrics.attachmentCount;
-              noteCount++;
-            }
-          } catch (e) {
-            loadFailed = true;
-            debugPrint('StorageService.loadStorageInfo notes error: $e');
-          }
-        } else {
-          loadFailed = true;
-        }
-      } else {
-        try {
-          final userDoc =
-              await _firebaseFirestore.collection('users').doc(userId).get();
-          if (userDoc.exists) {
-            final data = userDoc.data()!;
-            _currentTier = _subscriptionTierFromUserData(
-              data,
-              fallback: _currentTier,
-            );
-            recordedBytes = _intFromDynamic(
-                  data['storageUsedBytes'],
-                  fallback: recordedBytes,
-                ) ??
-                recordedBytes;
-          }
-        } catch (e) {
-          loadFailed = true;
-          debugPrint('StorageService.loadStorageInfo user doc error: $e');
-        }
-
-        try {
-          final notesSnapshot = await _firebaseFirestore
-              .collection('notes')
-              .where('userId', isEqualTo: userId)
-              .where('isDeleted', isEqualTo: false)
-              .get();
-          for (final doc in notesSnapshot.docs) {
-            final data = doc.data();
-            final noteMetrics = await _noteStorageMetricsFromDynamic(
-              data,
-              userId: userId,
-            );
-            totalBytes +=
-                noteMetrics.contentBytes + noteMetrics.attachmentBytes;
-            contentBytes += noteMetrics.contentBytes;
-            attachmentBytes += noteMetrics.attachmentBytes;
-            attachmentCount += noteMetrics.attachmentCount;
-            noteCount++;
-          }
-        } catch (e) {
-          loadFailed = true;
-          debugPrint('StorageService.loadStorageInfo notes error: $e');
-        }
+      try {
+        userSnapshot = await userSnapshotFuture;
+        _currentTier = userSnapshot.tier;
+        recordedBytes = userSnapshot.recordedBytes;
+        _storageUsedBytes = recordedBytes;
+        _cloudRecordedBytes = recordedBytes;
+        notifyListeners();
+      } catch (e) {
+        loadFailed = true;
+        debugPrint('StorageService.loadStorageInfo user doc error: $e');
       }
 
       try {
-        final objectMetrics = await _loadCloudObjectMetrics(userId);
-        storedFileBytes = objectMetrics.bytes;
-        storedFileCount = objectMetrics.count;
+        noteTotals = await notesMetricsFuture;
+      } catch (e) {
+        loadFailed = true;
+        debugPrint('StorageService.loadStorageInfo notes error: $e');
+      }
+
+      try {
+        objectMetrics = await objectMetricsFuture;
       } catch (e) {
         loadFailed = true;
         debugPrint('StorageService.loadStorageInfo object listing error: $e');
       }
+
+      final totalBytes = noteTotals?.totalBytes ?? 0;
+      final contentBytes = noteTotals?.contentBytes ?? 0;
+      final attachmentBytes = noteTotals?.attachmentBytes ?? 0;
+      final noteCount = noteTotals?.noteCount ?? 0;
+      final attachmentCount = noteTotals?.attachmentCount ?? 0;
+      final storedFileBytes = objectMetrics?.bytes ?? 0;
+      final storedFileCount = objectMetrics?.count ?? 0;
 
       _storageUsedBytes = [
         totalBytes,
@@ -296,6 +235,7 @@ class StorageService extends ChangeNotifier {
       _cloudAttachmentCount = attachmentCount;
       _cloudStoredFileBytes = storedFileBytes;
       _cloudStoredFileCount = storedFileCount;
+      _hasLoadedStorageInfo = true;
       _errorMessage = loadFailed
           ? 'Loaded partial storage info; using best available data.'
           : null;
@@ -700,6 +640,119 @@ class StorageService extends ChangeNotifier {
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
+
+  Future<_UserStorageSnapshot> _loadUserStorageSnapshot(
+    String userId, {
+    required SubscriptionTier fallbackTier,
+    required int fallbackRecordedBytes,
+  }) async {
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      final fdFirestore = _firedartFirestore;
+      if (fdFirestore == null) {
+        throw Exception('Firedart is not initialized');
+      }
+
+      final userDoc =
+          await fdFirestore.collection('users').document(userId).get();
+      if (userDoc.map.isEmpty) {
+        return _UserStorageSnapshot(
+          tier: fallbackTier,
+          recordedBytes: fallbackRecordedBytes,
+        );
+      }
+
+      return _UserStorageSnapshot(
+        tier: _subscriptionTierFromUserData(
+          userDoc.map,
+          fallback: fallbackTier,
+        ),
+        recordedBytes: _intFromDynamic(
+              userDoc.map['storageUsedBytes'],
+              fallback: fallbackRecordedBytes,
+            ) ??
+            fallbackRecordedBytes,
+      );
+    }
+
+    final userDoc =
+        await _firebaseFirestore.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return _UserStorageSnapshot(
+        tier: fallbackTier,
+        recordedBytes: fallbackRecordedBytes,
+      );
+    }
+
+    final data = userDoc.data()!;
+    return _UserStorageSnapshot(
+      tier: _subscriptionTierFromUserData(
+        data,
+        fallback: fallbackTier,
+      ),
+      recordedBytes: _intFromDynamic(
+            data['storageUsedBytes'],
+            fallback: fallbackRecordedBytes,
+          ) ??
+          fallbackRecordedBytes,
+    );
+  }
+
+  Future<_StorageUsageTotals> _loadNoteStorageMetrics(String userId) async {
+    int totalBytes = 0;
+    int contentBytes = 0;
+    int attachmentBytes = 0;
+    int noteCount = 0;
+    int attachmentCount = 0;
+
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      final fdFirestore = _firedartFirestore;
+      if (fdFirestore == null) {
+        throw Exception('Firedart is not initialized');
+      }
+
+      final notes = await fdFirestore
+          .collection('notes')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      for (final doc in notes) {
+        final noteMetrics = await _noteStorageMetricsFromDynamic(
+          doc.map,
+          userId: userId,
+        );
+        totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+        contentBytes += noteMetrics.contentBytes;
+        attachmentBytes += noteMetrics.attachmentBytes;
+        attachmentCount += noteMetrics.attachmentCount;
+        noteCount++;
+      }
+    } else {
+      final notesSnapshot = await _firebaseFirestore
+          .collection('notes')
+          .where('userId', isEqualTo: userId)
+          .where('isDeleted', isEqualTo: false)
+          .get();
+      for (final doc in notesSnapshot.docs) {
+        final noteMetrics = await _noteStorageMetricsFromDynamic(
+          doc.data(),
+          userId: userId,
+        );
+        totalBytes += noteMetrics.contentBytes + noteMetrics.attachmentBytes;
+        contentBytes += noteMetrics.contentBytes;
+        attachmentBytes += noteMetrics.attachmentBytes;
+        attachmentCount += noteMetrics.attachmentCount;
+        noteCount++;
+      }
+    }
+
+    return _StorageUsageTotals(
+      totalBytes: totalBytes,
+      contentBytes: contentBytes,
+      attachmentBytes: attachmentBytes,
+      noteCount: noteCount,
+      attachmentCount: attachmentCount,
+    );
+  }
 
   Future<_NoteStorageMetrics> _noteStorageMetricsFromDynamic(
     Map<dynamic, dynamic> data, {
@@ -1199,6 +1252,32 @@ class _AttachmentMetrics {
   const _AttachmentMetrics({
     required this.bytes,
     required this.count,
+  });
+}
+
+class _UserStorageSnapshot {
+  final SubscriptionTier tier;
+  final int recordedBytes;
+
+  const _UserStorageSnapshot({
+    required this.tier,
+    required this.recordedBytes,
+  });
+}
+
+class _StorageUsageTotals {
+  final int totalBytes;
+  final int contentBytes;
+  final int attachmentBytes;
+  final int noteCount;
+  final int attachmentCount;
+
+  const _StorageUsageTotals({
+    required this.totalBytes,
+    required this.contentBytes,
+    required this.attachmentBytes,
+    required this.noteCount,
+    required this.attachmentCount,
   });
 }
 

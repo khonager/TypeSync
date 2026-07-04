@@ -241,10 +241,27 @@ class _CurrentPlanCard extends StatelessWidget {
                         storage.currentTier.displayName,
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      Text(
-                        storage.usageFormatted,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                      if (storage.isLoading && !storage.hasLoadedStorageInfo)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Loading usage...',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          storage.usageFormatted,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                     ],
                   ),
                 ),
@@ -262,7 +279,9 @@ class _CurrentPlanCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: storage.usagePercent.clamp(0, 1),
+                value: storage.isLoading && !storage.hasLoadedStorageInfo
+                    ? null
+                    : storage.usagePercent.clamp(0, 1),
                 backgroundColor: Colors.grey.withValues(alpha: 0.3),
                 minHeight: 8,
               ),

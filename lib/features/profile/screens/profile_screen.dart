@@ -388,10 +388,28 @@ class _ProfileScreenState extends State<ProfileScreen>
                       'Cloud Storage',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    Text(
-                      storageService.usageFormatted,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    if (storageService.isLoading &&
+                        !storageService.hasLoadedStorageInfo)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Loading...',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        storageService.usageFormatted,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -399,11 +417,30 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: storageService.usagePercent,
+                    value: storageService.isLoading &&
+                            !storageService.hasLoadedStorageInfo
+                        ? null
+                        : storageService.usagePercent.clamp(0, 1),
                     backgroundColor: Colors.grey.withValues(alpha: 0.3),
                     minHeight: 8,
                   ),
                 ),
+                const SizedBox(height: 12),
+                if (storageService.isLoading &&
+                    !storageService.hasLoadedStorageInfo)
+                  Text(
+                    'Checking cloud usage...',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  )
+                else
+                  Text(
+                    _formatExactBytes(storageService.storageUsedBytes),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
                 const SizedBox(height: 12),
                 // Subscription tier
                 Row(
@@ -421,14 +458,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _formatExactBytes(storageService.storageUsedBytes),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                ),
-                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
