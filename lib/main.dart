@@ -2,13 +2,15 @@
 ///
 /// Main entry point for the application. Initializes Firebase,
 /// sets up providers, and configures the app theme.
-// ignore_for_file: experimental_member_use
+// ignore_for_file: deprecated_member_use, experimental_member_use
 
 library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_quill/flutter_quill.dart'
+    show SpellCheckerServiceProvider;
 import 'package:flutter_quill/flutter_quill_internal.dart'
     show ClipboardServiceProvider;
 import 'package:provider/provider.dart';
@@ -26,6 +28,9 @@ import 'core/services/theme_service.dart';
 import 'core/services/local_folder_sync_service.dart';
 import 'core/services/diagnostics_service.dart';
 import 'core/services/plain_text_quill_clipboard_service.dart';
+import 'core/services/typesync_spellchecker_service.dart';
+import 'core/utils/web_spellcheck_suppressor_stub.dart'
+    if (dart.library.html) 'core/utils/web_spellcheck_suppressor_web.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/folders_provider.dart';
 import 'core/providers/tags_provider.dart';
@@ -42,6 +47,12 @@ import 'firebase_options.dart';
 void main() async {
   // Ensure Flutter bindings are initialized before any async operations
   WidgetsFlutterBinding.ensureInitialized();
+
+  suppressBrowserSpellcheckForFlutterInputs();
+  await TypeSyncSpellcheckerService.instance.initialize();
+  SpellCheckerServiceProvider.setNewCheckerService(
+    TypeSyncSpellcheckerService.instance,
+  );
 
   await configureDesktopWindowFrame();
 

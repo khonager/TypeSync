@@ -40,6 +40,7 @@ import '../../../core/services/sync_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/typesync_spellchecker_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/version_compatibility.dart';
@@ -240,6 +241,8 @@ class _EditorScreenState extends State<EditorScreen>
       'typesync_editor_attachments_expanded_';
   static const String _attachmentsPreviewHiddenPreferencePrefix =
       'typesync_editor_attachments_preview_hidden_';
+  static const String _browserSpellcheckNoticeShownKey =
+      'typesync_browser_spellcheck_notice_shown_v1';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -458,6 +461,29 @@ class _EditorScreenState extends State<EditorScreen>
       _hasStartedCloudMigration = true;
       unawaited(_ensureCloudBackedFiles());
     }
+
+    unawaited(_maybeShowBrowserSpellcheckExtensionNotice());
+  }
+
+  Future<void> _maybeShowBrowserSpellcheckExtensionNotice() async {
+    if (!kIsWeb || !mounted) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_browserSpellcheckNoticeShownKey) ?? false) return;
+    await prefs.setBool(_browserSpellcheckNoticeShownKey, true);
+
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'If browser spellcheck extension underlines still appear in the wrong place, disable that extension for TypeSync.',
+          ),
+          duration: Duration(seconds: 7),
+        ),
+      );
+    });
   }
 
   void _attachActiveNoteSync() {
@@ -4002,8 +4028,23 @@ class _EditorScreenState extends State<EditorScreen>
     return _currentEditorContent() != _normalizedStoredContent(_note!.content);
   }
 
+  Future<void> _setSpellcheckEnabled(bool enabled) async {
+    await TypeSyncSpellcheckerService.instance.setEnabled(enabled);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _setSpellcheckLanguage(
+    TypeSyncSpellcheckLanguage language,
+  ) async {
+    await TypeSyncSpellcheckerService.instance.setLanguage(language);
+    if (!mounted) return;
+    setState(() {});
+  }
+
   void _showMoreOptions() {
     final authService = context.read<AuthService>();
+    final spellchecker = TypeSyncSpellcheckerService.instance;
 
     showModalBottomSheet(
       context: context,
@@ -4011,6 +4052,51 @@ class _EditorScreenState extends State<EditorScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.spellcheck),
+              title: const Text('Spellcheck'),
+              subtitle: Text(
+                spellchecker.isEnabled
+                    ? 'Using ${spellchecker.activeLanguage.label}'
+                    : 'Local spellcheck is off',
+              ),
+              value: spellchecker.isEnabled,
+              onChanged: (enabled) {
+                Navigator.pop(context);
+                unawaited(_setSpellcheckEnabled(enabled));
+              },
+            ),
+            if (spellchecker.isEnabled)
+              ListTile(
+                leading: const Icon(Icons.language),
+                title: const Text('Spellcheck language'),
+                subtitle: Text(spellchecker.activeLanguage.label),
+                trailing: DropdownButton<TypeSyncSpellcheckLanguage>(
+                  value: spellchecker.activeLanguage,
+                  underline: const SizedBox.shrink(),
+                  items: TypeSyncSpellcheckLanguage.values
+                      .map(
+                        (language) => DropdownMenuItem(
+                          value: language,
+                          child: Text(language.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (language) {
+                    if (language == null) return;
+                    Navigator.pop(context);
+                    unawaited(_setSpellcheckLanguage(language));
+                  },
+                ),
+              ),
+            if (kIsWeb)
+              const ListTile(
+                leading: Icon(Icons.extension_off_outlined),
+                title: Text('Browser spellcheck extensions'),
+                subtitle: Text(
+                  'TypeSync asks browser spellcheck overlays to stay off. If extension underlines still appear in the wrong place, disable that extension for this site.',
+                ),
+              ),
             ListTile(
               leading: Icon(
                 widget.isSideBySideOpen
