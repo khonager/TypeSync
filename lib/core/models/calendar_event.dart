@@ -67,7 +67,7 @@ class CalendarEvent extends Equatable {
   bool get isTodo => type == EventType.todo;
 
   // Calendar placement should follow the event's stored date.
-  // Completed todos are moved to their checked day by updating startTime.
+  // Completed todos keep the date they had when they were checked.
   DateTime get calendarDate => startTime;
 
   bool get isToday {

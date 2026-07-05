@@ -377,17 +377,9 @@ class CalendarProvider extends ChangeNotifier {
     }
 
     final completedAt = isCompleted ? DateTime.now() : null;
-    final updatedStartTime = isCompleted
-        ? _replaceDateKeepingTime(event.startTime, completedAt!)
-        : event.startTime;
-    final updatedEndTime = isCompleted && event.endTime != null
-        ? _replaceDateKeepingTime(event.endTime!, completedAt!)
-        : event.endTime;
 
     return updateEvent(
       event.copyWith(
-        startTime: updatedStartTime,
-        endTime: updatedEndTime,
         isCompleted: isCompleted,
         completedAt: completedAt,
       ),
