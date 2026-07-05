@@ -4089,6 +4089,16 @@ class _EditorScreenState extends State<EditorScreen>
                   },
                 ),
               ),
+            if (spellchecker.isEnabled)
+              ListTile(
+                leading: const Icon(Icons.fact_check_outlined),
+                title: const Text('Review spelling'),
+                subtitle: const Text('Show suggestions and writing fixes'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSpellcheckReview();
+                },
+              ),
             if (kIsWeb)
               const ListTile(
                 leading: Icon(Icons.extension_off_outlined),
@@ -4211,6 +4221,198 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       ),
     );
+  }
+
+  void _showSpellcheckReview() {
+    final spellchecker = TypeSyncSpellcheckerService.instance;
+    final documentText = _quillController.document.toPlainText();
+    final issues = spellchecker.collectIssues(
+      documentText,
+      includeSuggestions: true,
+      maxIssues: 60,
+    );
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.75,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Spellcheck',
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                if (issues.isEmpty)
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'No local spelling or writing issues found.',
+                        style: Theme.of(sheetContext).textTheme.bodyLarge,
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      itemCount: issues.length,
+                      separatorBuilder: (_, __) => const Divider(height: 20),
+                      itemBuilder: (context, index) {
+                        final issue = issues[index];
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  _spellcheckIssueIcon(issue.kind),
+                                  size: 20,
+                                  color: issue.underlineColor,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        issue.text,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(sheetContext)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              decoration:
+                                                  TextDecoration.underline,
+                                              decorationColor:
+                                                  issue.underlineColor,
+                                              decorationStyle:
+                                                  TextDecorationStyle.wavy,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        issue.message,
+                                        style: Theme.of(sheetContext)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: colors.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    _selectSpellcheckIssue(issue);
+                                    Navigator.pop(sheetContext);
+                                  },
+                                  child: const Text('Go'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (issue.suggestions.isEmpty)
+                              Text(
+                                'No local suggestions',
+                                style: Theme.of(sheetContext)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                              )
+                            else
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: issue.suggestions
+                                    .map(
+                                      (suggestion) => ActionChip(
+                                        label: Text(suggestion),
+                                        onPressed: () {
+                                          _replaceSpellcheckIssue(
+                                            issue,
+                                            suggestion,
+                                          );
+                                          Navigator.pop(sheetContext);
+                                        },
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  IconData _spellcheckIssueIcon(TypeSyncSpellcheckIssueKind kind) {
+    return switch (kind) {
+      TypeSyncSpellcheckIssueKind.spelling => Icons.spellcheck,
+      TypeSyncSpellcheckIssueKind.repeatedWord => Icons.repeat,
+      TypeSyncSpellcheckIssueKind.spacing => Icons.space_bar,
+      TypeSyncSpellcheckIssueKind.punctuation => Icons.priority_high,
+      TypeSyncSpellcheckIssueKind.capitalization => Icons.text_fields,
+    };
+  }
+
+  void _selectSpellcheckIssue(TypeSyncSpellcheckIssue issue) {
+    final documentLength = _quillController.document.length;
+    final start = issue.start.clamp(0, documentLength - 1);
+    final end = issue.end.clamp(start, documentLength - 1);
+
+    _quillController.updateSelection(
+      TextSelection(baseOffset: start, extentOffset: end),
+      ChangeSource.local,
+    );
+    _focusNode.requestFocus();
+  }
+
+  void _replaceSpellcheckIssue(
+    TypeSyncSpellcheckIssue issue,
+    String replacement,
+  ) {
+    final documentLength = _quillController.document.length;
+    final start = issue.start.clamp(0, documentLength - 1);
+    final end = issue.end.clamp(start, documentLength - 1);
+
+    _quillController.replaceText(
+      start,
+      end - start,
+      replacement,
+      TextSelection.collapsed(offset: start + replacement.length),
+    );
+    _focusNode.requestFocus();
   }
 
   Future<void> _insertPdf() async {
