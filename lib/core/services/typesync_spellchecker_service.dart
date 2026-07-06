@@ -2,20 +2,36 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:spell_check_on_client/spell_check_on_client.dart';
+
+import 'hunspell_dictionary.dart';
 
 enum TypeSyncSpellcheckLanguage {
-  english('en', 'English', 'assets/dictionaries/en_words.txt'),
-  german('de', 'German', 'assets/dictionaries/de_words.txt');
+  english(
+    'en',
+    'English',
+    'assets/hunspell/en_US/en_US.aff',
+    'assets/hunspell/en_US/en_US.dic',
+  ),
+  german(
+    'de',
+    'German',
+    'assets/hunspell/de_DE/de_DE.aff',
+    'assets/hunspell/de_DE/de_DE.dic',
+  );
 
-  const TypeSyncSpellcheckLanguage(this.code, this.label, this.assetPath);
+  const TypeSyncSpellcheckLanguage(
+    this.code,
+    this.label,
+    this.affPath,
+    this.dicPath,
+  );
 
   final String code;
   final String label;
-  final String assetPath;
+  final String affPath;
+  final String dicPath;
 
   static TypeSyncSpellcheckLanguage fromCode(String? code) {
     return values.firstWhere(
@@ -65,6 +81,16 @@ class TypeSyncSpellcheckIssue {
   }
 }
 
+class TypeSyncSpellcheckHover {
+  const TypeSyncSpellcheckHover({
+    required this.issue,
+    required this.globalPosition,
+  });
+
+  final TypeSyncSpellcheckIssue issue;
+  final Offset globalPosition;
+}
+
 class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   TypeSyncSpellcheckerService._()
       : _language = TypeSyncSpellcheckLanguage.english,
@@ -72,10 +98,15 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
 
   static const String enabledPreferenceKey = 'typesync_spellcheck_enabled_v1';
   static const String languagePreferenceKey = 'typesync_spellcheck_language_v1';
+  static const String acceptedWordsPreferenceKey =
+      'typesync_spellcheck_accepted_words_v1';
   static final TypeSyncSpellcheckerService instance =
       TypeSyncSpellcheckerService._();
 
-  final Map<TypeSyncSpellcheckLanguage, SpellCheck> _checkers = {};
+  final Map<TypeSyncSpellcheckLanguage, HunspellDictionary> _checkers = {};
+  final Set<String> _acceptedWords = <String>{};
+  final ValueNotifier<TypeSyncSpellcheckHover?> hoveredIssue =
+      ValueNotifier<TypeSyncSpellcheckHover?>(null);
   final RegExp _wordPattern = RegExp(
     r"[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?",
   );
@@ -99,6 +130,13 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     _language = TypeSyncSpellcheckLanguage.fromCode(
       prefs.getString(languagePreferenceKey),
     );
+    _acceptedWords
+      ..clear()
+      ..addAll(
+        (prefs.getStringList(acceptedWordsPreferenceKey) ?? const <String>[])
+            .map(_normalizeAcceptedWord)
+            .where((word) => word.isNotEmpty),
+      );
 
     await _loadLanguage(_language);
     _isInitialized = true;
@@ -118,14 +156,26 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     await prefs.setString(languagePreferenceKey, language.code);
   }
 
+  Future<void> acceptWord(String word) async {
+    final normalized = _normalizeAcceptedWord(word);
+    if (normalized.isEmpty) return;
+
+    _acceptedWords.add(normalized);
+    hoveredIssue.value = null;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      acceptedWordsPreferenceKey,
+      _acceptedWords.toList()..sort(),
+    );
+  }
+
   Future<void> _loadLanguage(TypeSyncSpellcheckLanguage language) async {
     if (_checkers.containsKey(language)) return;
 
-    final content = await rootBundle.loadString(language.assetPath);
-    _checkers[language] = SpellCheck.fromWordsContent(
-      content,
-      letters: LanguageLetters.getLanguageForLanguage(language.code),
-      iterations: 1,
+    _checkers[language] = await HunspellDictionary.load(
+      affPath: language.affPath,
+      dicPath: language.dicPath,
     );
   }
 
@@ -157,6 +207,25 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
             decorationStyle: TextDecorationStyle.wavy,
             decorationThickness: 1.8,
           ),
+          mouseCursor: SystemMouseCursors.click,
+          onEnter: (event) {
+            final suggestions = issue.suggestions.isEmpty &&
+                    issue.kind == TypeSyncSpellcheckIssueKind.spelling
+                ? _suggestWords(_checkers[_language]!, issue.text)
+                : issue.suggestions;
+            hoveredIssue.value = TypeSyncSpellcheckHover(
+              issue: TypeSyncSpellcheckIssue(
+                start: issue.start,
+                end: issue.end,
+                text: issue.text,
+                kind: issue.kind,
+                message: issue.message,
+                suggestions: suggestions,
+              ),
+              globalPosition: event.position,
+            );
+          },
+          onExit: (_) {},
         ),
       );
       cursor = issue.end;
@@ -214,14 +283,18 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
 
   List<TypeSyncSpellcheckIssue> _collectSpellingIssues(
     String text,
-    SpellCheck checker, {
+    HunspellDictionary checker, {
     required bool includeSuggestions,
   }) {
     final issues = <TypeSyncSpellcheckIssue>[];
 
     for (final match in _wordPattern.allMatches(text)) {
       final word = match.group(0)!;
-      if (_shouldSkipWord(word) || checker.isCorrect(word)) continue;
+      if (_shouldSkipWord(word) ||
+          _isAcceptedWord(word) ||
+          checker.isCorrect(word)) {
+        continue;
+      }
 
       final suggestions =
           includeSuggestions ? _suggestWords(checker, word) : const <String>[];
@@ -356,14 +429,8 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return issues;
   }
 
-  List<String> _suggestWords(SpellCheck checker, String word) {
-    return checker
-        .didYouMeanAny(word, maxWords: 5)
-        .where((suggestion) => suggestion.isNotEmpty)
-        .map((suggestion) => _matchCapitalization(word, suggestion))
-        .toSet()
-        .take(4)
-        .toList();
+  List<String> _suggestWords(HunspellDictionary checker, String word) {
+    return checker.suggest(word, maxSuggestions: 4);
   }
 
   bool _looksLikeAbbreviationDot(String text, int dotIndex) {
@@ -384,21 +451,20 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return _isLetter(value) && value.toUpperCase() == value;
   }
 
-  String _matchCapitalization(String source, String suggestion) {
-    if (source.isEmpty || suggestion.isEmpty) return suggestion;
-    if (source.toUpperCase() == source) return suggestion.toUpperCase();
-    if (_isUppercaseLetter(source[0])) {
-      return suggestion[0].toUpperCase() + suggestion.substring(1);
-    }
-    return suggestion;
-  }
-
   bool _shouldSkipWord(String word) {
     if (word.length <= 1) return true;
     if (word.contains(RegExp(r'\d'))) return true;
     if (word.contains('_')) return true;
     if (word.toUpperCase() == word && word.length <= 5) return true;
     return false;
+  }
+
+  bool _isAcceptedWord(String word) {
+    return _acceptedWords.contains(_normalizeAcceptedWord(word));
+  }
+
+  static String _normalizeAcceptedWord(String word) {
+    return word.trim().toLowerCase();
   }
 
   @override

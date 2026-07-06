@@ -300,6 +300,7 @@ class _EditorScreenState extends State<EditorScreen>
   Offset _toolbarPosition = const Offset(16, 100);
   late final AnimationController _matchGlowController;
   Timer? _matchGlowStopTimer;
+  OverlayEntry? _spellcheckHoverOverlay;
   Rect? _matchGlowRect;
   bool _showMatchGlow = false;
   bool _didAttemptInitialSearchJump = false;
@@ -361,6 +362,9 @@ class _EditorScreenState extends State<EditorScreen>
     _syncService = context.read<SyncService>();
     _findController.addListener(_handleSearchQueryChanged);
     _focusNode.addListener(_onEditorFocusChanged);
+    TypeSyncSpellcheckerService.instance.hoveredIssue.addListener(
+      _handleSpellcheckHoverChanged,
+    );
     _matchGlowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -1591,7 +1595,12 @@ class _EditorScreenState extends State<EditorScreen>
     }
     unawaited(_persistToolbarPreferences());
     _matchGlowStopTimer?.cancel();
+    _spellcheckHoverOverlay?.remove();
+    _spellcheckHoverOverlay = null;
     _matchGlowController.dispose();
+    TypeSyncSpellcheckerService.instance.hoveredIssue.removeListener(
+      _handleSpellcheckHoverChanged,
+    );
     _findController.removeListener(_handleSearchQueryChanged);
     _findController.dispose();
     _replaceController.dispose();
@@ -4042,6 +4051,113 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {});
   }
 
+  void _handleSpellcheckHoverChanged() {
+    final hover = TypeSyncSpellcheckerService.instance.hoveredIssue.value;
+    _spellcheckHoverOverlay?.remove();
+    _spellcheckHoverOverlay = null;
+
+    if (!mounted || hover == null) return;
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+
+    _spellcheckHoverOverlay = OverlayEntry(
+      builder: (context) => _buildSpellcheckHoverOverlay(hover),
+    );
+    overlay.insert(_spellcheckHoverOverlay!);
+  }
+
+  Widget _buildSpellcheckHoverOverlay(TypeSyncSpellcheckHover hover) {
+    final colors = Theme.of(context).colorScheme;
+    final issue = hover.issue;
+    final suggestions = issue.suggestions.take(3).toList();
+    final left = hover.globalPosition.dx.clamp(
+      8.0,
+      MediaQuery.sizeOf(context).width - 300,
+    );
+    final top = (hover.globalPosition.dy + 16).clamp(
+      8.0,
+      MediaQuery.sizeOf(context).height - 150,
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: MouseRegion(
+        child: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(10),
+          color: colors.surfaceContainerHighest,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 292),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _spellcheckIssueIcon(issue.kind),
+                        size: 18,
+                        color: issue.underlineColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          issue.text,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Mark as correct',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          unawaited(_acceptSpellcheckWord(issue.text));
+                        },
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    issue.message,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                  if (suggestions.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: suggestions
+                          .map(
+                            (suggestion) => Chip(
+                              label: Text(suggestion),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _acceptSpellcheckWord(String word) async {
+    await TypeSyncSpellcheckerService.instance.acceptWord(word);
+    if (!mounted) return;
+    _spellcheckHoverOverlay?.remove();
+    _spellcheckHoverOverlay = null;
+    setState(() {});
+  }
+
   void _showMoreOptions() {
     final authService = context.read<AuthService>();
     final spellchecker = TypeSyncSpellcheckerService.instance;
@@ -4331,6 +4447,20 @@ class _EditorScreenState extends State<EditorScreen>
                                   },
                                   child: const Text('Go'),
                                 ),
+                                if (issue.kind ==
+                                    TypeSyncSpellcheckIssueKind.spelling)
+                                  IconButton(
+                                    tooltip: 'Mark as correct',
+                                    onPressed: () {
+                                      Navigator.pop(sheetContext);
+                                      unawaited(
+                                        _acceptSpellcheckWord(issue.text),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.check_circle_outline,
+                                    ),
+                                  ),
                               ],
                             ),
                             const SizedBox(height: 8),

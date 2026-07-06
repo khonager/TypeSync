@@ -41,7 +41,6 @@ dependencies:
   flutter_quill_delta_from_html: ^1.5.3
   markdown: ^7.2.2
   flutter_markdown: ^0.7.3
-  spell_check_on_client: ^1.0.1
 
   # UI Components
   flutter_svg: ^2.0.9
@@ -99,6 +98,7 @@ flutter:
   assets:
     - assets/adi-registration.properties
     - assets/data/changelog.json
-    - assets/dictionaries/
+    - assets/hunspell/en_US/
+    - assets/hunspell/de_DE/
 
   # Using Google Fonts instead of bundled fonts
