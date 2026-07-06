@@ -170,6 +170,11 @@ class Note extends Equatable {
   /// Minimum TypeSync app version required to safely render/edit this note.
   final String? minSupportedAppVersion;
 
+  /// Optional per-note spellcheck language override.
+  ///
+  /// When null, the editor auto-detects the language from the note content.
+  final String? spellcheckLanguageCode;
+
   const Note({
     required this.id,
     required this.title,
@@ -194,6 +199,7 @@ class Note extends Equatable {
     this.hasConflict = false,
     this.conflictContent,
     this.minSupportedAppVersion,
+    this.spellcheckLanguageCode,
   });
 
   /// Creates a new note with default values
@@ -245,6 +251,7 @@ class Note extends Equatable {
     String? conflictContent,
     bool clearConflictContent = false,
     Object? minSupportedAppVersion = _noChange,
+    Object? spellcheckLanguageCode = _noChange,
   }) {
     return Note(
       id: id ?? this.id,
@@ -278,6 +285,9 @@ class Note extends Equatable {
       minSupportedAppVersion: identical(minSupportedAppVersion, _noChange)
           ? this.minSupportedAppVersion
           : minSupportedAppVersion as String?,
+      spellcheckLanguageCode: identical(spellcheckLanguageCode, _noChange)
+          ? this.spellcheckLanguageCode
+          : spellcheckLanguageCode as String?,
     );
   }
 
@@ -305,6 +315,7 @@ class Note extends Equatable {
           attachments.map((attachment) => attachment.toJson()).toList(),
       'localOnly': localOnly,
       'minSupportedAppVersion': minSupportedAppVersion,
+      'spellcheckLanguageCode': spellcheckLanguageCode,
       // We explicitly don't sync conflict state up to the cloud;
       // the cloud is just the source of truth for the remote version.
       // But if we did want to serialize them locally somehow, we might.
@@ -369,6 +380,7 @@ class Note extends Equatable {
           <NoteAttachment>[],
       localOnly: json['localOnly'] as bool? ?? false,
       minSupportedAppVersion: json['minSupportedAppVersion'] as String?,
+      spellcheckLanguageCode: json['spellcheckLanguageCode'] as String?,
       hasConflict: false, // from server is never conflicted
       conflictContent: null,
     );
@@ -397,6 +409,7 @@ class Note extends Equatable {
         attachments,
         localOnly,
         minSupportedAppVersion,
+        spellcheckLanguageCode,
         hasConflict,
         conflictContent,
       ];

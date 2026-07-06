@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:typesync/core/services/hunspell_dictionary.dart';
+import 'package:typesync/core/services/typesync_spellchecker_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues(const <String, Object>{});
 
   group('HunspellDictionary', () {
     test('checks German dictionary words and inflections', () async {
@@ -35,6 +38,39 @@ void main() {
       expect(dictionary.isCorrect('Monday'), isTrue);
       expect(dictionary.isCorrect('theorecically'), isFalse);
       expect(dictionary.suggest('speling'), contains('spelling'));
+    });
+
+    test('detects note language automatically', () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+
+      expect(
+        service
+            .detectLanguage('This note explains how the spellchecker works.'),
+        TypeSyncSpellcheckLanguage.english,
+      );
+      expect(
+        service
+            .detectLanguage('Das ist eine Notiz ueber die Spracheinstellung.'),
+        TypeSyncSpellcheckLanguage.german,
+      );
+    });
+
+    test('prefers saved note language over auto-detection', () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+
+      final resolved = service.configureLanguageForText(
+        'This text is in English.',
+        languageCode: 'de',
+      );
+
+      expect(resolved, TypeSyncSpellcheckLanguage.german);
+      expect(service.activeLanguage, TypeSyncSpellcheckLanguage.german);
     });
   });
 }

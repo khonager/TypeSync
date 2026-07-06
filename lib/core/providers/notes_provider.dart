@@ -876,6 +876,33 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Persist a manual spellcheck language override for a note.
+  ///
+  /// Passing null switches the note back to automatic language detection.
+  Future<Note?> setSpellcheckLanguage(
+    String noteId,
+    String? languageCode,
+  ) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index < 0) return null;
+
+    final updatedNote = _notes[index].copyWith(
+      spellcheckLanguageCode: languageCode,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+    );
+
+    _notes[index] = updatedNote;
+    await _notesBox?.put(noteId, updatedNote);
+
+    if (!updatedNote.localOnly && !updatedNote.hasConflict) {
+      _syncService?.syncNote(updatedNote);
+    }
+
+    notifyListeners();
+    return updatedNote;
+  }
+
   /// Raises the minimum app version required to render/edit a note.
   ///
   /// If the note already requires a newer version, this is a no-op.
@@ -1464,6 +1491,8 @@ class NoteAdapter extends TypeAdapter<Note> {
     final localOnly = reader.availableBytes > 0 ? reader.readBool() : false;
     final minSupportedAppVersionRaw =
         reader.availableBytes > 0 ? reader.readString() : '';
+    final spellcheckLanguageCodeRaw =
+        reader.availableBytes > 0 ? reader.readString() : '';
 
     return Note(
       id: id,
@@ -1490,6 +1519,8 @@ class NoteAdapter extends TypeAdapter<Note> {
       localOnly: localOnly,
       minSupportedAppVersion:
           minSupportedAppVersionRaw.isEmpty ? null : minSupportedAppVersionRaw,
+      spellcheckLanguageCode:
+          spellcheckLanguageCodeRaw.isEmpty ? null : spellcheckLanguageCodeRaw,
     );
   }
 
@@ -1529,6 +1560,7 @@ class NoteAdapter extends TypeAdapter<Note> {
     }
     writer.writeBool(obj.localOnly);
     writer.writeString(obj.minSupportedAppVersion ?? '');
+    writer.writeString(obj.spellcheckLanguageCode ?? '');
   }
 }
 

@@ -243,6 +243,7 @@ class _EditorScreenState extends State<EditorScreen>
       'typesync_editor_attachments_preview_hidden_';
   static const String _browserSpellcheckNoticeShownKey =
       'typesync_browser_spellcheck_notice_shown_v1';
+  static const String _automaticSpellcheckLanguageValue = '__auto__';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -274,6 +275,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   // Auto-save timer
   Timer? _saveTimer;
+  Timer? _spellcheckLanguageTimer;
   Timer? _caretPersistTimer;
   Timer? _toolbarPersistTimer;
   bool _didUserFocusEditor = false;
@@ -432,6 +434,8 @@ class _EditorScreenState extends State<EditorScreen>
       }
     }
 
+    _refreshSpellcheckLanguage();
+
     if (!_openedFromSearch) {
       final restoredCaretOffset = await _loadPersistedCaretOffset();
       if (restoredCaretOffset != null) {
@@ -509,6 +513,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (_isUpdatingFromExternal) return;
     _ensureChecklistMetadata();
     _updateStats();
+    _scheduleSpellcheckLanguageRefresh();
     _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
@@ -1588,6 +1593,7 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _spellcheckLanguageTimer?.cancel();
     _caretPersistTimer?.cancel();
     _toolbarPersistTimer?.cancel();
     if (_didUserFocusEditor) {
@@ -1672,6 +1678,7 @@ class _EditorScreenState extends State<EditorScreen>
             if (!localHasUnsavedEdits) {
               _pendingExternalNote = null;
               _updateContentFromProvider(providerNote);
+              _refreshSpellcheckLanguage();
               return;
             }
 
@@ -1682,6 +1689,7 @@ class _EditorScreenState extends State<EditorScreen>
               _lineCount = providerNote.lineCount;
               _syncTitleField(providerNote.title);
             });
+            _refreshSpellcheckLanguage();
           });
         } else {
           // Content matches or is our own save. Just sync metadata silently.
@@ -1692,6 +1700,7 @@ class _EditorScreenState extends State<EditorScreen>
                 _note = providerNote;
                 _lastSavedContent = providerContent;
               });
+              _refreshSpellcheckLanguage();
             }
           });
         }
@@ -1856,7 +1865,10 @@ class _EditorScreenState extends State<EditorScreen>
         contentPadding: EdgeInsets.zero,
         filled: false,
       ),
-      onChanged: _updateTitle,
+      onChanged: (value) {
+        _scheduleSpellcheckLanguageRefresh();
+        unawaited(_updateTitle(value));
+      },
     );
   }
 
@@ -4043,10 +4055,60 @@ class _EditorScreenState extends State<EditorScreen>
     setState(() {});
   }
 
-  Future<void> _setSpellcheckLanguage(
-    TypeSyncSpellcheckLanguage language,
-  ) async {
-    await TypeSyncSpellcheckerService.instance.setLanguage(language);
+  void _scheduleSpellcheckLanguageRefresh() {
+    _spellcheckLanguageTimer?.cancel();
+    _spellcheckLanguageTimer = Timer(
+      const Duration(milliseconds: 120),
+      _refreshSpellcheckLanguage,
+    );
+  }
+
+  String _spellcheckDetectionText() {
+    final title = _titleController.text.trim();
+    final body = RichTextPlainTextService.extractPlainTextFromDelta(
+      _quillController.document.toDelta().toJson(),
+    ).trim();
+    if (title.isEmpty) return body;
+    if (body.isEmpty) return title;
+    return '$title\n$body';
+  }
+
+  void _refreshSpellcheckLanguage() {
+    final previous = TypeSyncSpellcheckerService.instance.activeLanguage;
+    final resolved =
+        TypeSyncSpellcheckerService.instance.configureLanguageForText(
+      _spellcheckDetectionText(),
+      languageCode: _note?.spellcheckLanguageCode,
+    );
+    if (!mounted || previous == resolved) return;
+    setState(() {});
+  }
+
+  String _spellcheckLanguageSubtitle() {
+    final spellchecker = TypeSyncSpellcheckerService.instance;
+    final manualCode = _note?.spellcheckLanguageCode;
+    if (manualCode == null || manualCode.isEmpty) {
+      return 'Automatic (${spellchecker.activeLanguage.label})';
+    }
+    return 'Saved for this note: ${spellchecker.activeLanguage.label}';
+  }
+
+  Future<void> _setSpellcheckLanguage(String selection) async {
+    if (_note == null) return;
+
+    final languageCode =
+        selection == _automaticSpellcheckLanguageValue ? null : selection;
+    final updatedNote =
+        await context.read<NotesProvider>().setSpellcheckLanguage(
+              _note!.id,
+              languageCode,
+            );
+    if (!mounted) return;
+
+    if (updatedNote != null) {
+      _note = updatedNote;
+    }
+    _refreshSpellcheckLanguage();
     if (!mounted) return;
     setState(() {});
   }
@@ -4248,22 +4310,27 @@ class _EditorScreenState extends State<EditorScreen>
                   ListTile(
                     leading: const Icon(Icons.language),
                     title: const Text('Spellcheck language'),
-                    subtitle: Text(spellchecker.activeLanguage.label),
-                    trailing: DropdownButton<TypeSyncSpellcheckLanguage>(
-                      value: spellchecker.activeLanguage,
+                    subtitle: Text(_spellcheckLanguageSubtitle()),
+                    trailing: DropdownButton<String>(
+                      value: _note?.spellcheckLanguageCode ??
+                          _automaticSpellcheckLanguageValue,
                       underline: const SizedBox.shrink(),
-                      items: TypeSyncSpellcheckLanguage.values
-                          .map(
-                            (language) => DropdownMenuItem(
-                              value: language,
-                              child: Text(language.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (language) {
-                        if (language == null) return;
+                      items: <DropdownMenuItem<String>>[
+                        const DropdownMenuItem<String>(
+                          value: _automaticSpellcheckLanguageValue,
+                          child: Text('Automatic'),
+                        ),
+                        ...TypeSyncSpellcheckLanguage.values.map(
+                          (language) => DropdownMenuItem<String>(
+                            value: language.code,
+                            child: Text(language.label),
+                          ),
+                        ),
+                      ].toList(),
+                      onChanged: (selection) {
+                        if (selection == null) return;
                         Navigator.pop(context);
-                        unawaited(_setSpellcheckLanguage(language));
+                        unawaited(_setSpellcheckLanguage(selection));
                       },
                     ),
                   ),
@@ -5355,6 +5422,7 @@ class _EditorScreenState extends State<EditorScreen>
 
         _isUpdatingFromExternal = false;
       });
+      _refreshSpellcheckLanguage();
     } catch (e) {
       final document = Document()..insert(0, providerNote.content);
       final hadFocus = _focusNode.hasFocus;
@@ -5372,6 +5440,7 @@ class _EditorScreenState extends State<EditorScreen>
         _syncTitleField(providerNote.title);
         _isUpdatingFromExternal = false;
       });
+      _refreshSpellcheckLanguage();
       debugPrint('Error updating from external source: $e');
     }
   }

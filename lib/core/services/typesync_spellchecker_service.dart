@@ -36,10 +36,16 @@ enum TypeSyncSpellcheckLanguage {
   final String dicPath;
 
   static TypeSyncSpellcheckLanguage fromCode(String? code) {
-    return values.firstWhere(
-      (language) => language.code == code,
-      orElse: () => english,
-    );
+    return tryFromCode(code) ?? english;
+  }
+
+  static TypeSyncSpellcheckLanguage? tryFromCode(String? code) {
+    for (final language in values) {
+      if (language.code == code) {
+        return language;
+      }
+    }
+    return null;
   }
 }
 
@@ -99,7 +105,6 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
         super(language: TypeSyncSpellcheckLanguage.english.code);
 
   static const String enabledPreferenceKey = 'typesync_spellcheck_enabled_v1';
-  static const String languagePreferenceKey = 'typesync_spellcheck_language_v1';
   static const String acceptedWordsPreferenceKey =
       'typesync_spellcheck_accepted_words_v1';
   static final TypeSyncSpellcheckerService instance =
@@ -116,6 +121,50 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   final RegExp _multiSpacePattern = RegExp(r' {2,}');
   final RegExp _repeatedPunctuationPattern =
       RegExp(r'([!?])\1{1,}|\.{4,}|,{2,}|;{2,}|:{2,}');
+  final Set<String> _germanHintWords = const <String>{
+    'der',
+    'die',
+    'das',
+    'und',
+    'ist',
+    'nicht',
+    'ich',
+    'mit',
+    'für',
+    'ein',
+    'eine',
+    'zum',
+    'zur',
+    'den',
+    'dem',
+    'auf',
+    'wie',
+    'wir',
+    'sie',
+    'oder',
+  };
+  final Set<String> _englishHintWords = const <String>{
+    'the',
+    'and',
+    'is',
+    'are',
+    'not',
+    'with',
+    'for',
+    'this',
+    'that',
+    'you',
+    'your',
+    'have',
+    'from',
+    'will',
+    'can',
+    'was',
+    'were',
+    'about',
+    'there',
+    'their',
+  };
 
   bool _isEnabled = true;
   bool _isInitialized = false;
@@ -130,9 +179,6 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
 
     final prefs = await SharedPreferences.getInstance();
     _isEnabled = prefs.getBool(enabledPreferenceKey) ?? true;
-    _language = TypeSyncSpellcheckLanguage.fromCode(
-      prefs.getString(languagePreferenceKey),
-    );
     _acceptedWords
       ..clear()
       ..addAll(
@@ -141,7 +187,9 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
             .where((word) => word.isNotEmpty),
       );
 
-    await _loadLanguage(_language);
+    await Future.wait(
+      TypeSyncSpellcheckLanguage.values.map(_loadLanguage),
+    );
     _isInitialized = true;
   }
 
@@ -151,12 +199,73 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     await prefs.setBool(enabledPreferenceKey, enabled);
   }
 
-  Future<void> setLanguage(TypeSyncSpellcheckLanguage language) async {
+  void setLanguage(TypeSyncSpellcheckLanguage language) {
     _language = language;
-    await _loadLanguage(language);
+  }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(languagePreferenceKey, language.code);
+  TypeSyncSpellcheckLanguage configureLanguageForText(
+    String text, {
+    String? languageCode,
+  }) {
+    final explicitLanguage = TypeSyncSpellcheckLanguage.tryFromCode(
+      languageCode,
+    );
+    final resolvedLanguage = explicitLanguage ?? detectLanguage(text);
+    _language = resolvedLanguage;
+    return resolvedLanguage;
+  }
+
+  TypeSyncSpellcheckLanguage detectLanguage(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return TypeSyncSpellcheckLanguage.english;
+    }
+
+    if (RegExp(r'[ÄÖÜäöüß]').hasMatch(trimmed)) {
+      return TypeSyncSpellcheckLanguage.german;
+    }
+
+    final candidates = _wordPattern
+        .allMatches(trimmed)
+        .map((match) => match.group(0)!)
+        .where(
+          (word) => !_shouldSkipWord(word) && !_isAcceptedWord(word),
+        )
+        .take(80)
+        .toList(growable: false);
+
+    if (candidates.isEmpty) {
+      return TypeSyncSpellcheckLanguage.english;
+    }
+
+    var englishScore = 0;
+    var germanScore = 0;
+    final englishChecker = _checkers[TypeSyncSpellcheckLanguage.english];
+    final germanChecker = _checkers[TypeSyncSpellcheckLanguage.german];
+
+    for (final word in candidates) {
+      final normalized = word.toLowerCase();
+
+      if (_englishHintWords.contains(normalized)) {
+        englishScore += 2;
+      }
+      if (_germanHintWords.contains(normalized)) {
+        germanScore += 2;
+      }
+
+      if (englishChecker != null && englishChecker.isCorrect(word)) {
+        englishScore += 3;
+      }
+      if (germanChecker != null && germanChecker.isCorrect(word)) {
+        germanScore += 3;
+      }
+    }
+
+    if (germanScore > englishScore) {
+      return TypeSyncSpellcheckLanguage.german;
+    }
+
+    return TypeSyncSpellcheckLanguage.english;
   }
 
   Future<void> acceptWord(String word) async {
