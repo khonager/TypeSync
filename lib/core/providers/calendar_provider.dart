@@ -68,8 +68,12 @@ class CalendarProvider extends ChangeNotifier {
   List<CalendarEvent> get upcomingEvents {
     final currentTime = _now();
     return _events
-        .where((e) =>
-            !e.isDeleted && !e.isCompleted && e.startTime.isAfter(currentTime))
+        .where(
+          (e) =>
+              !e.isDeleted &&
+              !e.isCompleted &&
+              e.startTime.isAfter(currentTime),
+        )
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
@@ -197,6 +201,11 @@ class CalendarProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugClearDirtyFlagsForTesting() {
+    _clearDirtyFlags(_events);
   }
 
   // ===========================================

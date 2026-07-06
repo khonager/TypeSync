@@ -71,6 +71,107 @@ void main() {
       expect(reopened.calendarDate.day, checkedDay.day);
     });
 
+    test('completed todo is not rolled over on the next day', () async {
+      var now = DateTime(2026, 7, 6, 9);
+      final provider = CalendarProvider(now: () => now);
+      await provider.initialize('user-rollover-completed');
+
+      final checkedDay = DateTime(2026, 7, 5, 8, 30);
+      final created = await provider.createEvent(
+        userId: 'user-rollover-completed',
+        title: 'Already done',
+        startTime: checkedDay,
+        type: EventType.todo,
+      );
+
+      expect(created, isNotNull);
+      await provider.toggleTodoCompletion(
+        eventId: created!.id,
+        isCompleted: true,
+      );
+
+      now = DateTime(2026, 7, 7, 9);
+      await provider.rollOverPendingTodos();
+
+      final updated = provider.getEventById(created.id);
+      expect(updated, isNotNull);
+      expect(updated!.isCompleted, isTrue);
+      expect(updated.startTime, checkedDay);
+      expect(updated.rolloverCount, 0);
+      expect(provider.getEventsForDate(DateTime(2026, 7, 7)), isEmpty);
+    });
+
+    test('stale unchecked cloud update cannot make completed todo roll over',
+        () async {
+      var now = DateTime(2026, 7, 6, 9);
+      final provider = CalendarProvider(now: () => now);
+      await provider.initialize('user-stale-cloud');
+
+      final checkedDay = DateTime(2026, 7, 5, 8, 30);
+      final created = await provider.createEvent(
+        userId: 'user-stale-cloud',
+        title: 'Done before sync race',
+        startTime: checkedDay,
+        type: EventType.todo,
+      );
+
+      expect(created, isNotNull);
+      await provider.toggleTodoCompletion(
+        eventId: created!.id,
+        isCompleted: true,
+      );
+      provider.debugClearDirtyFlagsForTesting();
+
+      provider.handleCloudUpdate([
+        provider.getEventById(created.id)!.copyWith(
+              isCompleted: false,
+              completedAt: null,
+              isDirty: false,
+            ),
+      ]);
+
+      final afterCloudUpdate = provider.getEventById(created.id);
+      expect(afterCloudUpdate, isNotNull);
+      expect(afterCloudUpdate!.isCompleted, isTrue);
+      expect(afterCloudUpdate.completedAt, isNotNull);
+      expect(afterCloudUpdate.startTime, checkedDay);
+
+      now = DateTime(2026, 7, 7, 9);
+      await provider.rollOverPendingTodos();
+
+      final afterRollover = provider.getEventById(created.id);
+      expect(afterRollover, isNotNull);
+      expect(afterRollover!.isCompleted, isTrue);
+      expect(afterRollover.startTime, checkedDay);
+      expect(afterRollover.rolloverCount, 0);
+      expect(provider.getEventsForDate(DateTime(2026, 7, 7)), isEmpty);
+    });
+
+    test('pending overdue todo rolls over to the current day', () async {
+      var now = DateTime(2026, 7, 6, 9);
+      final provider = CalendarProvider(now: () => now);
+      await provider.initialize('user-rollover-pending');
+
+      final originalDay = DateTime(2026, 7, 5, 8, 30);
+      final created = await provider.createEvent(
+        userId: 'user-rollover-pending',
+        title: 'Still pending',
+        startTime: originalDay,
+        type: EventType.todo,
+      );
+
+      expect(created, isNotNull);
+
+      now = DateTime(2026, 7, 7, 9);
+      await provider.rollOverPendingTodos();
+
+      final updated = provider.getEventById(created!.id);
+      expect(updated, isNotNull);
+      expect(updated!.isCompleted, isFalse);
+      expect(updated.startTime, DateTime(2026, 7, 7, 8, 30));
+      expect(updated.rolloverCount, 2);
+    });
+
     test('unchecking a todo clears its completion timestamp', () async {
       final provider = CalendarProvider();
       await provider.initialize('user-2');
