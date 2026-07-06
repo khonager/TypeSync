@@ -4222,178 +4222,186 @@ class _EditorScreenState extends State<EditorScreen>
 
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile(
-              secondary: const Icon(Icons.spellcheck),
-              title: const Text('Spellcheck'),
-              subtitle: Text(
-                spellchecker.isEnabled
-                    ? 'Using ${spellchecker.activeLanguage.label}'
-                    : 'Local spellcheck is off',
-              ),
-              value: spellchecker.isEnabled,
-              onChanged: (enabled) {
-                Navigator.pop(context);
-                unawaited(_setSpellcheckEnabled(enabled));
-              },
-            ),
-            if (spellchecker.isEnabled)
-              ListTile(
-                leading: const Icon(Icons.language),
-                title: const Text('Spellcheck language'),
-                subtitle: Text(spellchecker.activeLanguage.label),
-                trailing: DropdownButton<TypeSyncSpellcheckLanguage>(
-                  value: spellchecker.activeLanguage,
-                  underline: const SizedBox.shrink(),
-                  items: TypeSyncSpellcheckLanguage.values
-                      .map(
-                        (language) => DropdownMenuItem(
-                          value: language,
-                          child: Text(language.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (language) {
-                    if (language == null) return;
+      builder: (context) {
+        final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.spellcheck),
+                  title: const Text('Spellcheck'),
+                  subtitle: Text(
+                    spellchecker.isEnabled
+                        ? 'Using ${spellchecker.activeLanguage.label}'
+                        : 'Local spellcheck is off',
+                  ),
+                  value: spellchecker.isEnabled,
+                  onChanged: (enabled) {
                     Navigator.pop(context);
-                    unawaited(_setSpellcheckLanguage(language));
+                    unawaited(_setSpellcheckEnabled(enabled));
                   },
                 ),
-              ),
-            if (spellchecker.isEnabled)
-              ListTile(
-                leading: const Icon(Icons.fact_check_outlined),
-                title: const Text('Review spelling'),
-                subtitle: const Text('Show suggestions and writing fixes'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showSpellcheckReview();
-                },
-              ),
-            if (kIsWeb)
-              const ListTile(
-                leading: Icon(Icons.extension_off_outlined),
-                title: Text('Browser spellcheck extensions'),
-                subtitle: Text(
-                  'TypeSync asks browser spellcheck overlays to stay off. If extension underlines still appear in the wrong place, disable that extension for this site.',
+                if (spellchecker.isEnabled)
+                  ListTile(
+                    leading: const Icon(Icons.language),
+                    title: const Text('Spellcheck language'),
+                    subtitle: Text(spellchecker.activeLanguage.label),
+                    trailing: DropdownButton<TypeSyncSpellcheckLanguage>(
+                      value: spellchecker.activeLanguage,
+                      underline: const SizedBox.shrink(),
+                      items: TypeSyncSpellcheckLanguage.values
+                          .map(
+                            (language) => DropdownMenuItem(
+                              value: language,
+                              child: Text(language.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (language) {
+                        if (language == null) return;
+                        Navigator.pop(context);
+                        unawaited(_setSpellcheckLanguage(language));
+                      },
+                    ),
+                  ),
+                if (spellchecker.isEnabled)
+                  ListTile(
+                    leading: const Icon(Icons.fact_check_outlined),
+                    title: const Text('Review spelling'),
+                    subtitle: const Text('Show suggestions and writing fixes'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSpellcheckReview();
+                    },
+                  ),
+                if (kIsWeb)
+                  const ListTile(
+                    leading: Icon(Icons.extension_off_outlined),
+                    title: Text('Browser spellcheck extensions'),
+                    subtitle: Text(
+                      'TypeSync asks browser spellcheck overlays to stay off. If extension underlines still appear in the wrong place, disable that extension for this site.',
+                    ),
+                  ),
+                ListTile(
+                  leading: Icon(
+                    widget.isSideBySideOpen
+                        ? Icons.close
+                        : Icons.splitscreen_outlined,
+                  ),
+                  title: Text(
+                    widget.isSideBySideOpen
+                        ? 'Close side by side'
+                        : 'Open side by side',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (_note == null) return;
+                    if (widget.onSideBySideAction != null) {
+                      widget.onSideBySideAction!.call();
+                      return;
+                    }
+                    AppRouter.openSplitEditor(
+                      this.context,
+                      primaryNoteId: _note!.id,
+                      initialSecondaryFolderId:
+                          _note!.folderId ?? widget.folderId,
+                      replaceCurrent: true,
+                    );
+                  },
                 ),
-              ),
-            ListTile(
-              leading: Icon(
-                widget.isSideBySideOpen
-                    ? Icons.close
-                    : Icons.splitscreen_outlined,
-              ),
-              title: Text(
-                widget.isSideBySideOpen
-                    ? 'Close side by side'
-                    : 'Open side by side',
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                if (_note == null) return;
-                if (widget.onSideBySideAction != null) {
-                  widget.onSideBySideAction!.call();
-                  return;
-                }
-                AppRouter.openSplitEditor(
-                  this.context,
-                  primaryNoteId: _note!.id,
-                  initialSecondaryFolderId: _note!.folderId ?? widget.folderId,
-                  replaceCurrent: true,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.search),
-              title: const Text('Search and replace'),
-              subtitle: const Text('Find, replace, or format repeated text'),
-              onTap: () {
-                Navigator.pop(context);
-                _openSearchPanel();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: const Text('Attach file'),
-              onTap: () {
-                Navigator.pop(context);
-                _insertPdf();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.label_outline),
-              title: const Text('Add tags'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTagDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('Background color'),
-              onTap: () {
-                Navigator.pop(context);
-                _showColorPicker();
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                _note?.isFavorite == true ? Icons.star : Icons.star_outline,
-                color: _note?.isFavorite == true ? Colors.amber : null,
-              ),
-              title: Text(
-                _note?.isFavorite == true
-                    ? 'Remove from favorites'
-                    : 'Add to favorites',
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _toggleFavorite();
-              },
-            ),
-            if (authService.isGuestMode)
-              ListTile(
-                leading: const Icon(Icons.login),
-                title: const Text('Sign in to sync'),
-                subtitle: const Text('Sync this note across your devices'),
-                onTap: () {
-                  Navigator.pop(context);
-                  AppRouter.navigateTo(context, AppRouter.login);
-                },
-              )
-            else
-              ListTile(
-                leading: Icon(
-                  _note?.localOnly == true
-                      ? Icons.cloud_off_outlined
-                      : Icons.cloud_done_outlined,
+                ListTile(
+                  leading: const Icon(Icons.search),
+                  title: const Text('Search and replace'),
+                  subtitle:
+                      const Text('Find, replace, or format repeated text'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSearchPanel();
+                  },
                 ),
-                title: Text(
-                  _note?.localOnly == true
-                      ? 'Stored locally only'
-                      : 'Synced with cloud',
+                ListTile(
+                  leading: const Icon(Icons.attach_file),
+                  title: const Text('Attach file'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _insertPdf();
+                  },
                 ),
-                subtitle: const Text('Toggle note-level cloud sync'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _toggleLocalOnlyForCurrentNote();
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('Export'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportNote();
-              },
+                ListTile(
+                  leading: const Icon(Icons.label_outline),
+                  title: const Text('Add tags'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showTagDialog();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.palette_outlined),
+                  title: const Text('Background color'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showColorPicker();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    _note?.isFavorite == true ? Icons.star : Icons.star_outline,
+                    color: _note?.isFavorite == true ? Colors.amber : null,
+                  ),
+                  title: Text(
+                    _note?.isFavorite == true
+                        ? 'Remove from favorites'
+                        : 'Add to favorites',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _toggleFavorite();
+                  },
+                ),
+                if (authService.isGuestMode)
+                  ListTile(
+                    leading: const Icon(Icons.login),
+                    title: const Text('Sign in to sync'),
+                    subtitle: const Text('Sync this note across your devices'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      AppRouter.navigateTo(context, AppRouter.login);
+                    },
+                  )
+                else
+                  ListTile(
+                    leading: Icon(
+                      _note?.localOnly == true
+                          ? Icons.cloud_off_outlined
+                          : Icons.cloud_done_outlined,
+                    ),
+                    title: Text(
+                      _note?.localOnly == true
+                          ? 'Stored locally only'
+                          : 'Synced with cloud',
+                    ),
+                    subtitle: const Text('Toggle note-level cloud sync'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _toggleLocalOnlyForCurrentNote();
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.share_outlined),
+                  title: const Text('Export'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportNote();
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
