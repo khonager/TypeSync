@@ -17,6 +17,10 @@ import '../services/sync_service.dart';
 /// Handles local storage with Hive and coordinates with
 /// SyncService for cloud synchronization.
 class CalendarProvider extends ChangeNotifier {
+  CalendarProvider({DateTime Function()? now}) : _now = now ?? DateTime.now;
+
+  final DateTime Function() _now;
+
   // Local storage box
   Box<CalendarEvent>? _eventsBox;
   String? _activeUserId;
@@ -62,9 +66,10 @@ class CalendarProvider extends ChangeNotifier {
 
   /// Get upcoming events
   List<CalendarEvent> get upcomingEvents {
-    final now = DateTime.now();
+    final currentTime = _now();
     return _events
-        .where((e) => !e.isDeleted && e.startTime.isAfter(now))
+        .where((e) =>
+            !e.isDeleted && !e.isCompleted && e.startTime.isAfter(currentTime))
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
@@ -144,8 +149,12 @@ class CalendarProvider extends ChangeNotifier {
         final localEvent = _events[localIndex];
         // Only update if local event is not dirty (no local changes)
         if (!localEvent.isDirty) {
-          _events[localIndex] = cloudEvent;
-          _eventsBox?.put(cloudEvent.id, cloudEvent);
+          final mergedEvent = _mergeCloudEvent(localEvent, cloudEvent);
+          _events[localIndex] = mergedEvent;
+          _eventsBox?.put(mergedEvent.id, mergedEvent);
+          if (mergedEvent.isDirty) {
+            _syncService?.syncCalendarEvent(mergedEvent.toJson());
+          }
         }
       } else {
         // New event from cloud
@@ -155,6 +164,26 @@ class CalendarProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  CalendarEvent _mergeCloudEvent(
+    CalendarEvent localEvent,
+    CalendarEvent cloudEvent,
+  ) {
+    final staleCloudCompletion =
+        localEvent.isTodo && localEvent.isCompleted && !cloudEvent.isCompleted;
+    if (!staleCloudCompletion) {
+      return cloudEvent;
+    }
+
+    return cloudEvent.copyWith(
+      isCompleted: true,
+      completedAt: localEvent.completedAt,
+      startTime: localEvent.startTime,
+      endTime: localEvent.endTime,
+      rolloverCount: localEvent.rolloverCount,
+      isDirty: true,
+    );
   }
 
   /// Clear dirty flags for a list of events
@@ -190,7 +219,7 @@ class CalendarProvider extends ChangeNotifier {
     String? seriesId,
   }) async {
     try {
-      final now = DateTime.now();
+      final now = _now();
       final event = CalendarEvent(
         id: _uuid.v4(),
         userId: userId,
@@ -242,7 +271,7 @@ class CalendarProvider extends ChangeNotifier {
       return [];
     }
 
-    final now = DateTime.now();
+    final now = _now();
     final batchSeriesId = uniqueDates.length > 1 ? _uuid.v4() : null;
     final createdEvents = <CalendarEvent>[];
 
@@ -283,7 +312,7 @@ class CalendarProvider extends ChangeNotifier {
   }
 
   Future<void> rollOverPendingTodos() async {
-    final today = _dateOnly(DateTime.now());
+    final today = _dateOnly(_now());
     if (_lastTodoMaintenanceDay != null &&
         _dateOnly(_lastTodoMaintenanceDay!) == today) {
       return;
@@ -293,7 +322,10 @@ class CalendarProvider extends ChangeNotifier {
 
     for (var i = 0; i < _events.length; i++) {
       final event = _events[i];
-      if (!event.isTodo || event.isCompleted || event.isDeleted) {
+      if (!event.isTodo ||
+          event.isCompleted ||
+          event.completedAt != null ||
+          event.isDeleted) {
         continue;
       }
 
@@ -376,7 +408,7 @@ class CalendarProvider extends ChangeNotifier {
       return false;
     }
 
-    final completedAt = isCompleted ? DateTime.now() : null;
+    final completedAt = isCompleted ? _now() : null;
 
     return updateEvent(
       event.copyWith(
