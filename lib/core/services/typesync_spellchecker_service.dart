@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -107,6 +109,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   final Set<String> _acceptedWords = <String>{};
   final ValueNotifier<TypeSyncSpellcheckHover?> hoveredIssue =
       ValueNotifier<TypeSyncSpellcheckHover?>(null);
+  Timer? _hoverCloseTimer;
   final RegExp _wordPattern = RegExp(
     r"[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?",
   );
@@ -170,6 +173,18 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     );
   }
 
+  void keepHoverOpen() {
+    _hoverCloseTimer?.cancel();
+    _hoverCloseTimer = null;
+  }
+
+  void closeHoverSoon() {
+    _hoverCloseTimer?.cancel();
+    _hoverCloseTimer = Timer(const Duration(milliseconds: 180), () {
+      hoveredIssue.value = null;
+    });
+  }
+
   Future<void> _loadLanguage(TypeSyncSpellcheckLanguage language) async {
     if (_checkers.containsKey(language)) return;
 
@@ -209,6 +224,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
           ),
           mouseCursor: SystemMouseCursors.click,
           onEnter: (event) {
+            keepHoverOpen();
             final suggestions = issue.suggestions.isEmpty &&
                     issue.kind == TypeSyncSpellcheckIssueKind.spelling
                 ? _suggestWords(_checkers[_language]!, issue.text)
@@ -225,7 +241,9 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
               globalPosition: event.position,
             );
           },
-          onExit: (_) {},
+          onExit: (_) {
+            closeHoverSoon();
+          },
         ),
       );
       cursor = issue.end;

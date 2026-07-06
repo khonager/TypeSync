@@ -4083,6 +4083,12 @@ class _EditorScreenState extends State<EditorScreen>
       left: left,
       top: top,
       child: MouseRegion(
+        onEnter: (_) {
+          TypeSyncSpellcheckerService.instance.keepHoverOpen();
+        },
+        onExit: (_) {
+          TypeSyncSpellcheckerService.instance.closeHoverSoon();
+        },
         child: Material(
           elevation: 8,
           borderRadius: BorderRadius.circular(10),
@@ -4134,8 +4140,14 @@ class _EditorScreenState extends State<EditorScreen>
                       runSpacing: 6,
                       children: suggestions
                           .map(
-                            (suggestion) => Chip(
+                            (suggestion) => ActionChip(
                               label: Text(suggestion),
+                              onPressed: () {
+                                _replaceHoveredSpellcheckIssue(
+                                  issue,
+                                  suggestion,
+                                );
+                              },
                             ),
                           )
                           .toList(),
@@ -4156,6 +4168,52 @@ class _EditorScreenState extends State<EditorScreen>
     _spellcheckHoverOverlay?.remove();
     _spellcheckHoverOverlay = null;
     setState(() {});
+  }
+
+  void _replaceHoveredSpellcheckIssue(
+    TypeSyncSpellcheckIssue hoverIssue,
+    String replacement,
+  ) {
+    final resolvedIssue = _resolveHoveredSpellcheckIssue(hoverIssue);
+    if (resolvedIssue == null) return;
+
+    _spellcheckHoverOverlay?.remove();
+    _spellcheckHoverOverlay = null;
+    TypeSyncSpellcheckerService.instance.hoveredIssue.value = null;
+    _replaceSpellcheckIssue(resolvedIssue, replacement);
+  }
+
+  TypeSyncSpellcheckIssue? _resolveHoveredSpellcheckIssue(
+    TypeSyncSpellcheckIssue hoverIssue,
+  ) {
+    final documentText = _quillController.document.toPlainText();
+    if (hoverIssue.start >= 0 &&
+        hoverIssue.end <= documentText.length &&
+        documentText.substring(hoverIssue.start, hoverIssue.end) ==
+            hoverIssue.text) {
+      return hoverIssue;
+    }
+
+    final issues = TypeSyncSpellcheckerService.instance.collectIssues(
+      documentText,
+      includeSuggestions: true,
+      includeCapitalization: false,
+      maxIssues: 500,
+    );
+    final matches = issues
+        .where(
+          (issue) =>
+              issue.text == hoverIssue.text && issue.kind == hoverIssue.kind,
+        )
+        .toList();
+    if (matches.isEmpty) return null;
+
+    final selection = _quillController.selection;
+    final anchor = selection.isValid ? selection.baseOffset : 0;
+    matches.sort(
+      (a, b) => (a.start - anchor).abs().compareTo((b.start - anchor).abs()),
+    );
+    return matches.first;
   }
 
   void _showMoreOptions() {
