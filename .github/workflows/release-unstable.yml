@@ -52,6 +52,7 @@ jobs:
         run: flutter pub get
 
       - name: Get app version
+        id: version
         run: |
           APP_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
           if [ -z "$APP_VERSION" ]; then
@@ -59,6 +60,7 @@ jobs:
             exit 1
           fi
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "release_tag=v$APP_VERSION-dev.${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Get commit hash
         id: commit
@@ -105,18 +107,11 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk release/TypeSync-dev-android.apk
           cp typesync-linux-x64.tar.gz release/TypeSync-dev-linux-x64.tar.gz
 
-      - name: Move dev-latest tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f dev-latest "${{ github.event.workflow_run.head_sha }}"
-          git push origin refs/tags/dev-latest --force
-
-      - name: Update dev release
+      - name: Publish versioned dev release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev-latest
-          name: Latest Dev Build
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: TypeSync ${{ env.APP_VERSION }} Dev Build (${{ github.event.workflow_run.run_number }})
           body: |
             ## TypeSync Development Build
 

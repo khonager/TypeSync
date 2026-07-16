@@ -257,9 +257,10 @@ The project includes automated CI/CD with GitHub Actions:
 - **Stable deploy workflow**: After `CI/CD` succeeds on `stable`, a separate `Deploy Web Stable` workflow builds and deploys the web app
 
 - **Dev releases**: When pushed to `unstable`:
-  - Updates the `dev` release tag
-  - Builds and uploads latest development builds
-  - Marked as pre-release
+  - Publishes a new, versioned pre-release (for example, `v1.1.18-dev.541`)
+  - Builds and uploads the Android and Linux development artifacts
+  - The newest dev build appears first in GitHub Releases and has a monotonically increasing version for update clients such as Obtainium
+  - In Obtainium, enable **Include prereleases** for the TypeSync dev installation
 
 ### Manual Workflow
 ```bash
