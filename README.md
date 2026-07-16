@@ -258,6 +258,7 @@ The project includes automated CI/CD with GitHub Actions:
 
 - **Dev releases**: When pushed to `unstable`:
   - Publishes a new, versioned pre-release (for example, `v1.1.18-dev.541`)
+  - Deletes the preceding dev release and tag, so only the current dev build is listed
   - Builds and uploads the Android and Linux development artifacts
   - The newest dev build appears first in GitHub Releases and has a monotonically increasing version for update clients such as Obtainium
   - In Obtainium, enable **Include prereleases** for the TypeSync dev installation
