@@ -99,7 +99,6 @@ class AuthService extends ChangeNotifier {
   String? _guestWorkspaceId;
   String? _pendingGuestImportWorkspaceId;
   String? _pendingEmailLinkEmail;
-  bool _hasResolvedInitialFirebaseAuthState = false;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -178,23 +177,15 @@ class AuthService extends ChangeNotifier {
         // Sync check for signed in state to prevent login screen flash on Android/iOS/Web
         final firebaseUser = _firebaseAuth.currentUser;
         if (firebaseUser != null) {
-          _hasResolvedInitialFirebaseAuthState = true;
-          _currentUser = User(
-            id: firebaseUser.uid,
-            email: firebaseUser.email ?? '',
-            displayName: firebaseUser.displayName,
-            photoUrl: firebaseUser.photoURL,
-            createdAt: DateTime.now(),
-            lastSignIn: DateTime.now(),
-            emailVerified: firebaseUser.emailVerified,
-          );
+          _setCurrentUserFromFirebase(firebaseUser);
+          _isInitialized = true;
 
-          // Asynchronously fetch complete user data
-          _loadUserData(firebaseUser.uid).catchError((_) {
-            // Silently handle get user error
-          });
-        } else {
-          unawaited(_resolveInitialFirebaseSignedOutState());
+          // Authentication is already restored. Enrich the local Firebase
+          // identity with profile data without making login depend on a
+          // Firestore request succeeding during startup.
+          unawaited(
+            _loadUserData(firebaseUser.uid, firebaseUser: firebaseUser),
+          );
         }
 
         _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
@@ -1029,19 +1020,16 @@ class AuthService extends ChangeNotifier {
       'AUTH_FLOW firebase auth state changed user=${firebaseUser?.uid} guestMode=$_isGuestMode initialized=$_isInitialized',
     );
     if (firebaseUser != null) {
-      _hasResolvedInitialFirebaseAuthState = true;
       _isGuestMode = false;
-      await _loadUserData(firebaseUser.uid);
+      _setCurrentUserFromFirebase(firebaseUser);
       _isInitialized = true;
       notifyListeners();
+
+      // Firebase Auth has already established the session at this point.
+      // Firestore only supplies additional profile fields and must not decide
+      // whether the user is authenticated.
+      await _loadUserData(firebaseUser.uid, firebaseUser: firebaseUser);
     } else if (firebaseUser == null && !_isGuestMode) {
-      if (!_hasResolvedInitialFirebaseAuthState) {
-        _diagnostics.info(
-          'AuthService',
-          'AUTH_FLOW ignoring initial null auth state while waiting for Firebase session restore',
-        );
-        return;
-      }
       // Only clear user if not in guest mode
       _currentUser = null;
       _isInitialized = true;
@@ -1049,35 +1037,28 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _resolveInitialFirebaseSignedOutState() async {
-    await Future<void>.delayed(
-      const Duration(milliseconds: kIsWeb ? 500 : 1500),
-    );
-
-    if (_hasResolvedInitialFirebaseAuthState ||
-        _isGuestMode ||
-        _isInitialized) {
-      return;
-    }
-
-    final restoredUser = _firebaseAuth.currentUser;
-    if (restoredUser != null) {
-      _diagnostics.info(
-        'AuthService',
-        'AUTH_FLOW restored Firebase session after startup delay user=${restoredUser.uid}',
+  void _setCurrentUserFromFirebase(firebase.User firebaseUser) {
+    final existingUser = _currentUser;
+    if (existingUser != null && existingUser.id == firebaseUser.uid) {
+      _currentUser = existingUser.copyWith(
+        email: firebaseUser.email ?? existingUser.email,
+        displayName: firebaseUser.displayName ?? existingUser.displayName,
+        photoUrl: firebaseUser.photoURL ?? existingUser.photoUrl,
+        emailVerified: firebaseUser.emailVerified,
+        lastSignIn: DateTime.now(),
       );
-      await _onAuthStateChanged(restoredUser);
       return;
     }
 
-    _hasResolvedInitialFirebaseAuthState = true;
-    _currentUser = null;
-    _isInitialized = true;
-    _diagnostics.info(
-      'AuthService',
-      'AUTH_FLOW confirmed signed-out state after Firebase startup delay',
+    _currentUser = User(
+      id: firebaseUser.uid,
+      email: firebaseUser.email ?? '',
+      displayName: firebaseUser.displayName,
+      photoUrl: firebaseUser.photoURL,
+      createdAt: firebaseUser.metadata.creationTime ?? DateTime.now(),
+      lastSignIn: firebaseUser.metadata.lastSignInTime ?? DateTime.now(),
+      emailVerified: firebaseUser.emailVerified,
     );
-    notifyListeners();
   }
 
   /// Load user data from Firestore
@@ -1169,6 +1150,10 @@ class AuthService extends ChangeNotifier {
         'AUTH_FLOW user data loaded uid=$uid currentUser=${_currentUser?.id} storageUserId=$storageUserId guestMode=$_isGuestMode',
       );
     } catch (e) {
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW profile enrichment failed uid=$uid; keeping Firebase session: $e',
+      );
       debugPrint('Error loading user data: $e');
     }
   }
