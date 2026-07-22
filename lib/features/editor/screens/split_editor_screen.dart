@@ -37,6 +37,9 @@ class SplitEditorScreen extends StatefulWidget {
 
 class _SplitEditorScreenState extends State<SplitEditorScreen>
     with SingleTickerProviderStateMixin {
+  static const _minimumPaneWidth = 320.0;
+  static const _resizeHandleWidth = 18.0;
+
   late String _primaryNoteId;
   String? _secondaryNoteId;
   final ValueNotifier<double> _primaryPaneFraction = ValueNotifier<double>(0.5);
@@ -136,7 +139,12 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isStacked = constraints.maxWidth < 980;
+          // Keep the panes side by side for as long as each pane can show its
+          // embedded header controls, including the close-side-by-side button.
+          // The previous 980 px breakpoint stacked panes that still had plenty
+          // of usable horizontal space.
+          final isStacked = constraints.maxWidth <
+              (_minimumPaneWidth * 2) + _resizeHandleWidth;
           if (isStacked) {
             return Column(
               children: [
@@ -150,8 +158,7 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
           return ValueListenableBuilder<double>(
             valueListenable: _primaryPaneFraction,
             builder: (context, fraction, _) {
-              const handleWidth = 18.0;
-              final dividerWidth = _isClosingSplit ? 0.0 : handleWidth;
+              final dividerWidth = _isClosingSplit ? 0.0 : _resizeHandleWidth;
               final availableWidth =
                   (constraints.maxWidth - dividerWidth).clamp(
                 0.0,
@@ -160,8 +167,8 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
               final primaryWidth = _isClosingSplit
                   ? (availableWidth * fraction).clamp(0.0, availableWidth)
                   : (availableWidth * fraction).clamp(
-                      320.0,
-                      availableWidth - 320.0,
+                      _minimumPaneWidth,
+                      availableWidth - _minimumPaneWidth,
                     );
               final secondaryWidth = availableWidth - primaryWidth;
 
