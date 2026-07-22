@@ -56,6 +56,7 @@ import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
+import '../utils/checklist_reorder.dart';
 
 /// Note editor with markdown-like rich text editing
 ///
@@ -824,6 +825,31 @@ class _EditorScreenState extends State<EditorScreen>
     _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
+  }
+
+  void _moveSelectedChecklistItems(int direction) {
+    if (!_focusNode.hasFocus) return;
+
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final plan = ChecklistReorder.buildPlan(
+      document: _quillController.document.toDelta(),
+      selectionStart: selection.start,
+      selectionEnd: selection.end,
+      selectionIsCollapsed: selection.isCollapsed,
+      direction: direction,
+    );
+    if (plan == null) return;
+
+    _quillController.compose(plan.change, selection, ChangeSource.local);
+    _quillController.updateSelection(
+      selection.copyWith(
+        baseOffset: selection.baseOffset + plan.selectionOffsetDelta,
+        extentOffset: selection.extentOffset + plan.selectionOffsetDelta,
+      ),
+      ChangeSource.local,
+    );
   }
 
   void _toggleChecklistCycle() {
@@ -2585,6 +2611,14 @@ class _EditorScreenState extends State<EditorScreen>
                   LogicalKeyboardKey.enter,
                   meta: true,
                 ): _handleChecklistOppositeStateShortcut,
+                const SingleActivator(
+                  LogicalKeyboardKey.arrowUp,
+                  alt: true,
+                ): () => _moveSelectedChecklistItems(-1),
+                const SingleActivator(
+                  LogicalKeyboardKey.arrowDown,
+                  alt: true,
+                ): () => _moveSelectedChecklistItems(1),
               },
               child: QuillEditor(
                 controller: _quillController,
