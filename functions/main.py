@@ -7,7 +7,6 @@ from firebase_functions.options import set_global_options
 from firebase_functions.params import SecretParam
 from firebase_admin import initialize_app
 import requests
-import os
 import datetime
 import base64
 import json
@@ -45,6 +44,11 @@ RESEND_API_URL = "https://api.resend.com/emails"
 RESEND_FROM_EMAIL = "TypeSync <typesync@khonager.de>"
 RESEND_API_KEY = SecretParam("RESEND_API_KEY")
 REVENUECAT_WEBHOOK_AUTH_TOKEN = SecretParam("REVENUECAT_WEBHOOK_AUTH_TOKEN")
+# A comma-separated allow-list of administrator email addresses.  Custom
+# Firebase Auth claims (`admin: true`) are also supported.  Keeping this in a
+# Functions secret means the mobile client never gets a list of admins or a
+# credential that can grant access.
+ADMIN_EMAILS = SecretParam("ADMIN_EMAILS")
 
 REVENUECAT_PLAN_BY_ENTITLEMENT = {
     "TypeSync Lite": {"tier": 1, "limit": 1 * 1024 * 1024 * 1024},
@@ -82,6 +86,102 @@ PLAN_LIMIT_BY_TIER = {
 }
 
 
+def _plan_from_id(plan_id: str | None) -> dict:
+    if plan_id == FREE_PLAN["plan_id"]:
+        return FREE_PLAN
+    return REVENUECAT_PLAN_BY_ENTITLEMENT.get(plan_id, FREE_PLAN)
+
+
+def _plan_rank(plan_id: str | None) -> int:
+    return _plan_from_id(plan_id)["tier"]
+
+
+def _admin_emails() -> set[str]:
+    return {
+        email.strip().lower()
+        for email in (ADMIN_EMAILS.value or "").split(",")
+        if email.strip()
+    }
+
+
+def _is_admin_request(req: https_fn.CallableRequest) -> bool:
+    if not req.auth:
+        return False
+    token = req.auth.token or {}
+    if token.get("admin") is True:
+        return True
+    email = token.get("email")
+    return isinstance(email, str) and email.lower() in _admin_emails()
+
+
+def _iso_after_days(days: int | None) -> str | None:
+    if days is None:
+        return None
+    return (
+        datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=days)
+    ).isoformat()
+
+
+def _is_future_iso(value) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        expires_at = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return expires_at > datetime.datetime.now(datetime.timezone.utc)
+    except ValueError:
+        return False
+
+
+def _effective_subscription(user_data: dict) -> dict:
+    """Returns the highest currently-valid server-owned entitlement."""
+    revenuecat_plan_id = user_data.get("revenueCatPlanId")
+    if not isinstance(revenuecat_plan_id, str):
+        # Backwards compatibility for accounts written before RevenueCat state
+        # was kept separately from the effective entitlement.
+        revenuecat_plan_id = (
+            user_data.get("planId")
+            if user_data.get("entitlementSource") == "revenuecat"
+            else "free"
+        )
+    if revenuecat_plan_id not in PLAN_LIMIT_BY_ID:
+        revenuecat_plan_id = "free"
+
+    admin_plan_id = user_data.get("adminGrantPlanId")
+    admin_active = (
+        isinstance(admin_plan_id, str)
+        and admin_plan_id in PLAN_LIMIT_BY_ID
+        and admin_plan_id != "free"
+        and (
+            user_data.get("adminGrantExpiresAt") is None
+            or _is_future_iso(user_data.get("adminGrantExpiresAt"))
+        )
+    )
+    if admin_active and _plan_rank(admin_plan_id) >= _plan_rank(revenuecat_plan_id):
+        plan_id = admin_plan_id
+        source = "admin"
+        expires_at = user_data.get("adminGrantExpiresAt")
+        status = "granted"
+    else:
+        plan_id = revenuecat_plan_id
+        source = "revenuecat" if plan_id != "free" else "free"
+        expires_at = user_data.get("revenueCatExpiresAt")
+        status = user_data.get("revenueCatSubscriptionStatus") or (
+            "active" if plan_id != "free" else "inactive"
+        )
+
+    plan = _plan_from_id(plan_id)
+    return {
+        "subscriptionTier": plan["tier"],
+        "planId": plan_id,
+        "entitlementSource": source,
+        "subscriptionStatus": status,
+        "subscriptionExpiresAt": expires_at,
+        "currentPeriodEnd": expires_at,
+        "cloudStorageLimitBytes": plan["limit"],
+    }
+
+
 def _int_value(value, fallback=0):
     try:
         return int(value)
@@ -90,6 +190,12 @@ def _int_value(value, fallback=0):
 
 
 def _storage_limit_from_user(user_data: dict) -> int:
+    # Modern entitlement documents retain their source state. Resolve them on
+    # the server at request time so an expired complimentary grant cannot keep
+    # its old quota merely because the client has not refreshed yet.
+    if "adminGrantPlanId" in user_data or "revenueCatPlanId" in user_data:
+        return _effective_subscription(user_data)["cloudStorageLimitBytes"]
+
     explicit_limit = _int_value(user_data.get("cloudStorageLimitBytes"), 0)
     if explicit_limit > 0:
         return explicit_limit
@@ -238,15 +344,18 @@ def _revenuecat_update_payload(event: dict) -> tuple[str, dict]:
     expiration = _ms_to_iso(
         event.get("expiration_at_ms") or event.get("expirationAtMs")
     )
+    event_timestamp_ms = _int_value(
+        event.get("event_timestamp_ms") or event.get("eventTimestampMs"),
+        0,
+    )
 
     return app_user_id, {
-        "subscriptionTier": plan["tier"],
-        "planId": plan_id,
-        "entitlementSource": "revenuecat",
-        "subscriptionStatus": status,
-        "subscriptionExpiresAt": expiration,
-        "currentPeriodEnd": expiration,
-        "cloudStorageLimitBytes": plan["limit"],
+        # Keep RevenueCat's state separate from the effective plan.  An admin
+        # grant must survive later webhooks (including an expiration event).
+        "revenueCatPlanId": plan_id,
+        "revenueCatSubscriptionStatus": status,
+        "revenueCatExpiresAt": expiration,
+        "revenueCatEventTimestampMs": event_timestamp_ms,
         "revenueCatEventType": event_type,
         "revenueCatProductId": _first_string(
             event.get("product_id")
@@ -710,6 +819,14 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             baseline_usage or 0,
         )
         storage_limit = _storage_limit_from_user(user_data)
+        effective_subscription = (
+            _effective_subscription(user_data)
+            if (
+                "adminGrantPlanId" in user_data
+                or "revenueCatPlanId" in user_data
+            )
+            else None
+        )
         next_usage = current_usage + quota_delta
         if next_usage > storage_limit:
             raise ValueError(
@@ -722,10 +839,13 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
                     }
                 )
             )
-        if quota_delta > 0 or baseline_usage is not None:
+        if quota_delta > 0 or baseline_usage is not None or effective_subscription:
             transaction.set(
                 user_ref,
-                {"storageUsedBytes": next_usage},
+                {
+                    "storageUsedBytes": next_usage,
+                    **(effective_subscription or {}),
+                },
                 merge=True,
             )
         return next_usage, storage_limit
@@ -937,11 +1057,29 @@ def revenuecat_webhook(req: https_fn.Request) -> https_fn.Response:
         if not isinstance(event, dict):
             raise ValueError("Missing RevenueCat event payload")
 
-        uid, updates = _revenuecat_update_payload(event)
-        _firestore().client().collection("users").document(uid).set(
-            updates,
-            merge=True,
+        uid, revenuecat_updates = _revenuecat_update_payload(event)
+        user_ref = _firestore().client().collection("users").document(uid)
+        existing = user_ref.get().to_dict() or {}
+        incoming_event_timestamp = _int_value(
+            revenuecat_updates.get("revenueCatEventTimestampMs"),
+            0,
         )
+        recorded_event_timestamp = _int_value(
+            existing.get("revenueCatEventTimestampMs"),
+            0,
+        )
+        if (
+            incoming_event_timestamp > 0
+            and recorded_event_timestamp > incoming_event_timestamp
+        ):
+            # RevenueCat retries webhooks and delivery order is not guaranteed.
+            # Do not let an older expiration/cancellation undo a newer renewal.
+            return _json_response(
+                {"success": True, "userId": uid, "ignored": True}
+            )
+        combined = {**existing, **revenuecat_updates}
+        updates = {**revenuecat_updates, **_effective_subscription(combined)}
+        user_ref.set(updates, merge=True)
         return _json_response({"success": True, "userId": uid})
     except ValueError as exc:
         return _json_response({"error": str(exc)}, status=400)
@@ -953,192 +1091,116 @@ def revenuecat_webhook(req: https_fn.Request) -> https_fn.Response:
         )
 
 
-@https_fn.on_call()
-def verify_gumroad_license(req: https_fn.CallableRequest) -> dict:
-    """Verifies a Gumroad license key and updates the user's subscription."""
-    # 1. Authenticate user
+@https_fn.on_call(secrets=[ADMIN_EMAILS])
+def get_admin_status(req: https_fn.CallableRequest) -> dict:
+    """Lets the app reveal administration controls only to an administrator."""
+    return {"isAdmin": _is_admin_request(req)}
+
+
+@https_fn.on_call(secrets=[ADMIN_EMAILS])
+def set_admin_entitlement(req: https_fn.CallableRequest) -> dict:
+    """Grants or revokes a bounded complimentary plan for a registered user."""
     if not req.auth:
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
-            message="The function must be called while authenticated."
+            message="Sign in before managing entitlements.",
+        )
+    if not _is_admin_request(req):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            message="Administrator access is required.",
         )
 
-    uid = req.auth.uid
-    license_key = req.data.get("license_key")
-    product_permalink = req.data.get("product_permalink")  # Optional override
-
-    if not license_key:
+    data = req.data or {}
+    email = data.get("email")
+    plan_id = data.get("planId")
+    duration_days = data.get("durationDays")
+    if not isinstance(email, str) or not email.strip():
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            message="The function must be called with a 'license_key' argument."
+            message="A target account email is required.",
         )
-
-    # 2. Call Gumroad API
-    # You generally need the PRODUCT_ID or PERMALINK. 
-    # For verification, knowing the Product Permalink is usually enough if checking against a specific product.
-    # Ideally, store PRODUCT_ID in environment variables.
-    
-    # We'll use the specific product permalink provided.
-    target_product_permalink = product_permalink or "ixufbj"
+    if plan_id not in PLAN_LIMIT_BY_ID:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Choose a valid TypeSync plan.",
+        )
+    if duration_days is not None and (
+        not isinstance(duration_days, int)
+        or duration_days < 1
+        or duration_days > 3650
+    ):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            message="Grant duration must be between 1 and 3650 days.",
+        )
 
     try:
-        response = requests.post(
-            "https://api.gumroad.com/v2/licenses/verify",
-            data={
-                "product_permalink": target_product_permalink,
-                "license_key": license_key,
-                "increment_uses_count": "true"
-            }
+        target_user = _auth().get_user_by_email(email.strip())
+    except _auth().UserNotFoundError:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.NOT_FOUND,
+            message="No TypeSync account exists for that email address.",
         )
-        data = response.json()
-    except Exception as e:
-        print(f"Error calling Gumroad: {e}")
+    except Exception as exc:
+        print(f"Admin entitlement user lookup failed: {exc}")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INTERNAL,
-            message="Failed to verify license with Gumroad."
+            message="Could not find the target account.",
         )
 
-    # 3. Validate response
-    if not data.get("success"):
-        return {"success": False, "message": "Invalid license key."}
+    db = _firestore().client()
+    user_ref = db.collection("users").document(target_user.uid)
+    existing = user_ref.get().to_dict() or {}
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if plan_id == "free":
+        grant_updates = {
+            "adminGrantPlanId": _firestore().DELETE_FIELD,
+            "adminGrantExpiresAt": _firestore().DELETE_FIELD,
+            "adminGrantGrantedBy": _firestore().DELETE_FIELD,
+            "adminGrantGrantedAt": _firestore().DELETE_FIELD,
+        }
+        combined = {
+            **existing,
+            "adminGrantPlanId": "free",
+            "adminGrantExpiresAt": None,
+        }
+        action = "revoked"
+    else:
+        expires_at = _iso_after_days(duration_days)
+        grant_updates = {
+            "adminGrantPlanId": plan_id,
+            "adminGrantExpiresAt": expires_at,
+            "adminGrantGrantedBy": req.auth.uid,
+            "adminGrantGrantedAt": now,
+        }
+        combined = {**existing, **grant_updates}
+        action = "granted"
 
-    purchase = data.get("purchase", {})
-    if purchase.get("refunded"):
-        return {"success": False, "message": "This license has been refunded."}
-
-    if purchase.get("chargebacked"):
-        return {"success": False, "message": "This license has been chargebacked."}
-    
-    # 4. Update Firestore
-    tier_to_grant = "premium" 
-    
-    try:
-        db = _firestore().client()
-        user_ref = db.collection("users").document(uid)
-        
-        user_ref.set({
-            "subscriptionTier": 3, # Assuming Premium is index 3.
-            "subscriptionSource": "gumroad",
-            "gumroadLicenseKey": license_key,
-            "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat()
-        }, merge=True)
-        
-    except Exception as e:
-        print(f"Error updating Firestore: {e}")
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INTERNAL,
-            message="Failed to update user subscription."
-        )
-
+    effective = _effective_subscription(combined)
+    user_ref.set({**grant_updates, **effective, "updatedAt": now}, merge=True)
     return {
-        "success": True, 
-        "message": "License verified! Premium features unlocked.",
-        "tier": tier_to_grant
+        "success": True,
+        "action": action,
+        "userId": target_user.uid,
+        "email": target_user.email,
+        "effectivePlanId": effective["planId"],
+        "expiresAt": effective["subscriptionExpiresAt"],
     }
+
+
+@https_fn.on_call()
+def verify_gumroad_license(req: https_fn.CallableRequest) -> dict:
+    """Disabled: RevenueCat is the sole self-service billing authority."""
+    raise https_fn.HttpsError(
+        code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+        message="Gumroad license activation is no longer supported.",
+    )
 
 @https_fn.on_call()
 def check_patreon_subscription(req: https_fn.CallableRequest) -> dict:
-    """Checks Patreon membership by email and updates subscription."""
-    if not req.auth:
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
-            message="The function must be called while authenticated."
-        )
-
-    uid = req.auth.uid
-    email = req.auth.token.get("email")
-    if not email:
-         raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
-            message="User must have an email address."
-        )
-
-    # SECRETS (Should be in env vars)
-    access_token = os.environ.get("PATREON_ACCESS_TOKEN")
-    campaign_id = os.environ.get("PATREON_CAMPAIGN_ID")
-    
-    if not access_token or not campaign_id:
-        print("Missing Patreon configuration")
-        return {
-            "success": False, 
-            "message": "Server configuration error (Missing Patreon keys)."
-        }
-
-    # 1. Fetch Members from Patreon
-    headers = {
-        "Authorization": f"Bearer {access_token}"
-    }
-    
-    found_tier = None
-    
-    try:
-        # Requesting fields: email, entitled_tiers
-        url = f"https://www.patreon.com/api/oauth2/v2/campaigns/{campaign_id}/members"
-        params = {
-            "include": "currently_entitled_tiers",
-            "fields[member]": "email,full_name,patron_status",
-            "fields[tier]": "title,id",
-            "page[size]": 100 
-        }
-        
-        response = requests.get(url, headers=headers, params=params)
-        json_resp = response.json()
-        
-        data_list = json_resp.get("data", [])
-        included = json_resp.get("included", [])
-        
-        # Helper to map Tier ID to Title
-        tiers_by_id = {item["id"]: item["attributes"]["title"] for item in included if item["type"] == "tier"}
-
-        # Find user
-        for member in data_list:
-            attrs = member.get("attributes", {})
-            if attrs.get("email") and attrs.get("email").lower() == email.lower():
-                # Check active status
-                if attrs.get("patron_status") != "active_patron":
-                    return {"success": False, "message": "Patreon membership is not active."}
-                
-                # Check tiers
-                relationships = member.get("relationships", {})
-                entitled = relationships.get("currently_entitled_tiers", {}).get("data", [])
-                
-                for t in entitled:
-                    tier_id = t.get("id")
-                    tier_title = tiers_by_id.get(tier_id, "")
-                    
-                    if tier_title:
-                        found_tier = tier_title
-                        break
-                break
-                
-    except Exception as e:
-        print(f"Patreon API Error: {e}")
-        return {"success": False, "message": "Failed to verify with Patreon."}
-
-    if not found_tier:
-        return {"success": False, "message": "No active TypeSync subscription found on Patreon for this email."}
-
-    # 2. Update Firestore
-    try:
-        db = _firestore().client()
-        user_ref = db.collection("users").document(uid)
-        
-        user_ref.set({
-            "subscriptionTier": 3, # Grant Premium
-            "subscriptionSource": "patreon",
-            "patreonTierName": found_tier,
-            "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat()
-        }, merge=True)
-        
-    except Exception as e:
-        print(f"Error updating Firestore: {e}")
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INTERNAL,
-            message="Failed to update user subscription."
-        )
-
-    return {
-        "success": True, 
-        "message": f"Verified Patreon tier: {found_tier}. Premium unlocked!",
-        "tier": "premium"
-    }
+    """Disabled: RevenueCat is the sole self-service billing authority."""
+    raise https_fn.HttpsError(
+        code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+        message="Patreon subscription activation is no longer supported.",
+    )

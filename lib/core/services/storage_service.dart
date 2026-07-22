@@ -161,6 +161,28 @@ class StorageService extends ChangeNotifier {
             'Cloud attachments',
           ],
         ),
+        const SubscriptionInfo(
+          tier: SubscriptionTier.standard,
+          name: 'Plus',
+          storage: '25 GB',
+          priceEuros: 5.99,
+          features: [
+            'Everything in TypeSync Lite',
+            '25 GB cloud storage',
+            'More room for documents and media',
+          ],
+        ),
+        const SubscriptionInfo(
+          tier: SubscriptionTier.premium,
+          name: 'Pro',
+          storage: '100 GB',
+          priceEuros: 11.99,
+          features: [
+            'Everything in Plus',
+            '100 GB cloud storage',
+            'For large course and project archives',
+          ],
+        ),
       ];
 
   // ===========================================
@@ -281,19 +303,6 @@ class StorageService extends ChangeNotifier {
     final file = File(filePath);
     final fileSize = await file.length();
 
-    // Check if upload would exceed quota
-    if (_storageUsedBytes + fileSize > storageLimitBytes) {
-      _errorMessage =
-          'Storage quota exceeded. Upgrade your plan for more space.';
-      _diagnostics.warning(
-        'StorageService',
-        'Upload blocked by quota for users/$userId/$destinationPath '
-            '(${_formatBytes(fileSize)} requested, $usageFormatted used)',
-      );
-      notifyListeners();
-      return null;
-    }
-
     _isLoading = true;
     notifyListeners();
 
@@ -380,18 +389,6 @@ class StorageService extends ChangeNotifier {
     String? contentType,
   }) async {
     final fileSize = data.length;
-
-    if (_storageUsedBytes + fileSize > storageLimitBytes) {
-      _errorMessage =
-          'Storage quota exceeded. Upgrade your plan for more space.';
-      _diagnostics.warning(
-        'StorageService',
-        'Byte upload blocked by quota for users/$userId/$destinationPath '
-            '(${_formatBytes(fileSize)} requested, $usageFormatted used)',
-      );
-      notifyListeners();
-      return null;
-    }
 
     _isLoading = true;
     notifyListeners();

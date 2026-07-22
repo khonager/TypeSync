@@ -43,17 +43,18 @@ void main() {
 
       expect(
         paidPlans.map((plan) => plan.tier.planId),
-        ['TypeSync Lite'],
+        ['TypeSync Lite', 'plus', 'pro'],
       );
       expect(
         paidPlans.map((plan) => plan.priceEuros),
-        [2.99],
+        [2.99, 5.99, 11.99],
       );
       expect(
         paidPlans.map((plan) => plan.tier.revenueCatProductId),
-        ['monthly'],
+        ['monthly', 'typesync_plus_monthly', 'typesync_pro_monthly'],
       );
-      expect(paidPlans.single.name, 'TypeSync Lite');
+      expect(
+          paidPlans.map((plan) => plan.name), ['TypeSync Lite', 'Plus', 'Pro']);
     });
   });
 }

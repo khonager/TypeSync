@@ -40,6 +40,7 @@ import 'core/providers/user_provider.dart';
 import 'core/providers/sync_provider.dart';
 import 'core/providers/homework_provider.dart';
 import 'core/providers/calendar_provider.dart';
+import 'core/services/admin_entitlement_service.dart';
 import 'core/services/hive_token_store.dart';
 import 'core/widgets/desktop_window_frame.dart';
 import 'firebase_options.dart';
@@ -186,6 +187,9 @@ class TypeSyncApp extends StatelessWidget {
 
         // Billing service for RevenueCat entitlement checks and purchases
         ChangeNotifierProvider(create: (_) => BillingService()),
+
+        // Server-authorized complimentary plan administration.
+        ChangeNotifierProvider(create: (_) => AdminEntitlementService()),
 
         // Sync service for real-time file synchronization
         ChangeNotifierProvider(create: (_) => SyncService()),

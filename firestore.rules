@@ -31,6 +31,14 @@ service cloud.firestore {
         'revenueCatEventType',
         'revenueCatProductId',
         'revenueCatEntitlementIds',
+        'revenueCatPlanId',
+        'revenueCatSubscriptionStatus',
+        'revenueCatExpiresAt',
+        'revenueCatEventTimestampMs',
+        'adminGrantPlanId',
+        'adminGrantExpiresAt',
+        'adminGrantGrantedBy',
+        'adminGrantGrantedAt',
         'gumroadLicenseKey',
         'patreonTierName'
       ];
@@ -60,6 +68,14 @@ service cloud.firestore {
           'revenueCatEventType',
           'revenueCatProductId',
           'revenueCatEntitlementIds',
+          'revenueCatPlanId',
+          'revenueCatSubscriptionStatus',
+          'revenueCatExpiresAt',
+          'revenueCatEventTimestampMs',
+          'adminGrantPlanId',
+          'adminGrantExpiresAt',
+          'adminGrantGrantedBy',
+          'adminGrantGrantedAt',
           'gumroadLicenseKey',
           'patreonTierName'
         ]);

@@ -176,8 +176,9 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    ```
 
 7. **Configure subscriptions with RevenueCat**:
-   - Create a monthly product/package named `monthly`
-   - Create an entitlement named `TypeSync Lite`
+   - Create the three monthly products/packages: `monthly`,
+     `typesync_plus_monthly`, and `typesync_pro_monthly`.
+   - Create matching entitlements: `TypeSync Lite`, `plus`, and `pro`.
    - Use the `default` offering
    - The default web SDK key is scaffolded for testing, or override it with:
    ```bash
@@ -192,6 +193,31 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    ```bash
    firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH_TOKEN
    ```
+   - Configure the RevenueCat webhook to POST to `revenuecat_webhook` with the
+     same token. The webhook, not the app, writes the effective plan and cloud
+     quota. Do not grant billing fields from a client.
+   - For web checkout, set each public RevenueCat paywall URL in
+     `web/billing_config.json`. Leave a plan's URL empty until its checkout is
+     live; the app will keep that plan unavailable instead of showing a broken
+     purchase button.
+
+8. **Configure complimentary-access administrators**:
+   - Never add personal email addresses to Dart, Python, or JSON files.
+   - Set the server-only allow-list interactively (comma-separated) and deploy:
+   ```bash
+   firebase functions:secrets:set ADMIN_EMAILS
+   firebase deploy --only functions,firestore:rules
+   ```
+   - Alternatively give an account the Firebase Auth custom claim
+     `admin: true` using a trusted server/Admin SDK. Both mechanisms are
+     verified only by Cloud Functions.
+   - An administrator will see an **Admin: complimentary access** card on the
+     Storage Plans screen. It can grant TypeSync Lite, Plus, or Pro temporarily
+     or until revoked. These grants are separate from RevenueCat purchases, so
+     a webhook cannot erase them and a revoke cannot remove a paid plan.
+   - The previous Gumroad and Patreon activation endpoints are deliberately
+     disabled. Keep all self-service access on RevenueCat so there is one
+     server-verified source of payment truth.
 
 ## Building for Release
 
