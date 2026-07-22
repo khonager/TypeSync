@@ -46,6 +46,7 @@ import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
 import '../widgets/home_upcoming_section.dart';
 import '../widgets/sync_status_indicator.dart';
+import '../models/home_drag_data.dart';
 
 /// Home screen with folder/file browser
 ///
@@ -97,6 +98,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // View mode (grid or list)
   bool _isGridView = true;
+  bool _isSelectionMode = false;
+  final Set<String> _selectedNoteIds = <String>{};
+  final Set<String> _selectedFolderIds = <String>{};
 
   // Drag and drop state
   bool _isDragging = false;
@@ -641,18 +645,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         flexibleSpace: desktopWindowDragArea(),
         // Show back button when in a folder
-        leading: !isProfileTab && _currentFolderId != null
+        leading: _isSelectionMode
             ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios),
-                onPressed: _navigateBack,
+                icon: const Icon(Icons.close),
+                tooltip: 'Cancel selection',
+                onPressed: _clearSelection,
               )
-            : null,
+            : !isProfileTab && _currentFolderId != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back_ios),
+                    onPressed: _navigateBack,
+                  )
+                : null,
         title: Text(
-          isProfileTab
-              ? (authService.isGuestMode ? 'Sign In' : 'Profile')
-              : isSearchActive
-                  ? 'Search results'
-                  : (currentFolder?.name ?? 'TypeSync'),
+          _isSelectionMode
+              ? '${_selectedNoteIds.length + _selectedFolderIds.length} selected'
+              : isProfileTab
+                  ? (authService.isGuestMode ? 'Sign In' : 'Profile')
+                  : isSearchActive
+                      ? 'Search results'
+                      : (currentFolder?.name ?? 'TypeSync'),
         ),
         actions: isProfileTab
             ? withDesktopWindowControls([
@@ -1025,6 +1037,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             onFolderLongPress: _showFolderOptions,
                             onNoteDropped: _handleNoteDroppedOnFolder,
                             onFolderDropped: _handleFolderDroppedOnFolder,
+                            onItemsDropped: _handleItemsDroppedOnFolder,
+                            selectedFolderIds: _selectedFolderIds,
+                            onSelectionToggle: _isSelectionMode
+                                ? _toggleFolderSelection
+                                : null,
+                            dragDataFor: _dragDataFor,
                             useLongPressDrag: _useLongPressGridDrag,
                             onDragStarted: _handleGridDragStarted,
                             onDragPositionChanged:
@@ -1039,6 +1057,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               isSearchActive: isSearchActive,
                             ),
                             onFolderLongPress: _showFolderOptions,
+                            selectedFolderIds: _selectedFolderIds,
+                            onSelectionToggle: _isSelectionMode
+                                ? _toggleFolderSelection
+                                : null,
+                            dragDataFor: _dragDataFor,
+                            useLongPressDrag: _useLongPressGridDrag,
+                            onDragStarted: _handleGridDragStarted,
+                            onDragPositionChanged:
+                                _handleGridDragPositionChanged,
+                            onDragEnded: _handleGridDragEnded,
                           ),
                   ),
                 ],
@@ -1069,6 +1097,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               searchQuery: noteOpenSearchQuery,
                             ),
                             onNoteLongPress: _showNoteOptions,
+                            selectedNoteIds: _selectedNoteIds,
+                            onSelectionToggle:
+                                _isSelectionMode ? _toggleNoteSelection : null,
+                            dragDataFor: _dragDataFor,
                             useLongPressDrag: _useLongPressGridDrag,
                             onDragStarted: _handleGridDragStarted,
                             onDragPositionChanged:
@@ -1083,6 +1115,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               searchQuery: noteOpenSearchQuery,
                             ),
                             onNoteLongPress: _showNoteOptions,
+                            selectedNoteIds: _selectedNoteIds,
+                            onSelectionToggle:
+                                _isSelectionMode ? _toggleNoteSelection : null,
+                            dragDataFor: _dragDataFor,
+                            useLongPressDrag: _useLongPressGridDrag,
+                            onDragStarted: _handleGridDragStarted,
+                            onDragPositionChanged:
+                                _handleGridDragPositionChanged,
+                            onDragEnded: _handleGridDragEnded,
                           ),
                   ),
                 ],
@@ -1505,23 +1546,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _breadcrumbTargetKey(String? folderId) =>
       folderId ?? _rootBreadcrumbDragKey;
 
+  void _clearSelection() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedNoteIds.clear();
+      _selectedFolderIds.clear();
+    });
+  }
+
+  void _startNoteSelection(String noteId) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedNoteIds.add(noteId);
+    });
+  }
+
+  void _startFolderSelection(String folderId) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedFolderIds.add(folderId);
+    });
+  }
+
+  void _toggleNoteSelection(String noteId) {
+    setState(() {
+      if (!_selectedNoteIds.add(noteId)) _selectedNoteIds.remove(noteId);
+    });
+  }
+
+  void _toggleFolderSelection(String folderId) {
+    setState(() {
+      if (!_selectedFolderIds.add(folderId)) {
+        _selectedFolderIds.remove(folderId);
+      }
+    });
+  }
+
+  String _dragDataFor(String itemData) {
+    final dragged = HomeDragData.tryParse(itemData)!;
+    final isSelected = dragged.noteIds.any(_selectedNoteIds.contains) ||
+        dragged.folderIds.any(_selectedFolderIds.contains);
+    if (!_isSelectionMode || !isSelected) return itemData;
+    return HomeDragData(
+      noteIds: _selectedNoteIds,
+      folderIds: _selectedFolderIds,
+    ).encode();
+  }
+
   bool _canDropOnBreadcrumb(String data, String? folderId) {
-    if (data.startsWith('note:')) {
-      final noteId = data.substring(5);
-      final note = context.read<NotesProvider>().getNoteById(noteId);
-      return note != null && note.folderId != folderId;
-    }
-
-    if (data.startsWith('folder:')) {
-      final draggedFolderId = data.substring(7);
-      final draggedFolder =
-          context.read<FoldersProvider>().getFolderById(draggedFolderId);
-      return draggedFolder != null &&
-          draggedFolder.id != folderId &&
-          draggedFolder.parentId != folderId;
-    }
-
-    return false;
+    final dragged = HomeDragData.tryParse(data);
+    if (dragged == null || dragged.isEmpty) return false;
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    return dragged.noteIds.any(
+          (id) => notesProvider.getNoteById(id)?.folderId != folderId,
+        ) ||
+        dragged.folderIds.any((id) {
+          final folder = foldersProvider.getFolderById(id);
+          return folder != null &&
+              folder.id != folderId &&
+              folder.parentId != folderId;
+        });
   }
 
   void _setBreadcrumbHoverTarget(String? folderId) {
@@ -1595,14 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleBreadcrumbDrop(String data, String? folderId) {
-    if (data.startsWith('note:')) {
-      _moveNoteWithUndo(data.substring(5), folderId);
-      return;
-    }
-
-    if (data.startsWith('folder:')) {
-      _moveFolderWithUndo(data.substring(7), folderId);
-    }
+    _moveDraggedItems(data, folderId);
   }
 
   void _navigateToFolder(String? folderId) {
@@ -2304,6 +2382,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.checklist_outlined),
+              title: const Text('Select'),
+              onTap: () {
+                Navigator.pop(context);
+                _startFolderSelection(folderId);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Rename'),
               onTap: () async {
@@ -2487,6 +2573,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.checklist_outlined),
+              title: const Text('Select'),
+              onTap: () {
+                Navigator.pop(bottomSheetContext);
+                _startNoteSelection(noteId);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.splitscreen_outlined),
               title: const Text('Open side by side'),
@@ -2775,6 +2869,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleNoteDroppedOnFolder(String noteId, String folderId) {
     _moveNoteWithUndo(noteId, folderId);
+  }
+
+  void _handleItemsDroppedOnFolder(String data, String folderId) {
+    _moveDraggedItems(data, folderId);
+  }
+
+  Future<void> _moveDraggedItems(String data, String? targetFolderId) async {
+    final dragged = HomeDragData.tryParse(data);
+    if (dragged == null || dragged.isEmpty) return;
+
+    final notesProvider = context.read<NotesProvider>();
+    final foldersProvider = context.read<FoldersProvider>();
+    final movedNotes = <String, String?>{};
+    final movedFolders = <String, String?>{};
+    final topLevelFolderIds = dragged.folderIds.where(
+      (folderId) => !_hasSelectedFolderAncestor(
+        folderId,
+        dragged.folderIds,
+        foldersProvider,
+      ),
+    );
+
+    for (final noteId in dragged.noteIds) {
+      final note = notesProvider.getNoteById(noteId);
+      if (note != null &&
+          note.folderId != targetFolderId &&
+          !dragged.folderIds.contains(note.folderId) &&
+          !_hasSelectedFolderAncestor(
+            note.folderId,
+            dragged.folderIds,
+            foldersProvider,
+          )) {
+        if (await notesProvider.moveToFolder(noteId, targetFolderId)) {
+          movedNotes[noteId] = note.folderId;
+        }
+      }
+    }
+    for (final folderId in topLevelFolderIds) {
+      final folder = foldersProvider.getFolderById(folderId);
+      if (folder == null ||
+          folder.id == targetFolderId ||
+          folder.parentId == targetFolderId) {
+        continue;
+      }
+      if (await foldersProvider.moveFolder(folderId, targetFolderId)) {
+        movedFolders[folderId] = folder.parentId;
+      }
+    }
+
+    if (!mounted || (movedNotes.isEmpty && movedFolders.isEmpty)) return;
+    _clearSelection();
+    final movedCount = movedNotes.length + movedFolders.length;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$movedCount item${movedCount == 1 ? '' : 's'} moved'),
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: Theme.of(context).colorScheme.primary,
+            onPressed: () {
+              for (final entry in movedNotes.entries) {
+                notesProvider.moveToFolder(entry.key, entry.value);
+              }
+              for (final entry in movedFolders.entries) {
+                foldersProvider.moveFolder(entry.key, entry.value);
+              }
+            },
+          ),
+        ),
+      );
+  }
+
+  bool _hasSelectedFolderAncestor(
+    String? folderId,
+    Set<String> selectedFolderIds,
+    FoldersProvider foldersProvider,
+  ) {
+    var currentId = folderId;
+    while (currentId != null) {
+      final folder = foldersProvider.getFolderById(currentId);
+      final parentId = folder?.parentId;
+      if (parentId != null && selectedFolderIds.contains(parentId)) {
+        return true;
+      }
+      currentId = parentId;
+    }
+    return false;
   }
 
   Future<void> _moveNoteWithUndo(String noteId, String? folderId) async {
