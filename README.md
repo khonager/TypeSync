@@ -196,10 +196,10 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    - Configure the RevenueCat webhook to POST to `revenuecat_webhook` with the
      same token. The webhook, not the app, writes the effective plan and cloud
      quota. Do not grant billing fields from a client.
-   - For web checkout, set each public RevenueCat paywall URL in
-     `web/billing_config.json`. Leave a plan's URL empty until its checkout is
-     live; the app will keep that plan unavailable instead of showing a broken
-     purchase button.
+   - For web and Linux checkout, set each public RevenueCat paywall URL in both
+     `web/billing_config.json` and `assets/billing_config.json`. Leave a
+     plan's URL empty until its checkout is live; the app will keep that plan
+     unavailable instead of showing a broken purchase button.
 
 8. **Configure complimentary-access administrators**:
    - Never add personal email addresses to Dart, Python, or JSON files.

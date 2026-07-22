@@ -6,6 +6,7 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart' as rc_ui;
@@ -416,19 +417,13 @@ class BillingService extends ChangeNotifier {
     if (_runtimeConfigLoaded) return;
     _runtimeConfigLoaded = true;
 
-    if (!kIsWeb) return;
-
     try {
-      final uri = Uri.base.resolve(
-        'billing_config.json?v=${DateTime.now().millisecondsSinceEpoch}',
-      );
-      final response = await http.get(uri);
-      if (response.statusCode != 200 || response.body.trim().isEmpty) {
-        notifyListeners();
-        return;
-      }
+      final rawConfig = kIsWeb
+          ? await _loadWebRuntimeConfig()
+          : await rootBundle.loadString('assets/billing_config.json');
+      if (rawConfig.trim().isEmpty) return;
 
-      final json = jsonDecode(response.body);
+      final json = jsonDecode(rawConfig);
       if (json is Map<String, dynamic>) {
         _runtimeConfig = RevenueCatRuntimeBillingConfig.fromJson(json);
         notifyListeners();
@@ -436,6 +431,17 @@ class BillingService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Billing runtime config load failed: $e');
     }
+  }
+
+  Future<String> _loadWebRuntimeConfig() async {
+    final uri = Uri.base.resolve(
+      'billing_config.json?v=${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final response = await http.get(uri);
+    if (response.statusCode != 200 || response.body.trim().isEmpty) {
+      return '';
+    }
+    return response.body;
   }
 
   String _configuredWebPurchaseUrlFor(SubscriptionTier tier, {String? userId}) {
