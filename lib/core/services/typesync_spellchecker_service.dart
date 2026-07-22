@@ -101,6 +101,7 @@ class TypeSyncSpellcheckHover {
   final Offset globalPosition;
 }
 
+// ignore: experimental_member_use
 class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   TypeSyncSpellcheckerService._()
       : _language = TypeSyncSpellcheckLanguage.english,

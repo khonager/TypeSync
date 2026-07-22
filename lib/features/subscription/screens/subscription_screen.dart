@@ -407,6 +407,8 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
             const SizedBox(height: 12),
             DropdownButtonFormField<SubscriptionTier>(
               key: ValueKey(_tier),
+              // `initialValue` was added after the Flutter version used in CI.
+              // ignore: deprecated_member_use
               value: _tier,
               decoration: const InputDecoration(
                 labelText: 'Plan',
@@ -432,6 +434,8 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
                 key: ValueKey(_durationDays),
+                // `initialValue` was added after the Flutter version used in CI.
+                // ignore: deprecated_member_use
                 value: _durationDays,
                 decoration: const InputDecoration(
                   labelText: 'Grant duration',
