@@ -92,10 +92,12 @@ class TypeSyncSpellcheckIssue {
 class TypeSyncSpellcheckHover {
   const TypeSyncSpellcheckHover({
     required this.issue,
+    required this.sourceText,
     required this.globalPosition,
   });
 
   final TypeSyncSpellcheckIssue issue;
+  final String sourceText;
   final Offset globalPosition;
 }
 
@@ -107,14 +109,35 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   static const String enabledPreferenceKey = 'typesync_spellcheck_enabled_v1';
   static const String acceptedWordsPreferenceKey =
       'typesync_spellcheck_accepted_words_v1';
+
+  /// Spellchecking is run synchronously while Flutter builds a text span.
+  /// Keep every pass small enough that a large pasted note cannot block a
+  /// frame. Text after this limit is still rendered normally and is omitted
+  /// from that synchronous pass.
+  static const int maximumCharactersPerPass = 20000;
+
+  /// Bound dictionary lookups as well as the amount of text inspected. A
+  /// dictionary lookup may itself involve affix and compound-word checks.
+  static const int maximumWordsPerPass = 384;
+
+  /// This is a safety ceiling for callers of [collectIssues]. The review UI
+  /// requests fewer issues, but a public caller must not be able to remove the
+  /// synchronous work bound by passing an arbitrarily large value.
+  static const int maximumIssuesPerPass = 120;
+  static const int _maximumInlineIssuesPerPass = 40;
   static final TypeSyncSpellcheckerService instance =
       TypeSyncSpellcheckerService._();
 
   final Map<TypeSyncSpellcheckLanguage, HunspellDictionary> _checkers = {};
   final Set<String> _acceptedWords = <String>{};
+  final Set<String> _inlineSpellcheckTextSegments = <String>{};
   final ValueNotifier<TypeSyncSpellcheckHover?> hoveredIssue =
       ValueNotifier<TypeSyncSpellcheckHover?>(null);
   Timer? _hoverCloseTimer;
+  String? _lastCheckedText;
+  TypeSyncSpellcheckLanguage? _lastCheckedLanguage;
+  bool? _lastCheckedEnabled;
+  List<TextSpan>? _lastCheckedSpans;
   final RegExp _wordPattern = RegExp(
     r"[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?",
   );
@@ -195,12 +218,14 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
 
   Future<void> setEnabled(bool enabled) async {
     _isEnabled = enabled;
+    _invalidateRenderCache();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(enabledPreferenceKey, enabled);
   }
 
   void setLanguage(TypeSyncSpellcheckLanguage language) {
     _language = language;
+    _invalidateRenderCache();
   }
 
   TypeSyncSpellcheckLanguage configureLanguageForText(
@@ -211,12 +236,16 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
       languageCode,
     );
     final resolvedLanguage = explicitLanguage ?? detectLanguage(text);
-    _language = resolvedLanguage;
+    if (_language != resolvedLanguage) {
+      _language = resolvedLanguage;
+      _invalidateRenderCache();
+    }
     return resolvedLanguage;
   }
 
   TypeSyncSpellcheckLanguage detectLanguage(String text) {
-    final trimmed = text.trim();
+    final inspectedText = _textWithinPassLimit(text);
+    final trimmed = inspectedText.trim();
     if (trimmed.isEmpty) {
       return TypeSyncSpellcheckLanguage.english;
     }
@@ -273,6 +302,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     if (normalized.isEmpty) return;
 
     _acceptedWords.add(normalized);
+    _invalidateRenderCache();
     hoveredIssue.value = null;
 
     final prefs = await SharedPreferences.getInstance();
@@ -280,6 +310,28 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
       acceptedWordsPreferenceKey,
       _acceptedWords.toList()..sort(),
     );
+  }
+
+  /// Enables inline underlines for the text segments explicitly selected for
+  /// manual checking. This is intentionally opt-in so loading or pasting a
+  /// note never performs spellchecking during editor layout.
+  void setInlineSpellcheckTextSegments(Iterable<String> segments) {
+    final nextSegments =
+        segments.where((segment) => segment.trim().isNotEmpty).toSet();
+    if (_inlineSpellcheckTextSegments.length == nextSegments.length &&
+        _inlineSpellcheckTextSegments.containsAll(nextSegments)) {
+      return;
+    }
+    _inlineSpellcheckTextSegments
+      ..clear()
+      ..addAll(nextSegments);
+    _invalidateRenderCache();
+  }
+
+  void clearInlineSpellcheckTextSegments() {
+    if (_inlineSpellcheckTextSegments.isEmpty) return;
+    _inlineSpellcheckTextSegments.clear();
+    _invalidateRenderCache();
   }
 
   void keepHoverOpen() {
@@ -309,10 +361,27 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     LongPressGestureRecognizer Function(String)?
         customLongPressRecognizerOnWrongSpan,
   }) {
-    if (!_isEnabled || text.trim().isEmpty) return null;
+    if (!_isEnabled ||
+        !_inlineSpellcheckTextSegments.contains(text) ||
+        _textWithinPassLimit(text).trim().isEmpty) {
+      return null;
+    }
 
-    final issues = collectIssues(text, includeCapitalization: false);
-    if (issues.isEmpty) return null;
+    if (identical(text, _lastCheckedText) &&
+        _lastCheckedLanguage == _language &&
+        _lastCheckedEnabled == _isEnabled) {
+      return _lastCheckedSpans;
+    }
+
+    final issues = collectIssues(
+      text,
+      includeCapitalization: false,
+      maxIssues: _maximumInlineIssuesPerPass,
+    );
+    if (issues.isEmpty) {
+      _cacheRenderResult(text, null);
+      return null;
+    }
     final spans = <TextSpan>[];
     var cursor = 0;
 
@@ -347,6 +416,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
                 message: issue.message,
                 suggestions: suggestions,
               ),
+              sourceText: text,
               globalPosition: event.position,
             );
           },
@@ -362,6 +432,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
       spans.add(TextSpan(text: text.substring(cursor)));
     }
 
+    _cacheRenderResult(text, spans);
     return spans;
   }
 
@@ -371,22 +442,28 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     bool includeCapitalization = true,
     int maxIssues = 120,
   }) {
-    if (!_isEnabled || text.trim().isEmpty) {
+    final inspectedText = _textWithinPassLimit(text);
+    if (!_isEnabled || inspectedText.trim().isEmpty) {
       return const <TypeSyncSpellcheckIssue>[];
     }
 
     final checker = _checkers[_language];
     if (checker == null) return const <TypeSyncSpellcheckIssue>[];
 
+    final safeMaxIssues = maxIssues.clamp(1, maximumIssuesPerPass);
     final issues = <TypeSyncSpellcheckIssue>[
-      ..._collectSpacingIssues(text),
-      ..._collectPunctuationIssues(text),
-      ..._collectRepeatedWordIssues(text),
-      if (includeCapitalization) ..._collectCapitalizationIssues(text),
+      ..._collectSpacingIssues(inspectedText, maxIssues: safeMaxIssues),
+      ..._collectPunctuationIssues(inspectedText, maxIssues: safeMaxIssues),
+      ..._collectRepeatedWordIssues(inspectedText, maxIssues: safeMaxIssues),
+      if (includeCapitalization)
+        ..._collectCapitalizationIssues(
+          inspectedText,
+          maxIssues: safeMaxIssues,
+        ),
       ..._collectSpellingIssues(
-        text,
+        inspectedText,
         checker,
-        includeSuggestions: includeSuggestions,
+        maxIssues: safeMaxIssues,
       ),
     ];
 
@@ -402,29 +479,50 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
       if (issue.start < cursor) continue;
       filtered.add(issue);
       cursor = issue.end;
-      if (filtered.length >= maxIssues) break;
+      if (filtered.length >= safeMaxIssues) break;
     }
 
-    return filtered;
+    if (!includeSuggestions) return filtered;
+
+    // Suggestions are significantly more expensive than a spelling check.
+    // Generate them only for the small, already-filtered result set instead
+    // of for every misspelling in the note.
+    return filtered
+        .map(
+          (issue) => issue.kind == TypeSyncSpellcheckIssueKind.spelling
+              ? TypeSyncSpellcheckIssue(
+                  start: issue.start,
+                  end: issue.end,
+                  text: issue.text,
+                  kind: issue.kind,
+                  message: issue.message,
+                  suggestions: _suggestWords(checker, issue.text),
+                )
+              : issue,
+        )
+        .toList(growable: false);
   }
 
   List<TypeSyncSpellcheckIssue> _collectSpellingIssues(
     String text,
     HunspellDictionary checker, {
-    required bool includeSuggestions,
+    required int maxIssues,
   }) {
     final issues = <TypeSyncSpellcheckIssue>[];
+    var checkedWords = 0;
 
     for (final match in _wordPattern.allMatches(text)) {
+      if (checkedWords >= maximumWordsPerPass || issues.length >= maxIssues) {
+        break;
+      }
       final word = match.group(0)!;
-      if (_shouldSkipWord(word) ||
-          _isAcceptedWord(word) ||
-          checker.isCorrect(word)) {
+      if (_shouldSkipWord(word) || _isAcceptedWord(word)) {
         continue;
       }
 
-      final suggestions =
-          includeSuggestions ? _suggestWords(checker, word) : const <String>[];
+      checkedWords++;
+      if (checker.isCorrect(word)) continue;
+
       issues.add(
         TypeSyncSpellcheckIssue(
           start: match.start,
@@ -432,7 +530,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
           text: word,
           kind: TypeSyncSpellcheckIssueKind.spelling,
           message: 'Unknown word',
-          suggestions: suggestions,
+          suggestions: const <String>[],
         ),
       );
     }
@@ -440,9 +538,13 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return issues;
   }
 
-  List<TypeSyncSpellcheckIssue> _collectSpacingIssues(String text) {
+  List<TypeSyncSpellcheckIssue> _collectSpacingIssues(
+    String text, {
+    required int maxIssues,
+  }) {
     return _multiSpacePattern
         .allMatches(text)
+        .take(maxIssues)
         .map(
           (match) => TypeSyncSpellcheckIssue(
             start: match.start,
@@ -456,10 +558,14 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
         .toList();
   }
 
-  List<TypeSyncSpellcheckIssue> _collectPunctuationIssues(String text) {
+  List<TypeSyncSpellcheckIssue> _collectPunctuationIssues(
+    String text, {
+    required int maxIssues,
+  }) {
     final issues = <TypeSyncSpellcheckIssue>[];
 
     for (final match in _repeatedPunctuationPattern.allMatches(text)) {
+      if (issues.length >= maxIssues) break;
       final value = match.group(0)!;
       issues.add(
         TypeSyncSpellcheckIssue(
@@ -474,6 +580,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     }
 
     for (var i = 0; i < text.length - 1; i++) {
+      if (issues.length >= maxIssues) break;
       final char = text[i];
       final next = text[i + 1];
       if (!'.!?,;:'.contains(char) || !_isLetter(next)) continue;
@@ -494,11 +601,15 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return issues;
   }
 
-  List<TypeSyncSpellcheckIssue> _collectRepeatedWordIssues(String text) {
+  List<TypeSyncSpellcheckIssue> _collectRepeatedWordIssues(
+    String text, {
+    required int maxIssues,
+  }) {
     final issues = <TypeSyncSpellcheckIssue>[];
     RegExpMatch? previous;
 
     for (final match in _wordPattern.allMatches(text)) {
+      if (issues.length >= maxIssues) break;
       final last = previous;
       if (last != null &&
           text.substring(last.end, match.start).trim().isEmpty &&
@@ -520,11 +631,15 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return issues;
   }
 
-  List<TypeSyncSpellcheckIssue> _collectCapitalizationIssues(String text) {
+  List<TypeSyncSpellcheckIssue> _collectCapitalizationIssues(
+    String text, {
+    required int maxIssues,
+  }) {
     final issues = <TypeSyncSpellcheckIssue>[];
     var expectsSentenceStart = true;
 
     for (var i = 0; i < text.length; i++) {
+      if (issues.length >= maxIssues) break;
       final char = text[i];
       if (!_isLetter(char)) {
         if ('.!?'.contains(char)) {
@@ -580,6 +695,10 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
 
   bool _shouldSkipWord(String word) {
     if (word.length <= 1) return true;
+    // Very long uninterrupted text is usually a URL, identifier, or pasted
+    // data. Hunspell's affix/compound checks are not useful for it and can be
+    // disproportionately expensive.
+    if (word.length > 48) return true;
     if (word.contains(RegExp(r'\d'))) return true;
     if (word.contains('_')) return true;
     if (word.toUpperCase() == word && word.length <= 5) return true;
@@ -594,9 +713,30 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
     return word.trim().toLowerCase();
   }
 
+  void _cacheRenderResult(String text, List<TextSpan>? spans) {
+    _lastCheckedText = text;
+    _lastCheckedLanguage = _language;
+    _lastCheckedEnabled = _isEnabled;
+    _lastCheckedSpans = spans;
+  }
+
+  void _invalidateRenderCache() {
+    _lastCheckedText = null;
+    _lastCheckedLanguage = null;
+    _lastCheckedEnabled = null;
+    _lastCheckedSpans = null;
+  }
+
+  String _textWithinPassLimit(String text) {
+    return text.length <= maximumCharactersPerPass
+        ? text
+        : text.substring(0, maximumCharactersPerPass);
+  }
+
   @override
   void toggleChecker() {
     _isEnabled = !_isEnabled;
+    _invalidateRenderCache();
   }
 
   @override
@@ -609,6 +749,7 @@ class TypeSyncSpellcheckerService extends SpellCheckerService<String> {
   void setNewLanguageState({required String language}) {
     final parsed = TypeSyncSpellcheckLanguage.fromCode(language);
     _language = parsed;
+    _invalidateRenderCache();
     _loadLanguage(parsed);
   }
 

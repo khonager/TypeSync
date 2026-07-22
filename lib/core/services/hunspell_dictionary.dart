@@ -46,21 +46,15 @@ class HunspellDictionary {
     if (word.length > 28) return const <String>[];
     return _suggestCache.putIfAbsent(word, () {
       final candidates = <String>{};
+      var checkedCandidates = 0;
       for (final candidate in _edits1(word)) {
+        // Suggestions run on the UI thread when the user opens a spelling
+        // popup. Keep this work strictly bounded; exhaustive two-edit search
+        // can produce tens of thousands of dictionary checks.
+        if (checkedCandidates >= 1024) break;
+        checkedCandidates++;
         if (isCorrect(candidate)) {
           candidates.add(_matchCapitalization(word, candidate));
-          if (candidates.length >= maxSuggestions) break;
-        }
-      }
-
-      if (candidates.length < maxSuggestions && word.length <= 12) {
-        for (final edit in _edits1(word)) {
-          for (final candidate in _edits1(edit)) {
-            if (isCorrect(candidate)) {
-              candidates.add(_matchCapitalization(word, candidate));
-              if (candidates.length >= maxSuggestions) break;
-            }
-          }
           if (candidates.length >= maxSuggestions) break;
         }
       }

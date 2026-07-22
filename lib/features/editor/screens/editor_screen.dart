@@ -244,6 +244,9 @@ class _EditorScreenState extends State<EditorScreen>
   static const String _browserSpellcheckNoticeShownKey =
       'typesync_browser_spellcheck_notice_shown_v1';
   static const String _automaticSpellcheckLanguageValue = '__auto__';
+  static const String _manualSpellcheckAttributeKey =
+      'typesync-manual-spellcheck';
+  static const String _manualSpellcheckAttributeValue = 'checked';
 
   // Quill editor controller
   late QuillController _quillController;
@@ -369,6 +372,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> _initializeEditor() async {
+    TypeSyncSpellcheckerService.instance.clearInlineSpellcheckTextSegments();
     final notesProvider = context.read<NotesProvider>();
 
     if (widget.noteId != null) {
@@ -505,6 +509,9 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _onContentChanged() {
     if (_isUpdatingFromExternal) return;
+    TypeSyncSpellcheckerService.instance.setInlineSpellcheckTextSegments(
+      _manualSpellcheckTextSegments(),
+    );
     _ensureChecklistMetadata();
     _updateStats();
     _scheduleSpellcheckLanguageRefresh();
@@ -1283,6 +1290,16 @@ class _EditorScreenState extends State<EditorScreen>
       }
 
       final operation = Map<String, dynamic>.from(rawOperation);
+      final rawAttributes = operation['attributes'];
+      if (rawAttributes is Map) {
+        final attributes = Map<String, dynamic>.from(rawAttributes)
+          ..remove(_manualSpellcheckAttributeKey);
+        if (attributes.isEmpty) {
+          operation.remove('attributes');
+        } else {
+          operation['attributes'] = attributes;
+        }
+      }
       final insert = operation['insert'];
       if (insert is! Map) {
         final normalizedStringOperations =
@@ -1622,6 +1639,7 @@ class _EditorScreenState extends State<EditorScreen>
     TypeSyncSpellcheckerService.instance.hoveredIssue.removeListener(
       _handleSpellcheckHoverChanged,
     );
+    TypeSyncSpellcheckerService.instance.clearInlineSpellcheckTextSegments();
     _findController.removeListener(_handleSearchQueryChanged);
     _attachmentPreferencesService.removeListener(
       _handleAttachmentPreferencesChanged,
@@ -4298,7 +4316,12 @@ class _EditorScreenState extends State<EditorScreen>
     TypeSyncSpellcheckIssue hoverIssue,
     String replacement,
   ) {
-    final resolvedIssue = _resolveHoveredSpellcheckIssue(hoverIssue);
+    final hover = TypeSyncSpellcheckerService.instance.hoveredIssue.value;
+    if (hover == null) return;
+    final resolvedIssue = _resolveHoveredSpellcheckIssue(
+      hoverIssue,
+      hover.sourceText,
+    );
     if (resolvedIssue == null) return;
 
     _spellcheckHoverOverlay?.remove();
@@ -4309,40 +4332,48 @@ class _EditorScreenState extends State<EditorScreen>
 
   TypeSyncSpellcheckIssue? _resolveHoveredSpellcheckIssue(
     TypeSyncSpellcheckIssue hoverIssue,
+    String sourceText,
   ) {
     final documentText = _quillController.document.toPlainText();
-    if (hoverIssue.start >= 0 &&
-        hoverIssue.end <= documentText.length &&
-        documentText.substring(hoverIssue.start, hoverIssue.end) ==
-            hoverIssue.text) {
-      return hoverIssue;
-    }
-
-    final issues = TypeSyncSpellcheckerService.instance.collectIssues(
-      documentText,
-      includeSuggestions: true,
-      includeCapitalization: false,
-      maxIssues: 500,
-    );
-    final matches = issues
-        .where(
-          (issue) =>
-              issue.text == hoverIssue.text && issue.kind == hoverIssue.kind,
-        )
-        .toList();
-    if (matches.isEmpty) return null;
-
     final selection = _quillController.selection;
     final anchor = selection.isValid ? selection.baseOffset : 0;
-    matches.sort(
-      (a, b) => (a.start - anchor).abs().compareTo((b.start - anchor).abs()),
+    int? resolvedStart;
+    var nearestDistance = double.infinity;
+    var sourceOffset = documentText.indexOf(sourceText);
+
+    while (sourceOffset != -1) {
+      final start = sourceOffset + hoverIssue.start;
+      final end = sourceOffset + hoverIssue.end;
+      if (start >= 0 &&
+          end <= documentText.length &&
+          documentText.substring(start, end) == hoverIssue.text) {
+        final distance = (start - anchor).abs();
+        if (distance < nearestDistance) {
+          nearestDistance = distance.toDouble();
+          resolvedStart = start;
+        }
+      }
+      sourceOffset = documentText.indexOf(sourceText, sourceOffset + 1);
+    }
+
+    final start = resolvedStart;
+    if (start == null) return null;
+    return TypeSyncSpellcheckIssue(
+      start: start,
+      end: start + hoverIssue.length,
+      text: hoverIssue.text,
+      kind: hoverIssue.kind,
+      message: hoverIssue.message,
+      suggestions: hoverIssue.suggestions,
     );
-    return matches.first;
   }
 
   void _showMoreOptions() {
     final authService = context.read<AuthService>();
     final spellchecker = TypeSyncSpellcheckerService.instance;
+    final editorSelection = _quillController.selection;
+    final hasSpellcheckSelection =
+        editorSelection.isValid && !editorSelection.isCollapsed;
 
     showModalBottomSheet(
       context: context,
@@ -4359,7 +4390,7 @@ class _EditorScreenState extends State<EditorScreen>
                   title: const Text('Spellcheck'),
                   subtitle: Text(
                     spellchecker.isEnabled
-                        ? 'Using ${spellchecker.activeLanguage.label}'
+                        ? 'Manual checks using ${spellchecker.activeLanguage.label}'
                         : 'Local spellcheck is off',
                   ),
                   value: spellchecker.isEnabled,
@@ -4399,12 +4430,19 @@ class _EditorScreenState extends State<EditorScreen>
                 if (spellchecker.isEnabled)
                   ListTile(
                     leading: const Icon(Icons.fact_check_outlined),
-                    title: const Text('Review spelling'),
-                    subtitle: const Text('Show suggestions and writing fixes'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showSpellcheckReview();
-                    },
+                    title: const Text('Check selected text'),
+                    subtitle: Text(
+                      hasSpellcheckSelection
+                          ? 'Underline spelling and writing issues in the selection'
+                          : 'Select text in the editor first',
+                    ),
+                    enabled: hasSpellcheckSelection,
+                    onTap: hasSpellcheckSelection
+                        ? () {
+                            Navigator.pop(context);
+                            _showSelectedTextSpellcheck();
+                          }
+                        : null,
                   ),
                 if (kIsWeb)
                   const ListTile(
@@ -4534,171 +4572,48 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  void _showSpellcheckReview() {
-    final spellchecker = TypeSyncSpellcheckerService.instance;
-    final documentText = _quillController.document.toPlainText();
-    final issues = spellchecker.collectIssues(
-      documentText,
-      includeSuggestions: true,
-      maxIssues: 60,
-    );
+  void _showSelectedTextSpellcheck() {
+    final selection = _quillController.selection;
+    if (!selection.isValid || selection.isCollapsed) return;
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        final colors = Theme.of(sheetContext).colorScheme;
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.75,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Spellcheck',
-                          style: Theme.of(sheetContext).textTheme.titleLarge,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                if (issues.isEmpty)
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'No local spelling or writing issues found.',
-                        style: Theme.of(sheetContext).textTheme.bodyLarge,
-                      ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      itemCount: issues.length,
-                      separatorBuilder: (_, __) => const Divider(height: 20),
-                      itemBuilder: (context, index) {
-                        final issue = issues[index];
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  _spellcheckIssueIcon(issue.kind),
-                                  size: 20,
-                                  color: issue.underlineColor,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        issue.text,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(sheetContext)
-                                            .textTheme
-                                            .titleSmall
-                                            ?.copyWith(
-                                              decoration:
-                                                  TextDecoration.underline,
-                                              decorationColor:
-                                                  issue.underlineColor,
-                                              decorationStyle:
-                                                  TextDecorationStyle.wavy,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        issue.message,
-                                        style: Theme.of(sheetContext)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: colors.onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    _selectSpellcheckIssue(issue);
-                                    Navigator.pop(sheetContext);
-                                  },
-                                  child: const Text('Go'),
-                                ),
-                                if (issue.kind ==
-                                    TypeSyncSpellcheckIssueKind.spelling)
-                                  IconButton(
-                                    tooltip: 'Mark as correct',
-                                    onPressed: () {
-                                      Navigator.pop(sheetContext);
-                                      unawaited(
-                                        _acceptSpellcheckWord(issue.text),
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.check_circle_outline,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            if (issue.suggestions.isEmpty)
-                              Text(
-                                'No local suggestions',
-                                style: Theme.of(sheetContext)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: colors.onSurfaceVariant,
-                                    ),
-                              )
-                            else
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: issue.suggestions
-                                    .map(
-                                      (suggestion) => ActionChip(
-                                        label: Text(suggestion),
-                                        onPressed: () {
-                                          _replaceSpellcheckIssue(
-                                            issue,
-                                            suggestion,
-                                          );
-                                          Navigator.pop(sheetContext);
-                                        },
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+    final documentLength = _quillController.document.length;
+    final start = selection.start.clamp(0, documentLength - 1);
+    final maximumEnd =
+        (start + TypeSyncSpellcheckerService.maximumCharactersPerPass)
+            .clamp(start, documentLength - 1);
+    final end = selection.end.clamp(start, maximumEnd);
+    if (end <= start) return;
+
+    _quillController.formatText(
+      start,
+      end - start,
+      const Attribute<String>(
+        _manualSpellcheckAttributeKey,
+        AttributeScope.inline,
+        _manualSpellcheckAttributeValue,
+      ),
     );
+    TypeSyncSpellcheckerService.instance.setInlineSpellcheckTextSegments(
+      _manualSpellcheckTextSegments(),
+    );
+    setState(() {});
+    _focusNode.requestFocus();
+  }
+
+  Iterable<String> _manualSpellcheckTextSegments() sync* {
+    for (final rawOperation in _quillController.document.toDelta().toJson()) {
+      final attributes = rawOperation['attributes'];
+      if (attributes is! Map ||
+          attributes[_manualSpellcheckAttributeKey] !=
+              _manualSpellcheckAttributeValue) {
+        continue;
+      }
+      final insert = rawOperation['insert'];
+      if (insert is! String) continue;
+      for (final segment in insert.split('\n')) {
+        if (segment.isNotEmpty) yield segment;
+      }
+    }
   }
 
   IconData _spellcheckIssueIcon(TypeSyncSpellcheckIssueKind kind) {
@@ -4709,18 +4624,6 @@ class _EditorScreenState extends State<EditorScreen>
       TypeSyncSpellcheckIssueKind.punctuation => Icons.priority_high,
       TypeSyncSpellcheckIssueKind.capitalization => Icons.text_fields,
     };
-  }
-
-  void _selectSpellcheckIssue(TypeSyncSpellcheckIssue issue) {
-    final documentLength = _quillController.document.length;
-    final start = issue.start.clamp(0, documentLength - 1);
-    final end = issue.end.clamp(start, documentLength - 1);
-
-    _quillController.updateSelection(
-      TextSelection(baseOffset: start, extentOffset: end),
-      ChangeSource.local,
-    );
-    _focusNode.requestFocus();
   }
 
   void _replaceSpellcheckIssue(
@@ -4737,6 +4640,17 @@ class _EditorScreenState extends State<EditorScreen>
       replacement,
       TextSelection.collapsed(offset: start + replacement.length),
     );
+    if (replacement.isNotEmpty) {
+      _quillController.formatText(
+        start,
+        replacement.length,
+        const Attribute<String>(
+          _manualSpellcheckAttributeKey,
+          AttributeScope.inline,
+          _manualSpellcheckAttributeValue,
+        ),
+      );
+    }
     _focusNode.requestFocus();
   }
 

@@ -72,5 +72,88 @@ void main() {
       expect(resolved, TypeSyncSpellcheckLanguage.german);
       expect(service.activeLanguage, TypeSyncSpellcheckLanguage.german);
     });
+
+    test('bounds spellchecking work for a large note', () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+      await service.setEnabled(true);
+      service.setLanguage(TypeSyncSpellcheckLanguage.english);
+
+      final text = List<String>.filled(
+        TypeSyncSpellcheckerService.maximumCharactersPerPass ~/ 2,
+        'zznotaword',
+      ).join(' ');
+      final issues = service.collectIssues(text, maxIssues: 10000);
+
+      expect(
+        issues.length,
+        lessThanOrEqualTo(TypeSyncSpellcheckerService.maximumIssuesPerPass),
+      );
+      expect(
+        issues.every(
+          (issue) =>
+              issue.end <= TypeSyncSpellcheckerService.maximumCharactersPerPass,
+        ),
+        isTrue,
+      );
+    });
+
+    test('creates suggestions only for the bounded result set', () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+      await service.setEnabled(true);
+      service.setLanguage(TypeSyncSpellcheckLanguage.english);
+
+      final issues = service.collectIssues(
+        List<String>.generate(
+          500,
+          (index) => const <String>[
+            'speling',
+            'splling',
+            'speeling',
+            'spelingz',
+          ][index % 4],
+        ).join(' '),
+        includeSuggestions: true,
+        maxIssues: 4,
+      );
+
+      expect(issues, isNotEmpty);
+      expect(issues.length, lessThanOrEqualTo(4));
+      final spellingIssue = issues.firstWhere(
+        (issue) => issue.kind == TypeSyncSpellcheckIssueKind.spelling,
+      );
+      expect(spellingIssue.suggestions, isNotEmpty);
+    });
+
+    test('does not run spellcheck while editor text is being laid out',
+        () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+      await service.setEnabled(true);
+      service.clearInlineSpellcheckTextSegments();
+
+      expect(service.checkSpelling('speling'), isNull);
+    });
+
+    test('runs inline spellcheck only for explicitly selected text', () async {
+      final service = TypeSyncSpellcheckerService.instance;
+      if (!service.isInitialized) {
+        await service.initialize();
+      }
+      await service.setEnabled(true);
+      service.setInlineSpellcheckTextSegments(const ['speling']);
+
+      expect(service.checkSpelling('speling'), isNotNull);
+      expect(service.checkSpelling('different text'), isNull);
+
+      service.clearInlineSpellcheckTextSegments();
+    });
   });
 }
