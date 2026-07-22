@@ -46,6 +46,34 @@ void main() {
         'Keep IDs stable for widgets and links later.',
       );
     });
+
+    test('finds the matching board offset when a document has multiple boards',
+        () {
+      const firstBoard = TypeSyncKanbanData(
+        id: 'board-at-top',
+        title: 'Top board',
+        columns: [],
+      );
+      const secondBoard = TypeSyncKanbanData(
+        id: 'board-at-bottom',
+        title: 'Bottom board',
+        columns: [],
+      );
+      const checklistText = 'First checklist item\nSecond checklist item\n';
+      final operations = [
+        {'insert': TypeSyncKanbanEmbed.toBlockEmbed(firstBoard).toJson()},
+        {'insert': checklistText},
+        {'insert': TypeSyncKanbanEmbed.toBlockEmbed(secondBoard).toJson()},
+      ];
+
+      expect(
+        TypeSyncKanbanEmbed.findBoardOffset(
+          operations,
+          boardId: secondBoard.id,
+        ),
+        1 + checklistText.length,
+      );
+    });
   });
 
   group('RichTextPlainTextService', () {
