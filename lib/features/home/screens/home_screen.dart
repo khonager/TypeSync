@@ -34,6 +34,7 @@ import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/theme_service.dart';
+import '../../../core/services/attachment_preferences_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
@@ -218,6 +219,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final homeworkProvider = context.read<HomeworkProvider>();
     final timetableProvider = context.read<TimetableProvider>();
     final themeService = context.read<ThemeService>();
+    final attachmentPreferencesService =
+        context.read<AttachmentPreferencesService>();
     final syncService = context.read<SyncService>();
 
     try {
@@ -261,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         homeworkProvider.setSyncService(syncService);
         timetableProvider.setSyncService(syncService);
         themeService.setSyncService(syncService);
+        attachmentPreferencesService.setSyncService(syncService);
 
         // Set up sync callbacks without touching BuildContext after init.
         syncService.onNotesUpdated = (notes) {
@@ -279,7 +283,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         syncService.onCalendarUpdated = calendarProvider.handleCloudUpdate;
         syncService.onHomeworkUpdated = homeworkProvider.handleCloudUpdate;
         syncService.onTimetableUpdated = timetableProvider.handleCloudUpdate;
-        syncService.onSettingsUpdated = themeService.handleCloudSettings;
+        syncService.onSettingsUpdated = (settings) {
+          themeService.handleCloudSettings(settings);
+          attachmentPreferencesService.handleCloudSettings(settings);
+        };
 
         _diagnostics.info(
           'HomeScreen',
@@ -309,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         homeworkProvider.setSyncService(null);
         timetableProvider.setSyncService(null);
         themeService.setSyncService(null);
+        attachmentPreferencesService.setSyncService(null);
         syncService.onNoteUpdated = null;
         _diagnostics.info(
           'HomeScreen',

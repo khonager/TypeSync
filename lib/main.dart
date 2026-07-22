@@ -25,6 +25,7 @@ import 'core/services/billing_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/editor_color_palette_service.dart';
 import 'core/services/theme_service.dart';
+import 'core/services/attachment_preferences_service.dart';
 import 'core/services/local_folder_sync_service.dart';
 import 'core/services/diagnostics_service.dart';
 import 'core/services/plain_text_quill_clipboard_service.dart';
@@ -170,6 +171,9 @@ class TypeSyncApp extends StatelessWidget {
       providers: [
         // Theme service for managing app appearance (dark mode, colors, etc.)
         ChangeNotifierProvider(create: (_) => ThemeService()),
+
+        // Per-note attachment display choices, shared across signed-in devices.
+        ChangeNotifierProvider(create: (_) => AttachmentPreferencesService()),
 
         // Authentication service for user login/registration
         ChangeNotifierProvider(create: (_) => AuthService()),
