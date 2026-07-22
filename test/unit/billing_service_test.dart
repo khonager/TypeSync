@@ -54,7 +54,9 @@ void main() {
         ['monthly', 'typesync_plus_monthly', 'typesync_pro_monthly'],
       );
       expect(
-          paidPlans.map((plan) => plan.name), ['TypeSync Lite', 'Plus', 'Pro']);
+          paidPlans.map((plan) => plan.name),
+          ['TypeSync Lite', 'Plus', 'Pro'],
+        );
     });
   });
 }

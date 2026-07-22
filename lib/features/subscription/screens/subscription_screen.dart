@@ -407,7 +407,7 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
             const SizedBox(height: 12),
             DropdownButtonFormField<SubscriptionTier>(
               key: ValueKey(_tier),
-              initialValue: _tier,
+              value: _tier,
               decoration: const InputDecoration(
                 labelText: 'Plan',
                 border: OutlineInputBorder(),
@@ -432,7 +432,7 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
                 key: ValueKey(_durationDays),
-                initialValue: _durationDays,
+                value: _durationDays,
                 decoration: const InputDecoration(
                   labelText: 'Grant duration',
                   border: OutlineInputBorder(),
