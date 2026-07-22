@@ -138,5 +138,52 @@ void main() {
         isFalse,
       );
     });
+
+    testWidgets('resets text styling to the defaults at a collapsed cursor', (
+      tester,
+    ) async {
+      final controller = QuillController.basic();
+      controller.updateSelection(
+        const TextSelection.collapsed(offset: 0),
+        ChangeSource.local,
+      );
+      controller.formatSelection(Attribute.bold);
+      controller.formatSelection(const ColorAttribute('#64D2FF'));
+      controller.formatSelection(const BackgroundAttribute('#FFF59D'));
+      controller.formatSelection(Attribute.checked);
+
+      await pumpToolbar(tester, controller);
+
+      await tester.tap(find.byTooltip('Reset text style'));
+      await tester.pump();
+
+      final attributes = controller.getSelectionStyle().attributes;
+      expect(attributes.containsKey(Attribute.bold.key), isFalse);
+      expect(attributes.containsKey(Attribute.color.key), isFalse);
+      expect(attributes.containsKey(Attribute.background.key), isFalse);
+      expect(attributes[Attribute.list.key]?.value, Attribute.checked.value);
+    });
+
+    testWidgets('does not reset a code block', (tester) async {
+      final controller = QuillController.basic();
+      controller.updateSelection(
+        const TextSelection.collapsed(offset: 0),
+        ChangeSource.local,
+      );
+      controller.formatSelection(Attribute.codeBlock);
+      controller.formatSelection(Attribute.bold);
+
+      await pumpToolbar(tester, controller);
+
+      await tester.tap(find.byTooltip('Reset text style'));
+      await tester.pump();
+
+      final attributes = controller.getSelectionStyle().attributes;
+      expect(attributes.containsKey(Attribute.bold.key), isFalse);
+      expect(
+        attributes[Attribute.codeBlock.key]?.value,
+        Attribute.codeBlock.value,
+      );
+    });
   });
 }
