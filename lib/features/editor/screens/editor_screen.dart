@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -57,6 +58,7 @@ import '../widgets/editor_stats.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 import '../utils/checklist_reorder.dart';
+import '../utils/shift_click_selection.dart';
 
 /// Note editor with markdown-like rich text editing
 ///
@@ -309,6 +311,7 @@ class _EditorScreenState extends State<EditorScreen>
   bool _didAttemptInitialSearchJump = false;
   bool _isSearchPanelVisible = false;
   bool _matchCase = false;
+  TextSelection? _selectionBeforeShiftClick;
   List<_EditorSearchMatch> _searchMatches = const <_EditorSearchMatch>[];
   int _currentSearchMatchIndex = -1;
   final Map<String, Future<Uint8List?>> _attachmentBytesFutures = {};
@@ -2626,6 +2629,35 @@ class _EditorScreenState extends State<EditorScreen>
                 scrollController: _scrollController,
                 configurations: QuillEditorConfigurations(
                   editorKey: _editorKey,
+                  onTapDown: (details, _) {
+                    _selectionBeforeShiftClick =
+                        _isShiftMouseClick(details.kind)
+                            ? _quillController.selection
+                            : null;
+                    return false;
+                  },
+                  onTapUp: (details, getPositionForOffset) {
+                    final selection = _selectionBeforeShiftClick;
+                    _selectionBeforeShiftClick = null;
+
+                    if (!_isShiftMouseClick(details.kind) ||
+                        selection == null ||
+                        !selection.isValid) {
+                      return false;
+                    }
+
+                    final targetOffset = _safeDocumentOffset(
+                      getPositionForOffset(details.globalPosition).offset,
+                    );
+                    _quillController.updateSelection(
+                      extendSelectionFromShiftClick(
+                        selection: selection,
+                        targetOffset: targetOffset,
+                      ),
+                      ChangeSource.local,
+                    );
+                    return true;
+                  },
                   embedBuilders: const [
                     TypeSyncKanbanEmbedBuilder(),
                     TypeSyncTableEmbedBuilder(),
@@ -2642,6 +2674,13 @@ class _EditorScreenState extends State<EditorScreen>
         ],
       ),
     );
+  }
+
+  bool _isShiftMouseClick(PointerDeviceKind? pointerKind) {
+    if (pointerKind != PointerDeviceKind.mouse) return false;
+    final keys = HardwareKeyboard.instance.logicalKeysPressed;
+    return keys.contains(LogicalKeyboardKey.shiftLeft) ||
+        keys.contains(LogicalKeyboardKey.shiftRight);
   }
 
   TextStyle _buildCustomEditorStyle(Attribute<dynamic> attribute) {
