@@ -104,6 +104,7 @@ class AuthService extends ChangeNotifier {
   String? _guestWorkspaceId;
   String? _pendingGuestImportWorkspaceId;
   String? _pendingEmailLinkEmail;
+  bool _nativePersistenceRepairAttempted = false;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -303,6 +304,8 @@ class AuthService extends ChangeNotifier {
         return true;
       }
 
+      await _repairNativeAuthPersistenceIfNeeded();
+
       // Attempt Firebase sign in
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -408,6 +411,8 @@ class AuthService extends ChangeNotifier {
         _setLoading(false);
         return true;
       }
+
+      await _repairNativeAuthPersistenceIfNeeded();
 
       // Create Firebase Auth account
       final credential = await _firebaseAuth.createUserWithEmailAndPassword(
@@ -929,6 +934,44 @@ class AuthService extends ChangeNotifier {
   // ===========================================
   // PRIVATE METHODS
   // ===========================================
+
+  /// Clears an unreadable Android Firebase Auth cache before the next login.
+  ///
+  /// Firebase Auth 23.2.1 encrypted its Android preferences with a device-local
+  /// key while Android Auto Backup could restore the encrypted preferences on
+  /// another device. In that state Firebase emits an initial null user on every
+  /// cold start. A native sign-out clears that damaged disk cache; the login
+  /// that immediately follows can then persist a fresh session.
+  Future<void> _repairNativeAuthPersistenceIfNeeded() async {
+    if (_nativePersistenceRepairAttempted ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        !_authPersistenceDiagnostics.suspectedUnexpectedSignOut) {
+      return;
+    }
+
+    _nativePersistenceRepairAttempted = true;
+    _diagnostics.warning(
+      'AuthService',
+      'AUTH_FLOW repairing unreadable Android Firebase Auth persistence before sign-in',
+    );
+
+    try {
+      await _firebaseAuth.signOut();
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW Android Firebase Auth persistence repair completed',
+      );
+    } catch (error) {
+      // Do not block a valid interactive login if Firebase cannot clear an
+      // already-signed-out cache. The current SDK may still replace it when
+      // the new credential is persisted.
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW Android Firebase Auth persistence repair failed: $error',
+      );
+    }
+  }
 
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {

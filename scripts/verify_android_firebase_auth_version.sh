@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly EXPECTED_VERSION="24.0.1"
+readonly EXPECTED_VERSION="24.2.0"
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly BUILD_VARIANT="${1:-release}"
 readonly REPORT_PATH="$REPO_ROOT/build/app/outputs/firebase-auth-version/${BUILD_VARIANT}.txt"

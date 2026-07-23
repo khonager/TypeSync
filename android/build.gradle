@@ -1,5 +1,5 @@
 buildscript {
-    ext.firebase_auth_version = '24.0.1'
+    ext.firebase_auth_version = '24.2.0'
     ext.kotlin_version = '2.1.0'
     repositories {
         google()
@@ -29,9 +29,9 @@ allprojects {
             force 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
             // firebase_core 3.15.2 resolves Firebase Auth 23.2.1. That native
             // release has a confirmed cold-start regression which signs out
-            // users whose Auth data was restored by Android backup. Pin the
-            // fixed 24.0.1 release (24.0.0 has a separate startup regression)
-            // until FlutterFire ships a BoM containing 24.0.1 or newer.
+            // users whose encrypted Auth data was restored by Android backup.
+            // Pin the current fixed release until FlutterFire ships a BoM
+            // containing Firebase Auth 24.0.1 or newer.
             force "com.google.firebase:firebase-auth:$firebase_auth_version"
         }
     }
@@ -48,4 +48,3 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-

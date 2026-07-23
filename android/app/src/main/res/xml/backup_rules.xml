@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Firebase Auth preferences contain encrypted, device-bound credentials.
+  Restoring them on another device can make the native Auth cache unreadable.
+  Keep the rest of TypeSync's backup eligible, but never transfer this store.
+  The suffix is FirebaseApp.getPersistenceKey() for TypeSync's default Android
+  app: URL-safe base64("[DEFAULT]") + "+" + URL-safe base64(applicationId).
+-->
+<full-backup-content>
+    <exclude
+        domain="sharedpref"
+        path="com.google.firebase.auth.api.Store.W0RFRkFVTFRd+MTo0NjE0NjUxOTkyNzY6YW5kcm9pZDo0M2Y4OWUwNDk2M2E0MzU3YmQzNTA5.xml" />
+</full-backup-content>
