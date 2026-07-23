@@ -191,7 +191,9 @@ jobs:
   build-android-dev:
     name: Build Android Dev APK
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    # Build an artifact for every unstable commit. A rerun keeps the original
+    # push event, so it must remain eligible here as well as manual dispatches.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/unstable') || github.event_name == 'workflow_dispatch'
     env:
       REVENUECAT_ANDROID_API_KEY: ${{ secrets.REVENUECAT_ANDROID_API_KEY }}
 
