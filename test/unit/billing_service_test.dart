@@ -7,6 +7,40 @@ import 'package:typesync/core/services/storage_service.dart';
 
 void main() {
   group('BillingService', () {
+    test('rejects missing and test RevenueCat keys in release builds', () {
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          '',
+          isDebugBuild: false,
+        ),
+        isFalse,
+      );
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          RevenueCatBillingConfig.testPublicApiKey,
+          isDebugBuild: false,
+        ),
+        isFalse,
+      );
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          'goog_public_sdk_key',
+          isDebugBuild: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('allows an explicitly configured test key only in debug builds', () {
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          RevenueCatBillingConfig.testPublicApiKey,
+          isDebugBuild: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('maps active RevenueCat entitlements to the highest TypeSync plan',
         () {
       expect(

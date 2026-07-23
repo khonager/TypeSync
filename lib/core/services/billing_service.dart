@@ -16,13 +16,13 @@ import '../models/user.dart';
 import 'storage_service.dart';
 
 class RevenueCatBillingConfig {
-  static const defaultPublicApiKey = 'test_fewInKsVqvMRCAmhNYUTFYLqxFT';
+  static const testPublicApiKey = 'test_fewInKsVqvMRCAmhNYUTFYLqxFT';
   static const androidApiKey =
       String.fromEnvironment('REVENUECAT_ANDROID_API_KEY');
   static const appleApiKey = String.fromEnvironment('REVENUECAT_APPLE_API_KEY');
   static const webApiKey = String.fromEnvironment(
     'REVENUECAT_WEB_API_KEY',
-    defaultValue: defaultPublicApiKey,
+    defaultValue: testPublicApiKey,
   );
 
   static const typeSyncLiteWebPurchaseUrl =
@@ -61,15 +61,27 @@ class RevenueCatBillingConfig {
     if (kIsWeb) return webApiKey;
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return androidApiKey.isEmpty ? defaultPublicApiKey : androidApiKey;
+        return androidApiKey;
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
-        return appleApiKey.isEmpty ? defaultPublicApiKey : appleApiKey;
+        return appleApiKey;
       case TargetPlatform.fuchsia:
       case TargetPlatform.linux:
       case TargetPlatform.windows:
         return '';
     }
+  }
+
+  static bool isTestApiKey(String apiKey) =>
+      apiKey.trim().toLowerCase().startsWith('test_');
+
+  static bool isNativeApiKeyUsable(
+    String apiKey, {
+    required bool isDebugBuild,
+  }) {
+    final normalized = apiKey.trim();
+    if (normalized.isEmpty) return false;
+    return isDebugBuild || !isTestApiKey(normalized);
   }
 
   static String webPurchaseUrlFor(SubscriptionTier tier) {
@@ -202,7 +214,18 @@ class BillingService extends ChangeNotifier {
     final apiKey = RevenueCatBillingConfig.platformApiKey;
     if (apiKey.isEmpty) {
       _isConfigured = false;
-      _errorMessage = 'RevenueCat is not configured for this platform yet.';
+      _errorMessage =
+          'Purchases are not configured in this build. Add the RevenueCat key for this platform.';
+      notifyListeners();
+      return;
+    }
+    if (!RevenueCatBillingConfig.isNativeApiKeyUsable(
+      apiKey,
+      isDebugBuild: kDebugMode,
+    )) {
+      _isConfigured = false;
+      _errorMessage =
+          'This release contains a RevenueCat test key. Install a build configured with the platform production key.';
       notifyListeners();
       return;
     }

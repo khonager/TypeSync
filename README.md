@@ -184,11 +184,16 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    ```bash
    flutter build web --dart-define=REVENUECAT_WEB_API_KEY=public_web_key
    ```
-   - For native builds, pass platform SDK keys when they are available:
+   - Native builds never fall back to the RevenueCat test key. Pass the
+     platform production SDK key:
    ```bash
    flutter build apk --dart-define=REVENUECAT_ANDROID_API_KEY=public_android_key
    flutter build ios --dart-define=REVENUECAT_APPLE_API_KEY=public_apple_key
    ```
+   - Add `REVENUECAT_ANDROID_API_KEY` as a GitHub Actions secret and
+     `REVENUECAT_APPLE_API_KEY` as a Codemagic environment variable. Mobile
+     release jobs fail before building if either key is missing or starts with
+     `test_`, preventing another store build that RevenueCat will close.
    - Store the RevenueCat webhook token before deploying Functions:
    ```bash
    firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH_TOKEN

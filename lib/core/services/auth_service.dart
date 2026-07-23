@@ -42,6 +42,8 @@ class AuthService extends ChangeNotifier {
 
   // Firedart instances for Linux fallback
   fd.FirebaseAuth? _fdAuth;
+  StreamSubscription<firebase.User?>? _firebaseAuthSubscription;
+  StreamSubscription<bool>? _firedartAuthSubscription;
 
   // Lazy getters for Firebase instances
   firebase.FirebaseAuth get _firebaseAuth {
@@ -170,97 +172,38 @@ class AuthService extends ChangeNotifier {
   // ===========================================
 
   AuthService() {
-    _loadPreferences();
-    // Only listen to auth state changes if Firebase is initialized
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    // Preferences must be loaded before the first auth event is handled. In
+    // particular, a persisted guest workspace may only be restored after
+    // Firebase has finished restoring its own native session and reports that
+    // there is no signed-in user.
+    await _loadPreferences();
+
     try {
       if (Firebase.apps.isNotEmpty) {
-        // Sync check for signed in state to prevent login screen flash on Android/iOS/Web
-        final firebaseUser = _firebaseAuth.currentUser;
-        if (firebaseUser != null) {
-          _setCurrentUserFromFirebase(firebaseUser);
-          _isInitialized = true;
-
-          // Authentication is already restored. Enrich the local Firebase
-          // identity with profile data without making login depend on a
-          // Firestore request succeeding during startup.
-          unawaited(
-            _loadUserData(firebaseUser.uid, firebaseUser: firebaseUser),
-          );
-        }
-
-        _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+        // Firebase documents that the first event is emitted only after native
+        // credentials have been restored. Treat this stream as the single
+        // source of truth instead of racing it with currentUser checks and
+        // preference-loading timers.
+        final authStateChanges = _firebaseAuth.authStateChanges();
+        _firebaseAuthSubscription = authStateChanges.listen(
+          (firebaseUser) => unawaited(_onAuthStateChanged(firebaseUser)),
+          onError: _onFirebaseAuthStateError,
+        );
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-        // Sync check for signed in state to prevent login screen flash
-        bool isSignedIn = false;
-        try {
-          isSignedIn = _firedartAuth.isSignedIn;
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Firedart check signed in failed: $e');
-          }
-        }
-
-        if (isSignedIn) {
-          _currentUser = User(
-            id: _firedartAuth.userId,
-            email: '',
-            displayName: null,
-            createdAt: DateTime.now(),
-            lastSignIn: DateTime.now(),
-            emailVerified: true,
-          );
-
-          // Asynchronously fetch complete user data
-          _firedartAuth.getUser().then((fdUser) {
-            _onFiredartAuthChanged(fdUser);
-          }).catchError((e) {
-            // Silently handle get user error but ensure we mark as initialized
-            if (kDebugMode) {
-              debugPrint('Firedart getUser failed: $e');
-            }
-            _isInitialized = true;
-            notifyListeners();
-          });
-        } else {
-          // Mark as initialized if not signed in
-          _isInitialized = true;
-          notifyListeners();
-        }
-
-        // Listen to Firedart auth changes
-        try {
-          _firedartAuth.signInState.listen((signedIn) async {
-            if (signedIn) {
-              try {
-                final fdUser = await _firedartAuth.getUser();
-                _onFiredartAuthChanged(fdUser);
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('Firedart listen getUser failed: $e');
-                }
-                _isInitialized = true;
-                notifyListeners();
-              }
-            } else {
-              _onFiredartAuthChanged(null);
-            }
-          });
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Firedart listen failed: $e');
-          }
-          _isInitialized = true;
-          notifyListeners();
-        }
+        await _initializeFiredartAuth();
       } else {
-        // Local-only mode or platform not supported
-        _isInitialized = true;
-        notifyListeners();
+        await _restoreInitialGuestOrSignedOut();
       }
     } catch (e) {
-      // Firebase not initialized
-      _isInitialized = true;
-      notifyListeners();
+      await _restoreInitialGuestOrSignedOut();
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW auth initialization failed: $e',
+      );
       if (kDebugMode) {
         debugPrint(
           'Firebase Auth not available: ${e.toString().split(':').first}',
@@ -284,47 +227,6 @@ class AuthService extends ChangeNotifier {
         'AuthService',
         'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId pendingEmailLink=$_pendingEmailLinkEmail isAuthenticated=$isAuthenticated',
       );
-
-      final shouldDelayGuestRestore = !kIsWeb &&
-          defaultTargetPlatform != TargetPlatform.linux &&
-          Firebase.apps.isNotEmpty;
-      if (shouldDelayGuestRestore && !isAuthenticated) {
-        try {
-          final restoredUser = await _firebaseAuth
-              .authStateChanges()
-              .first
-              .timeout(const Duration(seconds: 2), onTimeout: () => null);
-          if (restoredUser != null || _firebaseAuth.currentUser != null) {
-            _diagnostics.info(
-              'AuthService',
-              'AUTH_FLOW skipped guest workspace restore because Firebase session restored user=${restoredUser?.uid ?? _firebaseAuth.currentUser?.uid}',
-            );
-            notifyListeners();
-            return;
-          }
-        } catch (e) {
-          _diagnostics.warning(
-            'AuthService',
-            'AUTH_FLOW guest workspace restore auth wait failed: $e',
-          );
-        }
-      }
-
-      if (!isAuthenticated &&
-          _guestWorkspaceId != null &&
-          _guestWorkspaceId!.isNotEmpty) {
-        _diagnostics.info(
-          'AuthService',
-          'AUTH_FLOW restoring guest workspace=$_guestWorkspaceId from preferences',
-        );
-        await _startGuestSession(
-          workspaceId: _guestWorkspaceId,
-          persistWorkspace: false,
-        );
-        return;
-      }
-
-      notifyListeners();
     } catch (e) {
       debugPrint('Error loading preferences: $e');
     }
@@ -1025,16 +927,82 @@ class AuthService extends ChangeNotifier {
       _isInitialized = true;
       notifyListeners();
 
+      // A real Firebase session always wins over an old guest-workspace
+      // preference left by an earlier app version.
+      if (_guestWorkspaceId != null) {
+        await _clearGuestWorkspacePreference();
+      }
+
       // Firebase Auth has already established the session at this point.
       // Firestore only supplies additional profile fields and must not decide
       // whether the user is authenticated.
       await _loadUserData(firebaseUser.uid, firebaseUser: firebaseUser);
-    } else if (firebaseUser == null && !_isGuestMode) {
-      // Only clear user if not in guest mode
+    } else if (!_isGuestMode) {
+      if (!_isInitialized) {
+        await _restoreInitialGuestOrSignedOut();
+        return;
+      }
+
       _currentUser = null;
       _isInitialized = true;
       notifyListeners();
     }
+  }
+
+  void _onFirebaseAuthStateError(Object error, StackTrace stackTrace) {
+    _diagnostics.error(
+      'AuthService',
+      'AUTH_FLOW Firebase auth state listener failed: $error',
+    );
+    if (!_isInitialized) {
+      unawaited(_restoreInitialGuestOrSignedOut());
+    }
+  }
+
+  Future<void> _initializeFiredartAuth() async {
+    if (_firedartAuth.isSignedIn) {
+      await _onFiredartAuthChanged(await _firedartAuth.getUser());
+    } else {
+      await _restoreInitialGuestOrSignedOut();
+    }
+
+    _firedartAuthSubscription = _firedartAuth.signInState.listen(
+      (signedIn) async {
+        if (signedIn) {
+          await _onFiredartAuthChanged(await _firedartAuth.getUser());
+        } else {
+          await _onFiredartAuthChanged(null);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        _diagnostics.error(
+          'AuthService',
+          'AUTH_FLOW Firedart auth state listener failed: $error',
+        );
+      },
+    );
+  }
+
+  Future<void> _restoreInitialGuestOrSignedOut() async {
+    if (_isInitialized) return;
+
+    final guestWorkspaceId = _guestWorkspaceId;
+    if (guestWorkspaceId != null && guestWorkspaceId.isNotEmpty) {
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW restoring guest workspace=$guestWorkspaceId after auth initialization',
+      );
+      await _startGuestSession(
+        workspaceId: guestWorkspaceId,
+        persistWorkspace: false,
+      );
+      return;
+    }
+
+    _currentUser = null;
+    _isGuestMode = false;
+    _isInitialized = true;
+    notifyListeners();
   }
 
   void _setCurrentUserFromFirebase(firebase.User firebaseUser) {
@@ -1177,6 +1145,14 @@ class AuthService extends ChangeNotifier {
     }
     _isInitialized = true;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _firebaseAuthSubscription?.cancel();
+    _firedartAuthSubscription?.cancel();
+    _httpClient.close();
+    super.dispose();
   }
 
   /// Map Firebase error codes to user-friendly messages

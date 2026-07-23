@@ -38,12 +38,26 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
 
+      - name: Validate RevenueCat Apple key
+        script: |
+          if [ -z "$REVENUECAT_APPLE_API_KEY" ]; then
+            echo "REVENUECAT_APPLE_API_KEY is required for TestFlight releases"
+            exit 1
+          fi
+          case "$REVENUECAT_APPLE_API_KEY" in
+            test_*)
+              echo "A RevenueCat test key cannot be used in a TestFlight release"
+              exit 1
+              ;;
+          esac
+
       - name: Flutter build ipa
         script: |
           flutter build ipa --release \
             --no-tree-shake-icons \
             --build-name=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//') \
             --build-number=$(grep '^version:' pubspec.yaml | sed 's/.*+//') \
+            --dart-define=REVENUECAT_APPLE_API_KEY="$REVENUECAT_APPLE_API_KEY" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
