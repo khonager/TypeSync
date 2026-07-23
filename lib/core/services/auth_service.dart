@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../firebase_options.dart';
 import '../models/user.dart';
+import 'auth_persistence_diagnostics.dart';
 import 'diagnostics_service.dart';
 
 /// Service for managing user authentication
@@ -34,6 +35,8 @@ class AuthService extends ChangeNotifier {
   static const String _pendingEmailLinkEmailKey = 'pending_email_link_email';
 
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+  final AuthPersistenceDiagnostics _authPersistenceDiagnostics =
+      AuthPersistenceDiagnostics.instance;
   final http.Client _httpClient = http.Client();
 
   // Firebase Auth instance (lazy initialization)
@@ -308,6 +311,7 @@ class AuthService extends ChangeNotifier {
 
       // Load user data from Firestore
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -412,6 +416,7 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -496,6 +501,9 @@ class AuthService extends ChangeNotifier {
         } else {
           await _firebaseAuth.signOut();
         }
+        await _authPersistenceDiagnostics.markExplicitlySignedOut(
+          reason: 'continue-as-guest',
+        );
       }
 
       await _startGuestSession(workspaceId: workspaceId, setLoading: false);
@@ -574,6 +582,9 @@ class AuthService extends ChangeNotifier {
         } else {
           await _firebaseAuth.signOut();
         }
+        await _authPersistenceDiagnostics.markExplicitlySignedOut(
+          reason: 'user-sign-out',
+        );
       }
       _currentUser = null;
       _isGuestMode = false;
@@ -721,6 +732,7 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -822,6 +834,9 @@ class AuthService extends ChangeNotifier {
           .catchError((_) {});
       await _deleteUserStorageFolder(uid);
       await firebaseUser.delete();
+      await _authPersistenceDiagnostics.markExplicitlySignedOut(
+        reason: 'account-deleted',
+      );
 
       _currentUser = null;
       _isGuestMode = false;
@@ -917,11 +932,13 @@ class AuthService extends ChangeNotifier {
 
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
+    _authPersistenceDiagnostics.recordNativeAuthState(firebaseUser?.uid);
     _diagnostics.info(
       'AuthService',
       'AUTH_FLOW firebase auth state changed user=${firebaseUser?.uid} guestMode=$_isGuestMode initialized=$_isInitialized',
     );
     if (firebaseUser != null) {
+      await _authPersistenceDiagnostics.markSignedIn(firebaseUser.uid);
       _isGuestMode = false;
       _setCurrentUserFromFirebase(firebaseUser);
       _isInitialized = true;

@@ -300,11 +300,29 @@ The project includes automated CI/CD with GitHub Actions:
 flutter test
 
 # Check formatting
-dart format lib test
+dart format lib test integration_test
 
 # Analyze code
 flutter analyze
+
+# After building Android, verify the packaged native Firebase Auth version
+flutter build apk --release
+bash scripts/verify_android_firebase_auth_version.sh release
 ```
+
+### Android cold-restart authentication test
+
+The repository includes a dedicated probe that signs in against the local
+Firebase Auth emulator, force-stops the Android process, relaunches it, and
+fails unless Firebase restores the same user:
+
+```bash
+bash scripts/test_android_auth_persistence.sh
+```
+
+Run it with one Android Studio emulator connected and the Firebase CLI
+installed. For safety, the script refuses physical devices because it clears
+the TypeSync app data before the probe.
 
 ### Changelog Workflow
 - Canonical source: `changelog/changelog.yaml`

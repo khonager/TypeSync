@@ -94,3 +94,58 @@ flutter {
 dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
 }
+
+android.applicationVariants.all { variant ->
+    def capitalizedVariant = variant.name.capitalize()
+    def versionReport = rootProject.file(
+        "../build/app/outputs/firebase-auth-version/${variant.name}.txt"
+    )
+
+    def verifyFirebaseAuthTask = tasks.register(
+        "verify${capitalizedVariant}FirebaseAuthVersion"
+    ) {
+        outputs.file(versionReport)
+        outputs.upToDateWhen { false }
+
+        doLast {
+            def runtimeClasspath = configurations.getByName(
+                "${variant.name}RuntimeClasspath"
+            )
+            def authComponents = runtimeClasspath.incoming.resolutionResult
+                .allComponents
+                .findAll { component ->
+                    component.moduleVersion?.group == 'com.google.firebase' &&
+                        component.moduleVersion?.name == 'firebase-auth'
+                }
+            def resolvedVersions = authComponents
+                .collect { it.moduleVersion.version }
+                .unique()
+
+            if (resolvedVersions.size() != 1) {
+                throw new GradleException(
+                    "Expected one resolved firebase-auth dependency, found " +
+                    "${resolvedVersions ?: 'none'}."
+                )
+            }
+
+            def resolvedVersion = resolvedVersions.first()
+            versionReport.parentFile.mkdirs()
+            versionReport.text = "$resolvedVersion\n"
+
+            if (resolvedVersion != rootProject.ext.firebase_auth_version) {
+                throw new GradleException(
+                    "Expected firebase-auth ${rootProject.ext.firebase_auth_version}, " +
+                    "but Gradle resolved $resolvedVersion."
+                )
+            }
+
+            logger.lifecycle(
+                "Verified ${variant.name} uses firebase-auth $resolvedVersion."
+            )
+        }
+    }
+
+    variant.preBuildProvider.configure {
+        dependsOn verifyFirebaseAuthTask
+    }
+}

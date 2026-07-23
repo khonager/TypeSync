@@ -107,6 +107,9 @@ jobs:
             --dart-define=IS_DEV=true \
             --dart-define=REVENUECAT_ANDROID_API_KEY="$REVENUECAT_ANDROID_API_KEY"
 
+      - name: Verify packaged Android Firebase Auth SDK
+        run: bash scripts/verify_android_firebase_auth_version.sh release
+
       - name: Build Linux
         run: flutter build linux --release
 

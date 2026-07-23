@@ -4,9 +4,11 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_persistence_diagnostics.dart';
 import '../../../core/routes/app_router.dart';
 import '../../../core/utils/email_validation.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
@@ -61,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
+    final authDiagnostics = context.watch<AuthPersistenceDiagnostics>();
 
     return Scaffold(
       body: Column(
@@ -115,6 +118,35 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 32),
+
+                        if (authDiagnostics.suspectedUnexpectedSignOut)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color:
+                                  Theme.of(context).colorScheme.errorContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Firebase did not restore the previous '
+                                  'session even though app storage survived.',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onErrorContainer,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                TextButton(
+                                  onPressed: _showAuthDiagnostics,
+                                  child: const Text('View startup report'),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         // Error message (expandable)
                         if (authService.hasError)
@@ -244,6 +276,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           textAlign: TextAlign.center,
                         ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _showAuthDiagnostics,
+                          icon: const Icon(Icons.bug_report_outlined, size: 18),
+                          label: const Text('Authentication diagnostics'),
+                        ),
                       ],
                     ),
                   ),
@@ -260,6 +298,55 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       builder: (context) => _ForgotPasswordDialog(),
+    );
+  }
+
+  void _showAuthDiagnostics() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Authentication diagnostics'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 640,
+              maxHeight: 440,
+            ),
+            child: Consumer<AuthPersistenceDiagnostics>(
+              builder: (context, diagnostics, child) {
+                return SingleChildScrollView(
+                  child: SelectableText(
+                    diagnostics.exportText(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                        ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final report =
+                    context.read<AuthPersistenceDiagnostics>().exportText();
+                await Clipboard.setData(ClipboardData(text: report));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Authentication report copied'),
+                  ),
+                );
+              },
+              child: const Text('Copy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

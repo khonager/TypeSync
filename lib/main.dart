@@ -28,6 +28,7 @@ import 'core/services/theme_service.dart';
 import 'core/services/attachment_preferences_service.dart';
 import 'core/services/local_folder_sync_service.dart';
 import 'core/services/diagnostics_service.dart';
+import 'core/services/auth_persistence_diagnostics.dart';
 import 'core/services/plain_text_quill_clipboard_service.dart';
 import 'core/services/typesync_spellchecker_service.dart';
 import 'core/utils/web_spellcheck_suppressor_stub.dart'
@@ -50,6 +51,8 @@ void main() async {
   // Ensure Flutter bindings are initialized before any async operations
   WidgetsFlutterBinding.ensureInitialized();
 
+  await AuthPersistenceDiagnostics.instance.initialize();
+
   suppressBrowserSpellcheckForFlutterInputs();
   await TypeSyncSpellcheckerService.instance.initialize();
   SpellCheckerServiceProvider.setNewCheckerService(
@@ -64,7 +67,18 @@ void main() async {
   // Initialize Firebase for cloud sync and authentication
   try {
     await _initializeFirebase();
+    final firebaseApp = Firebase.app();
+    AuthPersistenceDiagnostics.instance.recordFirebaseInitialization(
+      succeeded: true,
+      appName: firebaseApp.name,
+      appId: firebaseApp.options.appId,
+      projectId: firebaseApp.options.projectId,
+    );
   } catch (e) {
+    AuthPersistenceDiagnostics.instance.recordFirebaseInitialization(
+      succeeded: false,
+      error: e,
+    );
     // Silently handle Firebase initialization errors
     // On Linux and some platforms, Firebase might not be fully supported
     // The app can run in offline mode without Firebase
@@ -197,6 +211,11 @@ class TypeSyncApp extends StatelessWidget {
         // Diagnostics log for user-visible errors and warnings
         ChangeNotifierProvider<DiagnosticsService>.value(
           value: DiagnosticsService.instance,
+        ),
+
+        // Persistent native-auth startup report, including while logged out.
+        ChangeNotifierProvider<AuthPersistenceDiagnostics>.value(
+          value: AuthPersistenceDiagnostics.instance,
         ),
 
         // Local folder sync service for syncing with local folders
