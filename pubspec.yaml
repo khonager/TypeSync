@@ -97,6 +97,9 @@ flutter:
 
   assets:
     - assets/adi-registration.properties
+    - assets/billing_config.json
     - assets/data/changelog.json
+    - assets/hunspell/en_US/
+    - assets/hunspell/de_DE/
 
   # Using Google Fonts instead of bundled fonts

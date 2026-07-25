@@ -31,8 +31,22 @@ service cloud.firestore {
         'revenueCatEventType',
         'revenueCatProductId',
         'revenueCatEntitlementIds',
+        'revenueCatPlanId',
+        'revenueCatSubscriptionStatus',
+        'revenueCatExpiresAt',
+        'revenueCatEventTimestampMs',
+        'adminGrantPlanId',
+        'adminGrantExpiresAt',
+        'adminGrantGrantedBy',
+        'adminGrantGrantedAt',
         'gumroadLicenseKey',
         'patreonTierName'
+      ];
+    }
+
+    function storageMeterFields() {
+      return [
+        'storageUsedBytes'
       ];
     }
 
@@ -54,6 +68,14 @@ service cloud.firestore {
           'revenueCatEventType',
           'revenueCatProductId',
           'revenueCatEntitlementIds',
+          'revenueCatPlanId',
+          'revenueCatSubscriptionStatus',
+          'revenueCatExpiresAt',
+          'revenueCatEventTimestampMs',
+          'adminGrantPlanId',
+          'adminGrantExpiresAt',
+          'adminGrantGrantedBy',
+          'adminGrantGrantedAt',
           'gumroadLicenseKey',
           'patreonTierName'
         ]);
@@ -65,6 +87,12 @@ service cloud.firestore {
         .hasAny(billingFields());
     }
 
+    function storageMeterUnchanged() {
+      return !request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny(storageMeterFields());
+    }
+
     // User profile document
     match /users/{userId} {
       allow create: if isSignedIn() &&
@@ -73,7 +101,8 @@ service cloud.firestore {
       allow read, delete: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSignedIn() &&
         request.auth.uid == userId &&
-        billingUnchanged();
+        billingUnchanged() &&
+        storageMeterUnchanged();
 
       // Nested app settings
       match /settings/{settingId} {

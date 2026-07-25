@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/user.dart';
+import '../../../core/services/admin_entitlement_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/billing_service.dart';
 import '../../../core/services/storage_service.dart';
@@ -33,6 +34,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (userId != _configuredUserId) {
       _configuredUserId = userId;
       unawaited(billing.configureForUser(userId));
+      unawaited(context.read<AdminEntitlementService>().refreshAccess(userId));
     }
   }
 
@@ -43,7 +45,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     await billing.refreshCustomerInfo();
     final userId = auth.userId;
     if (userId != null) {
-      await storage.loadStorageInfo(userId, fallbackUser: auth.currentUser);
+      await storage.loadStorageInfo(
+        userId,
+        fallbackUser: auth.currentUser,
+        runAudit: true,
+      );
     }
   }
 
@@ -136,6 +142,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Widget build(BuildContext context) {
     final storageService = context.watch<StorageService>();
     final billingService = context.watch<BillingService>();
+    final adminEntitlements = context.watch<AdminEntitlementService>();
     final authService = context.watch<AuthService>();
     final plans = StorageService.subscriptionPlans;
 
@@ -165,6 +172,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             billing: billingService,
             onManage: billingService.openCustomerPortal,
           ),
+          if (adminEntitlements.isAdmin) ...[
+            const SizedBox(height: 20),
+            const _AdminEntitlementCard(),
+          ],
           const SizedBox(height: 20),
           if (!billingService.canStartPurchase)
             _SetupNotice(billing: billingService)
@@ -175,7 +186,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             final isCurrentPlan = plan.tier == storageService.currentTier;
             final isPurchaseAvailable = plan.tier == SubscriptionTier.free ||
                 isCurrentPlan ||
-                billingService.canStartPurchase;
+                billingService.canPurchasePlan(plan.tier);
             return _PlanCard(
               plan: plan,
               isCurrentPlan: isCurrentPlan,
@@ -241,10 +252,27 @@ class _CurrentPlanCard extends StatelessWidget {
                         storage.currentTier.displayName,
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      Text(
-                        storage.usageFormatted,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                      if (storage.isLoading && !storage.hasLoadedStorageInfo)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Loading usage...',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          storage.usageFormatted,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                     ],
                   ),
                 ),
@@ -262,7 +290,9 @@ class _CurrentPlanCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: storage.usagePercent.clamp(0, 1),
+                value: storage.isLoading && !storage.hasLoadedStorageInfo
+                    ? null
+                    : storage.usagePercent.clamp(0, 1),
                 backgroundColor: Colors.grey.withValues(alpha: 0.3),
                 minHeight: 8,
               ),
@@ -276,6 +306,170 @@ class _CurrentPlanCard extends StatelessWidget {
                     ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminEntitlementCard extends StatefulWidget {
+  const _AdminEntitlementCard();
+
+  @override
+  State<_AdminEntitlementCard> createState() => _AdminEntitlementCardState();
+}
+
+class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
+  final _emailController = TextEditingController();
+  SubscriptionTier _tier = SubscriptionTier.basic;
+  int? _durationDays;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter the account email address.')),
+      );
+      return;
+    }
+
+    final admin = context.read<AdminEntitlementService>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await admin.setEntitlement(
+        email: email,
+        tier: _tier,
+        durationDays: _tier == SubscriptionTier.free ? null : _durationDays,
+      );
+      if (!mounted) return;
+      _emailController.clear();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            _tier == SubscriptionTier.free
+                ? 'Complimentary access revoked for ${result.email}.'
+                : '${result.effectiveTier.displayName} granted to ${result.email}${result.expiresAt == null ? '' : ' until ${_formatDate(result.expiresAt!)}'}.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(admin.errorMessage ?? 'Could not update access.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _formatDate(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final admin = context.watch<AdminEntitlementService>();
+    final theme = Theme.of(context);
+
+    return Card(
+      color: theme.colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Admin: complimentary access',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Grant a plan to a registered account. Paid subscriptions remain intact; this only adds or removes the admin grant.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _emailController,
+              enabled: !admin.isLoading,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Account email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<SubscriptionTier>(
+              key: ValueKey(_tier),
+              // `initialValue` was added after the Flutter version used in CI.
+              // ignore: deprecated_member_use
+              value: _tier,
+              decoration: const InputDecoration(
+                labelText: 'Plan',
+                border: OutlineInputBorder(),
+              ),
+              items: SubscriptionTier.values
+                  .map(
+                    (tier) => DropdownMenuItem(
+                      value: tier,
+                      child: Text(
+                        tier == SubscriptionTier.free
+                            ? 'Free — revoke complimentary access'
+                            : tier.displayName,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: admin.isLoading
+                  ? null
+                  : (tier) => setState(() => _tier = tier!),
+            ),
+            if (_tier != SubscriptionTier.free) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int?>(
+                key: ValueKey(_durationDays),
+                // `initialValue` was added after the Flutter version used in CI.
+                // ignore: deprecated_member_use
+                value: _durationDays,
+                decoration: const InputDecoration(
+                  labelText: 'Grant duration',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('Until revoked')),
+                  DropdownMenuItem(value: 30, child: Text('30 days')),
+                  DropdownMenuItem(value: 365, child: Text('1 year')),
+                ],
+                onChanged: admin.isLoading
+                    ? null
+                    : (days) => setState(() => _durationDays = days),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: admin.isLoading ? null : _submit,
+                icon: admin.isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.admin_panel_settings_outlined),
+                label: Text(
+                  _tier == SubscriptionTier.free
+                      ? 'Revoke grant'
+                      : 'Grant access',
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -319,8 +513,8 @@ class _PlatformNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       RevenueCatBillingConfig.supportsRevenueCatSdk
-          ? 'TypeSync Lite renews monthly through RevenueCat.'
-          : 'TypeSync Lite renews monthly through the external checkout page.',
+          ? 'Plans renew monthly through RevenueCat.'
+          : 'Available plans renew monthly through the external checkout page.',
       style: Theme.of(context).textTheme.bodySmall,
     );
   }

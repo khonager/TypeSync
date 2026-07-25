@@ -37,6 +37,9 @@ class FileGrid extends StatelessWidget {
   final VoidCallback? onDragStarted;
   final ValueChanged<Offset>? onDragPositionChanged;
   final VoidCallback? onDragEnded;
+  final Set<String> selectedNoteIds;
+  final ValueChanged<String>? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
 
   const FileGrid({
     required this.notes,
@@ -47,6 +50,9 @@ class FileGrid extends StatelessWidget {
     this.onDragStarted,
     this.onDragPositionChanged,
     this.onDragEnded,
+    this.selectedNoteIds = const {},
+    this.onSelectionToggle,
+    this.dragDataFor,
     super.key,
   });
 
@@ -72,6 +78,11 @@ class FileGrid extends StatelessWidget {
           onDragStarted: onDragStarted,
           onDragPositionChanged: onDragPositionChanged,
           onDragEnded: onDragEnded,
+          isSelected: selectedNoteIds.contains(notes[index].id),
+          onSelectionToggle: onSelectionToggle == null
+              ? null
+              : () => onSelectionToggle!(notes[index].id),
+          dragDataFor: dragDataFor,
         ),
         childCount: notes.length,
       ),
@@ -89,6 +100,9 @@ class FileGridItem extends StatelessWidget {
   final VoidCallback? onDragStarted;
   final ValueChanged<Offset>? onDragPositionChanged;
   final VoidCallback? onDragEnded;
+  final bool isSelected;
+  final VoidCallback? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
 
   const FileGridItem({
     required this.note,
@@ -99,6 +113,9 @@ class FileGridItem extends StatelessWidget {
     this.onDragStarted,
     this.onDragPositionChanged,
     this.onDragEnded,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.dragDataFor,
     super.key,
   });
 
@@ -122,11 +139,9 @@ class FileGridItem extends StatelessWidget {
         : AppTheme.darkSurface;
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
-    final textColor = AppColorPalette.getContrastingTextColor(bgColor);
     final child = _buildFileContent(
       context,
       icon: icon,
-      textColor: textColor,
       iconColor: Colors.white54,
     );
     final childWhenDragging = Opacity(
@@ -134,7 +149,6 @@ class FileGridItem extends StatelessWidget {
       child: _buildFileContent(
         context,
         icon: icon,
-        textColor: textColor,
         iconColor: iconColor,
       ),
     );
@@ -154,7 +168,7 @@ class FileGridItem extends StatelessWidget {
 
     if (useLongPressDrag) {
       return LongPressDraggable<String>(
-        data: 'note:${note.id}',
+        data: dragDataFor?.call('note:${note.id}') ?? 'note:${note.id}',
         feedback: feedback,
         childWhenDragging: childWhenDragging,
         onDragStarted: onDragStarted,
@@ -166,7 +180,7 @@ class FileGridItem extends StatelessWidget {
     }
 
     return Draggable<String>(
-      data: 'note:${note.id}',
+      data: dragDataFor?.call('note:${note.id}') ?? 'note:${note.id}',
       feedback: feedback,
       childWhenDragging: childWhenDragging,
       onDragStarted: onDragStarted,
@@ -180,17 +194,18 @@ class FileGridItem extends StatelessWidget {
   Widget _buildFileContent(
     BuildContext context, {
     required IconData icon,
-    required Color textColor,
     required Color iconColor,
   }) {
     final attachmentCount = note.attachments.length;
+    final labelColor = Theme.of(context).textTheme.bodySmall?.color ??
+        Theme.of(context).colorScheme.onSurface;
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: onSelectionToggle ?? onTap,
       // Keep the long-press options menu available on touch devices while
       // still letting LongPressDraggable start a drag once the finger moves.
-      onLongPress: onLongPress,
-      onSecondaryTap: onLongPress,
+      onLongPress: onSelectionToggle ?? onLongPress,
+      onSecondaryTap: onSelectionToggle ?? onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -206,6 +221,12 @@ class FileGridItem extends StatelessWidget {
                       )
                     : AppTheme.darkSurface,
                 borderRadius: BorderRadius.circular(12),
+                border: isSelected
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 3,
+                      )
+                    : null,
               ),
               child: Stack(
                 children: [
@@ -255,7 +276,7 @@ class FileGridItem extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: textColor,
+                  color: labelColor,
                 ),
             textAlign: TextAlign.center,
           ),
@@ -266,7 +287,7 @@ class FileGridItem extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: textColor.withValues(alpha: 0.7),
+                    color: labelColor.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
               textAlign: TextAlign.center,
@@ -284,12 +305,26 @@ class FileList extends StatelessWidget {
   final Map<String, String> noteLocationLabels;
   final void Function(String) onNoteTap;
   final void Function(String) onNoteLongPress;
+  final Set<String> selectedNoteIds;
+  final ValueChanged<String>? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FileList({
     required this.notes,
     required this.onNoteTap,
     required this.onNoteLongPress,
     this.noteLocationLabels = const {},
+    this.selectedNoteIds = const {},
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -302,6 +337,15 @@ class FileList extends StatelessWidget {
           locationLabel: noteLocationLabels[notes[index].id],
           onTap: () => onNoteTap(notes[index].id),
           onLongPress: () => onNoteLongPress(notes[index].id),
+          isSelected: selectedNoteIds.contains(notes[index].id),
+          onSelectionToggle: onSelectionToggle == null
+              ? null
+              : () => onSelectionToggle!(notes[index].id),
+          dragDataFor: dragDataFor,
+          useLongPressDrag: useLongPressDrag,
+          onDragStarted: onDragStarted,
+          onDragPositionChanged: onDragPositionChanged,
+          onDragEnded: onDragEnded,
         ),
         childCount: notes.length,
       ),
@@ -315,12 +359,26 @@ class FileListItem extends StatelessWidget {
   final String? locationLabel;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool isSelected;
+  final VoidCallback? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FileListItem({
     required this.note,
     required this.onTap,
     required this.onLongPress,
     this.locationLabel,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -349,15 +407,24 @@ class FileListItem extends StatelessWidget {
     final attachmentCount = note.attachments.length;
     final totalBytes = _noteTotalBytes(note);
 
-    return Padding(
+    final child = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: isSelected
+              ? BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 3,
+                )
+              : BorderSide.none,
+        ),
         child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          onSecondaryTap: onLongPress,
+          onTap: onSelectionToggle ?? onTap,
+          onLongPress: onSelectionToggle ?? onLongPress,
+          onSecondaryTap: onSelectionToggle ?? onLongPress,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -450,7 +517,45 @@ class FileListItem extends StatelessWidget {
         ),
       ),
     );
+
+    final data = dragDataFor?.call('note:${note.id}') ?? 'note:${note.id}';
+    if (useLongPressDrag) {
+      return LongPressDraggable<String>(
+        data: data,
+        feedback: _listDragFeedback(context, icon),
+        childWhenDragging: Opacity(opacity: 0.3, child: child),
+        onDragStarted: onDragStarted,
+        onDragUpdate: (details) =>
+            onDragPositionChanged?.call(details.globalPosition),
+        onDragEnd: (_) => onDragEnded?.call(),
+        child: child,
+      );
+    }
+    return Draggable<String>(
+      data: data,
+      feedback: _listDragFeedback(context, icon),
+      childWhenDragging: Opacity(opacity: 0.3, child: child),
+      onDragStarted: onDragStarted,
+      onDragUpdate: (details) =>
+          onDragPositionChanged?.call(details.globalPosition),
+      onDragEnd: (_) => onDragEnded?.call(),
+      child: child,
+    );
   }
+
+  Widget _listDragFeedback(BuildContext context, IconData icon) => Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            color: AppTheme.darkSurface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: Colors.white54),
+        ),
+      );
 }
 
 class _CountBadge extends StatelessWidget {

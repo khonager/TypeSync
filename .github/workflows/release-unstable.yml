@@ -15,6 +15,8 @@ jobs:
     name: Release Unstable
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'unstable'
     runs-on: ubuntu-latest
+    env:
+      REVENUECAT_ANDROID_API_KEY: ${{ secrets.REVENUECAT_ANDROID_API_KEY }}
     permissions:
       contents: write
     concurrency:
@@ -52,6 +54,7 @@ jobs:
         run: flutter pub get
 
       - name: Get app version
+        id: version
         run: |
           APP_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
           if [ -z "$APP_VERSION" ]; then
@@ -59,6 +62,7 @@ jobs:
             exit 1
           fi
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "release_tag=v$APP_VERSION-dev.${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Get commit hash
         id: commit
@@ -84,12 +88,27 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
 
+      - name: Validate RevenueCat Android key
+        run: |
+          if [ -z "$REVENUECAT_ANDROID_API_KEY" ]; then
+            echo "::error::REVENUECAT_ANDROID_API_KEY is required for mobile releases"
+            exit 1
+          fi
+          if [[ "$REVENUECAT_ANDROID_API_KEY" == test_* ]]; then
+            echo "::error::A RevenueCat test key cannot be used in a mobile release"
+            exit 1
+          fi
+
       - name: Build APK (Dev Release)
         run: |
           flutter build apk --release \
             --build-name="$APP_VERSION-dev.${{ github.event.workflow_run.run_number }}" \
             --build-number="${{ github.event.workflow_run.run_number }}" \
-            --dart-define=IS_DEV=true
+            --dart-define=IS_DEV=true \
+            --dart-define=REVENUECAT_ANDROID_API_KEY="$REVENUECAT_ANDROID_API_KEY"
+
+      - name: Verify packaged Android Firebase Auth SDK
+        run: bash scripts/verify_android_firebase_auth_version.sh release
 
       - name: Build Linux
         run: flutter build linux --release
@@ -105,18 +124,28 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk release/TypeSync-dev-android.apk
           cp typesync-linux-x64.tar.gz release/TypeSync-dev-linux-x64.tar.gz
 
-      - name: Move dev-latest tag
+      - name: Remove previous dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f dev-latest "${{ github.event.workflow_run.head_sha }}"
-          git push origin refs/tags/dev-latest --force
+          # Keep exactly one dev release. The legacy rolling tag is included so
+          # the first run also removes the old, stale release.
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[] | select(.prerelease and (.tag_name == "dev-latest" or (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")))) | [.id, .tag_name] | @tsv' \
+            > previous-dev-releases.tsv
 
-      - name: Update dev release
+          while IFS=$'\t' read -r release_id tag_name; do
+            [ -z "$release_id" ] && continue
+            echo "Removing previous dev release: $tag_name"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag_name}"
+          done < previous-dev-releases.tsv
+
+      - name: Publish versioned dev release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev-latest
-          name: Latest Dev Build
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: TypeSync ${{ env.APP_VERSION }} Dev Build (${{ github.event.workflow_run.run_number }})
           body: |
             ## TypeSync Development Build
 

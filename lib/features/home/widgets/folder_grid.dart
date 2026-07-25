@@ -35,6 +35,10 @@ class FolderGrid extends StatelessWidget {
   final VoidCallback? onDragStarted;
   final ValueChanged<Offset>? onDragPositionChanged;
   final VoidCallback? onDragEnded;
+  final Set<String> selectedFolderIds;
+  final ValueChanged<String>? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final void Function(String dragData, String targetFolderId)? onItemsDropped;
 
   const FolderGrid({
     required this.folders,
@@ -48,6 +52,10 @@ class FolderGrid extends StatelessWidget {
     this.onDragStarted,
     this.onDragPositionChanged,
     this.onDragEnded,
+    this.selectedFolderIds = const {},
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.onItemsDropped,
   });
 
   @override
@@ -77,6 +85,12 @@ class FolderGrid extends StatelessWidget {
           onDragStarted: onDragStarted,
           onDragPositionChanged: onDragPositionChanged,
           onDragEnded: onDragEnded,
+          isSelected: selectedFolderIds.contains(folders[index].id),
+          onSelectionToggle: onSelectionToggle == null
+              ? null
+              : () => onSelectionToggle!(folders[index].id),
+          dragDataFor: dragDataFor,
+          onItemsDropped: onItemsDropped,
         ),
         childCount: folders.length,
       ),
@@ -96,6 +110,10 @@ class FolderGridItem extends StatelessWidget {
   final VoidCallback? onDragStarted;
   final ValueChanged<Offset>? onDragPositionChanged;
   final VoidCallback? onDragEnded;
+  final bool isSelected;
+  final VoidCallback? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final void Function(String dragData, String targetFolderId)? onItemsDropped;
 
   const FolderGridItem({
     required this.folder,
@@ -109,6 +127,10 @@ class FolderGridItem extends StatelessWidget {
     this.onDragStarted,
     this.onDragPositionChanged,
     this.onDragEnded,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.onItemsDropped,
   });
 
   @override
@@ -124,6 +146,10 @@ class FolderGridItem extends StatelessWidget {
       onWillAcceptWithDetails: (details) =>
           details.data != 'folder:${folder.id}',
       onAcceptWithDetails: (details) {
+        if (onItemsDropped != null) {
+          onItemsDropped!(details.data, folder.id);
+          return;
+        }
         final data = details.data;
         if (data.startsWith('note:')) {
           final noteId = data.substring(5);
@@ -164,7 +190,7 @@ class FolderGridItem extends StatelessWidget {
 
     if (useLongPressDrag) {
       return LongPressDraggable<String>(
-        data: 'folder:${folder.id}',
+        data: dragDataFor?.call('folder:${folder.id}') ?? 'folder:${folder.id}',
         feedback: feedback,
         childWhenDragging: childWhenDragging,
         onDragStarted: onDragStarted,
@@ -176,7 +202,7 @@ class FolderGridItem extends StatelessWidget {
     }
 
     return Draggable<String>(
-      data: 'folder:${folder.id}',
+      data: dragDataFor?.call('folder:${folder.id}') ?? 'folder:${folder.id}',
       feedback: feedback,
       childWhenDragging: childWhenDragging,
       onDragStarted: onDragStarted,
@@ -197,12 +223,12 @@ class FolderGridItem extends StatelessWidget {
     final secondaryLabelColor = labelColor.withValues(alpha: 0.7);
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: onSelectionToggle ?? onTap,
       // Allow a stationary long-press to open the options sheet even when
       // long-press drag is enabled; dragging still begins once the pointer
       // moves after the long-press delay.
-      onLongPress: onLongPress,
-      onSecondaryTap: onLongPress,
+      onLongPress: onSelectionToggle ?? onLongPress,
+      onSecondaryTap: onSelectionToggle ?? onLongPress,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -218,7 +244,12 @@ class FolderGridItem extends StatelessWidget {
                         color: Theme.of(context).colorScheme.primary,
                         width: 2,
                       )
-                    : null,
+                    : (isSelected
+                        ? Border.all(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 3,
+                          )
+                        : null),
               ),
               child: Stack(
                 children: [
@@ -276,12 +307,26 @@ class FolderList extends StatelessWidget {
   final Map<String, FolderVisualStats> folderStats;
   final void Function(String) onFolderTap;
   final void Function(String) onFolderLongPress;
+  final Set<String> selectedFolderIds;
+  final ValueChanged<String>? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FolderList({
     required this.folders,
     required this.folderStats,
     required this.onFolderTap,
     required this.onFolderLongPress,
+    this.selectedFolderIds = const {},
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -300,6 +345,15 @@ class FolderList extends StatelessWidget {
               ),
           onTap: () => onFolderTap(folders[index].id),
           onLongPress: () => onFolderLongPress(folders[index].id),
+          isSelected: selectedFolderIds.contains(folders[index].id),
+          onSelectionToggle: onSelectionToggle == null
+              ? null
+              : () => onSelectionToggle!(folders[index].id),
+          dragDataFor: dragDataFor,
+          useLongPressDrag: useLongPressDrag,
+          onDragStarted: onDragStarted,
+          onDragPositionChanged: onDragPositionChanged,
+          onDragEnded: onDragEnded,
         ),
         childCount: folders.length,
       ),
@@ -313,12 +367,26 @@ class FolderListItem extends StatelessWidget {
   final FolderVisualStats stats;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool isSelected;
+  final VoidCallback? onSelectionToggle;
+  final String Function(String itemData)? dragDataFor;
+  final bool useLongPressDrag;
+  final VoidCallback? onDragStarted;
+  final ValueChanged<Offset>? onDragPositionChanged;
+  final VoidCallback? onDragEnded;
 
   const FolderListItem({
     required this.folder,
     required this.stats,
     required this.onTap,
     required this.onLongPress,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.dragDataFor,
+    this.useLongPressDrag = false,
+    this.onDragStarted,
+    this.onDragPositionChanged,
+    this.onDragEnded,
     super.key,
   });
 
@@ -330,16 +398,28 @@ class FolderListItem extends StatelessWidget {
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
     final secondaryTextColor = textColor.withValues(alpha: 0.7);
 
-    return Padding(
+    final child = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          onSecondaryTap: onLongPress,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
+          side: isSelected
+              ? BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 3,
+                )
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          onTap: onSelectionToggle ?? onTap,
+          onLongPress: onSelectionToggle ?? onLongPress,
+          onSecondaryTap: onSelectionToggle ?? onLongPress,
+          borderRadius: BorderRadius.circular(12),
+          splashColor: isSelected
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
+              : null,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -406,6 +486,43 @@ class FolderListItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+    final feedback = Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.folder, color: Colors.white54),
+      ),
+    );
+    final data =
+        dragDataFor?.call('folder:${folder.id}') ?? 'folder:${folder.id}';
+    if (useLongPressDrag) {
+      return LongPressDraggable<String>(
+        data: data,
+        feedback: feedback,
+        childWhenDragging: Opacity(opacity: 0.3, child: child),
+        onDragStarted: onDragStarted,
+        onDragUpdate: (details) =>
+            onDragPositionChanged?.call(details.globalPosition),
+        onDragEnd: (_) => onDragEnded?.call(),
+        child: child,
+      );
+    }
+    return Draggable<String>(
+      data: data,
+      feedback: feedback,
+      childWhenDragging: Opacity(opacity: 0.3, child: child),
+      onDragStarted: onDragStarted,
+      onDragUpdate: (details) =>
+          onDragPositionChanged?.call(details.globalPosition),
+      onDragEnd: (_) => onDragEnded?.call(),
+      child: child,
     );
   }
 

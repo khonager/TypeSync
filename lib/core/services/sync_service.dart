@@ -1075,7 +1075,7 @@ class SyncService extends ChangeNotifier {
             .document(_currentUserId!)
             .collection('settings')
             .document('app_settings')
-            .set(settingsData);
+            .update(settingsData);
       } else {
         final firestore = _firebaseFirestore;
         if (firestore == null) return false;

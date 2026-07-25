@@ -124,7 +124,12 @@ class _TypeSyncKanbanEmbedWidget extends StatelessWidget {
   }
 
   void _persistBoard(TypeSyncKanbanData nextBoard) {
-    final offset = node.documentOffset;
+    final offset = TypeSyncKanbanEmbed.findBoardOffset(
+      controller.document.toDelta().toJson(),
+      boardId: board.id,
+    );
+    if (offset == null) return;
+
     controller.replaceText(
       offset,
       1,

@@ -7,6 +7,40 @@ import 'package:typesync/core/services/storage_service.dart';
 
 void main() {
   group('BillingService', () {
+    test('rejects missing and test RevenueCat keys in release builds', () {
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          '',
+          isDebugBuild: false,
+        ),
+        isFalse,
+      );
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          RevenueCatBillingConfig.testPublicApiKey,
+          isDebugBuild: false,
+        ),
+        isFalse,
+      );
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          'goog_public_sdk_key',
+          isDebugBuild: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('allows an explicitly configured test key only in debug builds', () {
+      expect(
+        RevenueCatBillingConfig.isNativeApiKeyUsable(
+          RevenueCatBillingConfig.testPublicApiKey,
+          isDebugBuild: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('maps active RevenueCat entitlements to the highest TypeSync plan',
         () {
       expect(
@@ -43,17 +77,20 @@ void main() {
 
       expect(
         paidPlans.map((plan) => plan.tier.planId),
-        ['TypeSync Lite'],
+        ['TypeSync Lite', 'plus', 'pro'],
       );
       expect(
         paidPlans.map((plan) => plan.priceEuros),
-        [2.99],
+        [2.99, 5.99, 11.99],
       );
       expect(
         paidPlans.map((plan) => plan.tier.revenueCatProductId),
-        ['monthly'],
+        ['monthly', 'typesync_plus_monthly', 'typesync_pro_monthly'],
       );
-      expect(paidPlans.single.name, 'TypeSync Lite');
+      expect(
+        paidPlans.map((plan) => plan.name),
+        ['TypeSync Lite', 'Plus', 'Pro'],
+      );
     });
   });
 }

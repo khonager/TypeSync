@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../firebase_options.dart';
 import '../models/user.dart';
+import 'auth_persistence_diagnostics.dart';
 import 'diagnostics_service.dart';
 
 /// Service for managing user authentication
@@ -34,6 +35,8 @@ class AuthService extends ChangeNotifier {
   static const String _pendingEmailLinkEmailKey = 'pending_email_link_email';
 
   final DiagnosticsService _diagnostics = DiagnosticsService.instance;
+  final AuthPersistenceDiagnostics _authPersistenceDiagnostics =
+      AuthPersistenceDiagnostics.instance;
   final http.Client _httpClient = http.Client();
 
   // Firebase Auth instance (lazy initialization)
@@ -42,6 +45,8 @@ class AuthService extends ChangeNotifier {
 
   // Firedart instances for Linux fallback
   fd.FirebaseAuth? _fdAuth;
+  StreamSubscription<firebase.User?>? _firebaseAuthSubscription;
+  StreamSubscription<bool>? _firedartAuthSubscription;
 
   // Lazy getters for Firebase instances
   firebase.FirebaseAuth get _firebaseAuth {
@@ -99,7 +104,7 @@ class AuthService extends ChangeNotifier {
   String? _guestWorkspaceId;
   String? _pendingGuestImportWorkspaceId;
   String? _pendingEmailLinkEmail;
-  bool _hasResolvedInitialFirebaseAuthState = false;
+  bool _nativePersistenceRepairAttempted = false;
 
   // UUID generator for guest IDs
   final Uuid _uuid = const Uuid();
@@ -171,105 +176,38 @@ class AuthService extends ChangeNotifier {
   // ===========================================
 
   AuthService() {
-    _loadPreferences();
-    // Only listen to auth state changes if Firebase is initialized
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    // Preferences must be loaded before the first auth event is handled. In
+    // particular, a persisted guest workspace may only be restored after
+    // Firebase has finished restoring its own native session and reports that
+    // there is no signed-in user.
+    await _loadPreferences();
+
     try {
       if (Firebase.apps.isNotEmpty) {
-        // Sync check for signed in state to prevent login screen flash on Android/iOS/Web
-        final firebaseUser = _firebaseAuth.currentUser;
-        if (firebaseUser != null) {
-          _hasResolvedInitialFirebaseAuthState = true;
-          _currentUser = User(
-            id: firebaseUser.uid,
-            email: firebaseUser.email ?? '',
-            displayName: firebaseUser.displayName,
-            photoUrl: firebaseUser.photoURL,
-            createdAt: DateTime.now(),
-            lastSignIn: DateTime.now(),
-            emailVerified: firebaseUser.emailVerified,
-          );
-
-          // Asynchronously fetch complete user data
-          _loadUserData(firebaseUser.uid).catchError((_) {
-            // Silently handle get user error
-          });
-        } else {
-          unawaited(_resolveInitialFirebaseSignedOutState());
-        }
-
-        _firebaseAuth.authStateChanges().listen(_onAuthStateChanged);
+        // Firebase documents that the first event is emitted only after native
+        // credentials have been restored. Treat this stream as the single
+        // source of truth instead of racing it with currentUser checks and
+        // preference-loading timers.
+        final authStateChanges = _firebaseAuth.authStateChanges();
+        _firebaseAuthSubscription = authStateChanges.listen(
+          (firebaseUser) => unawaited(_onAuthStateChanged(firebaseUser)),
+          onError: _onFirebaseAuthStateError,
+        );
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-        // Sync check for signed in state to prevent login screen flash
-        bool isSignedIn = false;
-        try {
-          isSignedIn = _firedartAuth.isSignedIn;
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Firedart check signed in failed: $e');
-          }
-        }
-
-        if (isSignedIn) {
-          _currentUser = User(
-            id: _firedartAuth.userId,
-            email: '',
-            displayName: null,
-            createdAt: DateTime.now(),
-            lastSignIn: DateTime.now(),
-            emailVerified: true,
-          );
-
-          // Asynchronously fetch complete user data
-          _firedartAuth.getUser().then((fdUser) {
-            _onFiredartAuthChanged(fdUser);
-          }).catchError((e) {
-            // Silently handle get user error but ensure we mark as initialized
-            if (kDebugMode) {
-              debugPrint('Firedart getUser failed: $e');
-            }
-            _isInitialized = true;
-            notifyListeners();
-          });
-        } else {
-          // Mark as initialized if not signed in
-          _isInitialized = true;
-          notifyListeners();
-        }
-
-        // Listen to Firedart auth changes
-        try {
-          _firedartAuth.signInState.listen((signedIn) async {
-            if (signedIn) {
-              try {
-                final fdUser = await _firedartAuth.getUser();
-                _onFiredartAuthChanged(fdUser);
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('Firedart listen getUser failed: $e');
-                }
-                _isInitialized = true;
-                notifyListeners();
-              }
-            } else {
-              _onFiredartAuthChanged(null);
-            }
-          });
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Firedart listen failed: $e');
-          }
-          _isInitialized = true;
-          notifyListeners();
-        }
+        await _initializeFiredartAuth();
       } else {
-        // Local-only mode or platform not supported
-        _isInitialized = true;
-        notifyListeners();
+        await _restoreInitialGuestOrSignedOut();
       }
     } catch (e) {
-      // Firebase not initialized
-      _isInitialized = true;
-      notifyListeners();
+      await _restoreInitialGuestOrSignedOut();
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW auth initialization failed: $e',
+      );
       if (kDebugMode) {
         debugPrint(
           'Firebase Auth not available: ${e.toString().split(':').first}',
@@ -293,47 +231,6 @@ class AuthService extends ChangeNotifier {
         'AuthService',
         'AUTH_FLOW prefs loaded syncEnabled=$_syncEnabled localOnly=$_localOnlyMode guestWorkspace=$_guestWorkspaceId pendingGuestImport=$_pendingGuestImportWorkspaceId pendingEmailLink=$_pendingEmailLinkEmail isAuthenticated=$isAuthenticated',
       );
-
-      final shouldDelayGuestRestore = !kIsWeb &&
-          defaultTargetPlatform != TargetPlatform.linux &&
-          Firebase.apps.isNotEmpty;
-      if (shouldDelayGuestRestore && !isAuthenticated) {
-        try {
-          final restoredUser = await _firebaseAuth
-              .authStateChanges()
-              .first
-              .timeout(const Duration(seconds: 2), onTimeout: () => null);
-          if (restoredUser != null || _firebaseAuth.currentUser != null) {
-            _diagnostics.info(
-              'AuthService',
-              'AUTH_FLOW skipped guest workspace restore because Firebase session restored user=${restoredUser?.uid ?? _firebaseAuth.currentUser?.uid}',
-            );
-            notifyListeners();
-            return;
-          }
-        } catch (e) {
-          _diagnostics.warning(
-            'AuthService',
-            'AUTH_FLOW guest workspace restore auth wait failed: $e',
-          );
-        }
-      }
-
-      if (!isAuthenticated &&
-          _guestWorkspaceId != null &&
-          _guestWorkspaceId!.isNotEmpty) {
-        _diagnostics.info(
-          'AuthService',
-          'AUTH_FLOW restoring guest workspace=$_guestWorkspaceId from preferences',
-        );
-        await _startGuestSession(
-          workspaceId: _guestWorkspaceId,
-          persistWorkspace: false,
-        );
-        return;
-      }
-
-      notifyListeners();
     } catch (e) {
       debugPrint('Error loading preferences: $e');
     }
@@ -407,6 +304,8 @@ class AuthService extends ChangeNotifier {
         return true;
       }
 
+      await _repairNativeAuthPersistenceIfNeeded();
+
       // Attempt Firebase sign in
       final credential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -415,6 +314,7 @@ class AuthService extends ChangeNotifier {
 
       // Load user data from Firestore
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -512,6 +412,8 @@ class AuthService extends ChangeNotifier {
         return true;
       }
 
+      await _repairNativeAuthPersistenceIfNeeded();
+
       // Create Firebase Auth account
       final credential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -519,6 +421,7 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -603,6 +506,9 @@ class AuthService extends ChangeNotifier {
         } else {
           await _firebaseAuth.signOut();
         }
+        await _authPersistenceDiagnostics.markExplicitlySignedOut(
+          reason: 'continue-as-guest',
+        );
       }
 
       await _startGuestSession(workspaceId: workspaceId, setLoading: false);
@@ -681,6 +587,9 @@ class AuthService extends ChangeNotifier {
         } else {
           await _firebaseAuth.signOut();
         }
+        await _authPersistenceDiagnostics.markExplicitlySignedOut(
+          reason: 'user-sign-out',
+        );
       }
       _currentUser = null;
       _isGuestMode = false;
@@ -828,6 +737,7 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
+        await _authPersistenceDiagnostics.markSignedIn(credential.user!.uid);
         _isGuestMode = false;
         await _setPendingGuestImportWorkspace(
           previousGuestWorkspaceId,
@@ -929,6 +839,9 @@ class AuthService extends ChangeNotifier {
           .catchError((_) {});
       await _deleteUserStorageFolder(uid);
       await firebaseUser.delete();
+      await _authPersistenceDiagnostics.markExplicitlySignedOut(
+        reason: 'account-deleted',
+      );
 
       _currentUser = null;
       _isGuestMode = false;
@@ -1022,62 +935,158 @@ class AuthService extends ChangeNotifier {
   // PRIVATE METHODS
   // ===========================================
 
+  /// Clears an unreadable Android Firebase Auth cache before the next login.
+  ///
+  /// Firebase Auth 23.2.1 encrypted its Android preferences with a device-local
+  /// key while Android Auto Backup could restore the encrypted preferences on
+  /// another device. In that state Firebase emits an initial null user on every
+  /// cold start. A native sign-out clears that damaged disk cache; the login
+  /// that immediately follows can then persist a fresh session.
+  Future<void> _repairNativeAuthPersistenceIfNeeded() async {
+    if (_nativePersistenceRepairAttempted ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        !_authPersistenceDiagnostics.suspectedUnexpectedSignOut) {
+      return;
+    }
+
+    _nativePersistenceRepairAttempted = true;
+    _diagnostics.warning(
+      'AuthService',
+      'AUTH_FLOW repairing unreadable Android Firebase Auth persistence before sign-in',
+    );
+
+    try {
+      await _firebaseAuth.signOut();
+      _diagnostics.info(
+        'AuthService',
+        'AUTH_FLOW Android Firebase Auth persistence repair completed',
+      );
+    } catch (error) {
+      // Do not block a valid interactive login if Firebase cannot clear an
+      // already-signed-out cache. The current SDK may still replace it when
+      // the new credential is persisted.
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW Android Firebase Auth persistence repair failed: $error',
+      );
+    }
+  }
+
   /// Handle auth state changes
   Future<void> _onAuthStateChanged(firebase.User? firebaseUser) async {
+    _authPersistenceDiagnostics.recordNativeAuthState(firebaseUser?.uid);
     _diagnostics.info(
       'AuthService',
       'AUTH_FLOW firebase auth state changed user=${firebaseUser?.uid} guestMode=$_isGuestMode initialized=$_isInitialized',
     );
     if (firebaseUser != null) {
-      _hasResolvedInitialFirebaseAuthState = true;
+      await _authPersistenceDiagnostics.markSignedIn(firebaseUser.uid);
       _isGuestMode = false;
-      await _loadUserData(firebaseUser.uid);
+      _setCurrentUserFromFirebase(firebaseUser);
       _isInitialized = true;
       notifyListeners();
-    } else if (firebaseUser == null && !_isGuestMode) {
-      if (!_hasResolvedInitialFirebaseAuthState) {
-        _diagnostics.info(
-          'AuthService',
-          'AUTH_FLOW ignoring initial null auth state while waiting for Firebase session restore',
-        );
+
+      // A real Firebase session always wins over an old guest-workspace
+      // preference left by an earlier app version.
+      if (_guestWorkspaceId != null) {
+        await _clearGuestWorkspacePreference();
+      }
+
+      // Firebase Auth has already established the session at this point.
+      // Firestore only supplies additional profile fields and must not decide
+      // whether the user is authenticated.
+      await _loadUserData(firebaseUser.uid, firebaseUser: firebaseUser);
+    } else if (!_isGuestMode) {
+      if (!_isInitialized) {
+        await _restoreInitialGuestOrSignedOut();
         return;
       }
-      // Only clear user if not in guest mode
+
       _currentUser = null;
       _isInitialized = true;
       notifyListeners();
     }
   }
 
-  Future<void> _resolveInitialFirebaseSignedOutState() async {
-    await Future<void>.delayed(
-      const Duration(milliseconds: kIsWeb ? 500 : 1500),
+  void _onFirebaseAuthStateError(Object error, StackTrace stackTrace) {
+    _diagnostics.error(
+      'AuthService',
+      'AUTH_FLOW Firebase auth state listener failed: $error',
     );
+    if (!_isInitialized) {
+      unawaited(_restoreInitialGuestOrSignedOut());
+    }
+  }
 
-    if (_hasResolvedInitialFirebaseAuthState ||
-        _isGuestMode ||
-        _isInitialized) {
-      return;
+  Future<void> _initializeFiredartAuth() async {
+    if (_firedartAuth.isSignedIn) {
+      await _onFiredartAuthChanged(await _firedartAuth.getUser());
+    } else {
+      await _restoreInitialGuestOrSignedOut();
     }
 
-    final restoredUser = _firebaseAuth.currentUser;
-    if (restoredUser != null) {
+    _firedartAuthSubscription = _firedartAuth.signInState.listen(
+      (signedIn) async {
+        if (signedIn) {
+          await _onFiredartAuthChanged(await _firedartAuth.getUser());
+        } else {
+          await _onFiredartAuthChanged(null);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        _diagnostics.error(
+          'AuthService',
+          'AUTH_FLOW Firedart auth state listener failed: $error',
+        );
+      },
+    );
+  }
+
+  Future<void> _restoreInitialGuestOrSignedOut() async {
+    if (_isInitialized) return;
+
+    final guestWorkspaceId = _guestWorkspaceId;
+    if (guestWorkspaceId != null && guestWorkspaceId.isNotEmpty) {
       _diagnostics.info(
         'AuthService',
-        'AUTH_FLOW restored Firebase session after startup delay user=${restoredUser.uid}',
+        'AUTH_FLOW restoring guest workspace=$guestWorkspaceId after auth initialization',
       );
-      await _onAuthStateChanged(restoredUser);
+      await _startGuestSession(
+        workspaceId: guestWorkspaceId,
+        persistWorkspace: false,
+      );
       return;
     }
 
-    _hasResolvedInitialFirebaseAuthState = true;
     _currentUser = null;
+    _isGuestMode = false;
     _isInitialized = true;
-    _diagnostics.info(
-      'AuthService',
-      'AUTH_FLOW confirmed signed-out state after Firebase startup delay',
-    );
     notifyListeners();
+  }
+
+  void _setCurrentUserFromFirebase(firebase.User firebaseUser) {
+    final existingUser = _currentUser;
+    if (existingUser != null && existingUser.id == firebaseUser.uid) {
+      _currentUser = existingUser.copyWith(
+        email: firebaseUser.email ?? existingUser.email,
+        displayName: firebaseUser.displayName ?? existingUser.displayName,
+        photoUrl: firebaseUser.photoURL ?? existingUser.photoUrl,
+        emailVerified: firebaseUser.emailVerified,
+        lastSignIn: DateTime.now(),
+      );
+      return;
+    }
+
+    _currentUser = User(
+      id: firebaseUser.uid,
+      email: firebaseUser.email ?? '',
+      displayName: firebaseUser.displayName,
+      photoUrl: firebaseUser.photoURL,
+      createdAt: firebaseUser.metadata.creationTime ?? DateTime.now(),
+      lastSignIn: firebaseUser.metadata.lastSignInTime ?? DateTime.now(),
+      emailVerified: firebaseUser.emailVerified,
+    );
   }
 
   /// Load user data from Firestore
@@ -1169,6 +1178,10 @@ class AuthService extends ChangeNotifier {
         'AUTH_FLOW user data loaded uid=$uid currentUser=${_currentUser?.id} storageUserId=$storageUserId guestMode=$_isGuestMode',
       );
     } catch (e) {
+      _diagnostics.warning(
+        'AuthService',
+        'AUTH_FLOW profile enrichment failed uid=$uid; keeping Firebase session: $e',
+      );
       debugPrint('Error loading user data: $e');
     }
   }
@@ -1192,6 +1205,14 @@ class AuthService extends ChangeNotifier {
     }
     _isInitialized = true;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _firebaseAuthSubscription?.cancel();
+    _firedartAuthSubscription?.cancel();
+    _httpClient.close();
+    super.dispose();
   }
 
   /// Map Firebase error codes to user-friendly messages

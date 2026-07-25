@@ -176,22 +176,53 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    ```
 
 7. **Configure subscriptions with RevenueCat**:
-   - Create a monthly product/package named `monthly`
-   - Create an entitlement named `TypeSync Lite`
+   - Create the three monthly products/packages: `monthly`,
+     `typesync_plus_monthly`, and `typesync_pro_monthly`.
+   - Create matching entitlements: `TypeSync Lite`, `plus`, and `pro`.
    - Use the `default` offering
    - The default web SDK key is scaffolded for testing, or override it with:
    ```bash
    flutter build web --dart-define=REVENUECAT_WEB_API_KEY=public_web_key
    ```
-   - For native builds, pass platform SDK keys when they are available:
+   - Native builds never fall back to the RevenueCat test key. Pass the
+     platform production SDK key:
    ```bash
    flutter build apk --dart-define=REVENUECAT_ANDROID_API_KEY=public_android_key
    flutter build ios --dart-define=REVENUECAT_APPLE_API_KEY=public_apple_key
    ```
+   - Add `REVENUECAT_ANDROID_API_KEY` as a GitHub Actions secret and
+     `REVENUECAT_APPLE_API_KEY` as a Codemagic environment variable. Mobile
+     release jobs fail before building if either key is missing or starts with
+     `test_`, preventing another store build that RevenueCat will close.
    - Store the RevenueCat webhook token before deploying Functions:
    ```bash
    firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH_TOKEN
    ```
+   - Configure the RevenueCat webhook to POST to `revenuecat_webhook` with the
+     same token. The webhook, not the app, writes the effective plan and cloud
+     quota. Do not grant billing fields from a client.
+   - For web and Linux checkout, set each public RevenueCat paywall URL in both
+     `web/billing_config.json` and `assets/billing_config.json`. Leave a
+     plan's URL empty until its checkout is live; the app will keep that plan
+     unavailable instead of showing a broken purchase button.
+
+8. **Configure complimentary-access administrators**:
+   - Never add personal email addresses to Dart, Python, or JSON files.
+   - Set the server-only allow-list interactively (comma-separated) and deploy:
+   ```bash
+   firebase functions:secrets:set ADMIN_EMAILS
+   firebase deploy --only functions,firestore:rules
+   ```
+   - Alternatively give an account the Firebase Auth custom claim
+     `admin: true` using a trusted server/Admin SDK. Both mechanisms are
+     verified only by Cloud Functions.
+   - An administrator will see an **Admin: complimentary access** card on the
+     Storage Plans screen. It can grant TypeSync Lite, Plus, or Pro temporarily
+     or until revoked. These grants are separate from RevenueCat purchases, so
+     a webhook cannot erase them and a revoke cannot remove a paid plan.
+   - The previous Gumroad and Patreon activation endpoints are deliberately
+     disabled. Keep all self-service access on RevenueCat so there is one
+     server-verified source of payment truth.
 
 ## Building for Release
 
@@ -257,9 +288,11 @@ The project includes automated CI/CD with GitHub Actions:
 - **Stable deploy workflow**: After `CI/CD` succeeds on `stable`, a separate `Deploy Web Stable` workflow builds and deploys the web app
 
 - **Dev releases**: When pushed to `unstable`:
-  - Updates the `dev` release tag
-  - Builds and uploads latest development builds
-  - Marked as pre-release
+  - Publishes a new, versioned pre-release (for example, `v1.1.18-dev.541`)
+  - Deletes the preceding dev release and tag, so only the current dev build is listed
+  - Builds and uploads the Android and Linux development artifacts
+  - The newest dev build appears first in GitHub Releases and has a monotonically increasing version for update clients such as Obtainium
+  - In Obtainium, enable **Include prereleases** for the TypeSync dev installation
 
 ### Manual Workflow
 ```bash
@@ -267,11 +300,29 @@ The project includes automated CI/CD with GitHub Actions:
 flutter test
 
 # Check formatting
-dart format lib test
+dart format lib test integration_test
 
 # Analyze code
 flutter analyze
+
+# After building Android, verify the packaged native Firebase Auth version
+flutter build apk --release
+bash scripts/verify_android_firebase_auth_version.sh release
 ```
+
+### Android cold-restart authentication test
+
+The repository includes a dedicated probe that signs in against the local
+Firebase Auth emulator, force-stops the Android process, relaunches it, and
+fails unless Firebase restores the same user:
+
+```bash
+bash scripts/test_android_auth_persistence.sh
+```
+
+Run it with one Android Studio emulator connected and the Firebase CLI
+installed. For safety, the script refuses physical devices because it clears
+the TypeSync app data before the probe.
 
 ### Changelog Workflow
 - Canonical source: `changelog/changelog.yaml`

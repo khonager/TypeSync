@@ -6,6 +6,7 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart' as rc_ui;
@@ -15,17 +16,21 @@ import '../models/user.dart';
 import 'storage_service.dart';
 
 class RevenueCatBillingConfig {
-  static const defaultPublicApiKey = 'test_fewInKsVqvMRCAmhNYUTFYLqxFT';
+  static const testPublicApiKey = 'test_fewInKsVqvMRCAmhNYUTFYLqxFT';
   static const androidApiKey =
       String.fromEnvironment('REVENUECAT_ANDROID_API_KEY');
   static const appleApiKey = String.fromEnvironment('REVENUECAT_APPLE_API_KEY');
   static const webApiKey = String.fromEnvironment(
     'REVENUECAT_WEB_API_KEY',
-    defaultValue: defaultPublicApiKey,
+    defaultValue: testPublicApiKey,
   );
 
   static const typeSyncLiteWebPurchaseUrl =
       String.fromEnvironment('REVENUECAT_TYPESYNC_LITE_WEB_PURCHASE_URL');
+  static const plusWebPurchaseUrl =
+      String.fromEnvironment('REVENUECAT_PLUS_WEB_PURCHASE_URL');
+  static const proWebPurchaseUrl =
+      String.fromEnvironment('REVENUECAT_PRO_WEB_PURCHASE_URL');
   static const customerPortalUrl =
       String.fromEnvironment('REVENUECAT_CUSTOMER_PORTAL_URL');
 
@@ -33,16 +38,19 @@ class RevenueCatBillingConfig {
   static const monthlyProductId = 'monthly';
   static const defaultOfferingId = 'default';
 
-  static const entitlementIds = [liteEntitlementId];
+  static const entitlementIds = [liteEntitlementId, 'plus', 'pro'];
 
   static const productIdsByPlanId = {
     liteEntitlementId: monthlyProductId,
+    'plus': 'typesync_plus_monthly',
+    'pro': 'typesync_pro_monthly',
   };
 
   static bool get supportsRevenueCatSdk =>
-      defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS ||
-      defaultTargetPlatform == TargetPlatform.macOS;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   static bool get supportsRevenueCatUi =>
       !kIsWeb &&
@@ -53,10 +61,10 @@ class RevenueCatBillingConfig {
     if (kIsWeb) return webApiKey;
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return androidApiKey.isEmpty ? defaultPublicApiKey : androidApiKey;
+        return androidApiKey;
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
-        return appleApiKey.isEmpty ? defaultPublicApiKey : appleApiKey;
+        return appleApiKey;
       case TargetPlatform.fuchsia:
       case TargetPlatform.linux:
       case TargetPlatform.windows:
@@ -64,12 +72,26 @@ class RevenueCatBillingConfig {
     }
   }
 
+  static bool isTestApiKey(String apiKey) =>
+      apiKey.trim().toLowerCase().startsWith('test_');
+
+  static bool isNativeApiKeyUsable(
+    String apiKey, {
+    required bool isDebugBuild,
+  }) {
+    final normalized = apiKey.trim();
+    if (normalized.isEmpty) return false;
+    return isDebugBuild || !isTestApiKey(normalized);
+  }
+
   static String webPurchaseUrlFor(SubscriptionTier tier) {
     switch (tier) {
       case SubscriptionTier.basic:
         return typeSyncLiteWebPurchaseUrl;
       case SubscriptionTier.standard:
+        return plusWebPurchaseUrl;
       case SubscriptionTier.premium:
+        return proWebPurchaseUrl;
       case SubscriptionTier.free:
         return '';
     }
@@ -78,10 +100,14 @@ class RevenueCatBillingConfig {
 
 class RevenueCatRuntimeBillingConfig {
   final String typeSyncLiteWebPurchaseUrl;
+  final String plusWebPurchaseUrl;
+  final String proWebPurchaseUrl;
   final String customerPortalUrl;
 
   const RevenueCatRuntimeBillingConfig({
     this.typeSyncLiteWebPurchaseUrl = '',
+    this.plusWebPurchaseUrl = '',
+    this.proWebPurchaseUrl = '',
     this.customerPortalUrl = '',
   });
 
@@ -96,6 +122,12 @@ class RevenueCatRuntimeBillingConfig {
           stringValue('typeSyncLiteWebPurchaseUrl').isNotEmpty
               ? stringValue('typeSyncLiteWebPurchaseUrl')
               : stringValue('revenueCatTypeSyncLiteWebPurchaseUrl'),
+      plusWebPurchaseUrl: stringValue('plusWebPurchaseUrl').isNotEmpty
+          ? stringValue('plusWebPurchaseUrl')
+          : stringValue('revenueCatPlusWebPurchaseUrl'),
+      proWebPurchaseUrl: stringValue('proWebPurchaseUrl').isNotEmpty
+          ? stringValue('proWebPurchaseUrl')
+          : stringValue('revenueCatProWebPurchaseUrl'),
       customerPortalUrl: stringValue('customerPortalUrl').isNotEmpty
           ? stringValue('customerPortalUrl')
           : stringValue('revenueCatCustomerPortalUrl'),
@@ -135,11 +167,25 @@ class BillingService extends ChangeNotifier {
       RevenueCatBillingConfig.supportsRevenueCatSdk;
   bool get supportsRevenueCatUi => RevenueCatBillingConfig.supportsRevenueCatUi;
 
-  bool get hasWebPurchaseLinks =>
-      _configuredWebPurchaseUrlFor(SubscriptionTier.basic).isNotEmpty;
+  bool get hasWebPurchaseLinks => SubscriptionTier.values.any(
+        (tier) =>
+            tier != SubscriptionTier.free &&
+            _configuredWebPurchaseUrlFor(tier).isNotEmpty,
+      );
 
   bool get canStartPurchase =>
       supportsRevenueCatSdk ? _isConfigured : hasWebPurchaseLinks;
+
+  bool canPurchasePlan(SubscriptionTier tier) {
+    if (tier == SubscriptionTier.free) return false;
+    if (supportsRevenueCatSdk) {
+      final productId = tier.revenueCatProductId;
+      return _isConfigured &&
+          productId != null &&
+          _packagesByProductId.containsKey(productId);
+    }
+    return _configuredWebPurchaseUrlFor(tier).isNotEmpty;
+  }
 
   Future<void> configureForUser(String? userId) async {
     await _loadRuntimeConfig();
@@ -168,7 +214,18 @@ class BillingService extends ChangeNotifier {
     final apiKey = RevenueCatBillingConfig.platformApiKey;
     if (apiKey.isEmpty) {
       _isConfigured = false;
-      _errorMessage = 'RevenueCat is not configured for this platform yet.';
+      _errorMessage =
+          'Purchases are not configured in this build. Add the RevenueCat key for this platform.';
+      notifyListeners();
+      return;
+    }
+    if (!RevenueCatBillingConfig.isNativeApiKeyUsable(
+      apiKey,
+      isDebugBuild: kDebugMode,
+    )) {
+      _isConfigured = false;
+      _errorMessage =
+          'This release contains a RevenueCat test key. Install a build configured with the platform production key.';
       notifyListeners();
       return;
     }
@@ -383,19 +440,13 @@ class BillingService extends ChangeNotifier {
     if (_runtimeConfigLoaded) return;
     _runtimeConfigLoaded = true;
 
-    if (!kIsWeb) return;
-
     try {
-      final uri = Uri.base.resolve(
-        'billing_config.json?v=${DateTime.now().millisecondsSinceEpoch}',
-      );
-      final response = await http.get(uri);
-      if (response.statusCode != 200 || response.body.trim().isEmpty) {
-        notifyListeners();
-        return;
-      }
+      final rawConfig = kIsWeb
+          ? await _loadWebRuntimeConfig()
+          : await rootBundle.loadString('assets/billing_config.json');
+      if (rawConfig.trim().isEmpty) return;
 
-      final json = jsonDecode(response.body);
+      final json = jsonDecode(rawConfig);
       if (json is Map<String, dynamic>) {
         _runtimeConfig = RevenueCatRuntimeBillingConfig.fromJson(json);
         notifyListeners();
@@ -405,24 +456,40 @@ class BillingService extends ChangeNotifier {
     }
   }
 
-  String _configuredWebPurchaseUrlFor(SubscriptionTier tier, {String? userId}) {
-    switch (tier) {
-      case SubscriptionTier.basic:
-        final baseUrl = _runtimeConfig.typeSyncLiteWebPurchaseUrl.ifEmpty(
-          RevenueCatBillingConfig.typeSyncLiteWebPurchaseUrl,
-        );
-        if (baseUrl.isEmpty || userId == null || userId.isEmpty) {
-          return baseUrl;
-        }
-        return _appendAppUserIdToPurchaseUrl(baseUrl, userId);
-      case SubscriptionTier.standard:
-      case SubscriptionTier.premium:
-      case SubscriptionTier.free:
-        return '';
+  Future<String> _loadWebRuntimeConfig() async {
+    final uri = Uri.base.resolve(
+      'billing_config.json?v=${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final response = await http.get(uri);
+    if (response.statusCode != 200 || response.body.trim().isEmpty) {
+      return '';
     }
+    return response.body;
   }
 
-  String _appendAppUserIdToPurchaseUrl(String baseUrl, String userId) {
+  String _configuredWebPurchaseUrlFor(SubscriptionTier tier, {String? userId}) {
+    final baseUrl = switch (tier) {
+      SubscriptionTier.basic => _runtimeConfig.typeSyncLiteWebPurchaseUrl
+          .ifEmpty(RevenueCatBillingConfig.typeSyncLiteWebPurchaseUrl),
+      SubscriptionTier.standard => _runtimeConfig.plusWebPurchaseUrl
+          .ifEmpty(RevenueCatBillingConfig.plusWebPurchaseUrl),
+      SubscriptionTier.premium => _runtimeConfig.proWebPurchaseUrl
+          .ifEmpty(RevenueCatBillingConfig.proWebPurchaseUrl),
+      SubscriptionTier.free => '',
+    };
+    if (baseUrl.isEmpty || userId == null || userId.isEmpty) return baseUrl;
+    return _appendAppUserIdToPurchaseUrl(
+      baseUrl,
+      userId,
+      packageId: tier.revenueCatProductId,
+    );
+  }
+
+  String _appendAppUserIdToPurchaseUrl(
+    String baseUrl,
+    String userId, {
+    required String? packageId,
+  }) {
     final uri = Uri.parse(baseUrl);
     final pathSegments = [
       ...uri.pathSegments.where((segment) => segment.isNotEmpty),
@@ -433,7 +500,7 @@ class BillingService extends ChangeNotifier {
       queryParameters: {
         ...uri.queryParameters,
         if (!uri.queryParameters.containsKey('package_id'))
-          'package_id': RevenueCatBillingConfig.monthlyProductId,
+          'package_id': packageId ?? RevenueCatBillingConfig.monthlyProductId,
       },
     ).toString();
   }

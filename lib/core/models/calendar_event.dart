@@ -66,12 +66,9 @@ class CalendarEvent extends Equatable {
 
   bool get isTodo => type == EventType.todo;
 
-  DateTime get calendarDate {
-    if (isTodo && isCompleted && completedAt != null) {
-      return completedAt!;
-    }
-    return startTime;
-  }
+  // Calendar placement should follow the event's stored date.
+  // Completed todos keep the date they had when they were checked.
+  DateTime get calendarDate => startTime;
 
   bool get isToday {
     final now = DateTime.now();

@@ -1035,6 +1035,10 @@ class SettingsScreen extends StatelessWidget {
       _ShortcutEntry('$modifierLabel+Shift+L', 'Bulleted list'),
       _ShortcutEntry('$modifierLabel+Shift+O', 'Numbered list'),
       _ShortcutEntry('$modifierLabel+Shift+C', 'Checklist'),
+      const _ShortcutEntry(
+        'Alt/Option+Up / Alt/Option+Down',
+        'Move selected checklist item(s)',
+      ),
       _ShortcutEntry('$modifierLabel+M', 'Indent block'),
       _ShortcutEntry('$modifierLabel+Shift+M', 'Outdent block'),
       _ShortcutEntry('$modifierLabel+1', 'Heading 1'),

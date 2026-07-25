@@ -248,6 +248,67 @@ class TypeSyncKanbanEmbed extends CustomBlockEmbed {
     return TypeSyncKanbanData.fromEmbedData(data);
   }
 
+  /// Finds a board by its persistent ID in a Quill delta.
+  ///
+  /// Custom embeds are cloned by Flutter Quill before they are passed to an
+  /// [EmbedBuilder]. Those clones are detached from the document, so their
+  /// `documentOffset` is always zero. Resolving the board from the current
+  /// delta avoids accidentally replacing the first document block.
+  static int? findBoardOffset(
+    Iterable<Map<String, dynamic>> operations, {
+    required String boardId,
+  }) {
+    var offset = 0;
+
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      if (insert is String) {
+        offset += insert.length;
+        continue;
+      }
+
+      if (insert is Map) {
+        final board = _boardFromInsert(insert);
+        if (board?.id == boardId) {
+          return offset;
+        }
+
+        // Every Quill embed occupies exactly one document character.
+        offset += 1;
+      }
+    }
+
+    return null;
+  }
+
+  static TypeSyncKanbanData? _boardFromInsert(Map<dynamic, dynamic> insert) {
+    Object? data = insert[kanbanType];
+
+    if (data == null) {
+      final customData = insert[BlockEmbed.customType];
+      if (customData is String) {
+        try {
+          final custom = jsonDecode(customData);
+          if (custom is Map) {
+            data = custom[kanbanType];
+          }
+        } catch (_) {
+          return null;
+        }
+      }
+    }
+
+    if (data is! String) {
+      return null;
+    }
+
+    try {
+      return parseData(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static BlockEmbed toBlockEmbed(TypeSyncKanbanData board) {
     return BlockEmbed.custom(fromBoard(board));
   }

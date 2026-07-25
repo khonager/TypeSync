@@ -373,7 +373,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                   onTap: _undockFromDock,
                 ),
                 const _ToolbarDivider(axis: Axis.horizontal),
-                ...scrollItems.skip(2),
+                ...scrollItems.skip(1),
               ],
             ),
           ),
@@ -471,6 +471,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
                       ),
                     ),
                     _ToolbarButton(
+                      icon: Icons.format_clear,
+                      tooltip: 'Reset text style',
+                      onTap: _resetTextStyle,
+                    ),
+                    _ToolbarButton(
                       icon: Icons.close,
                       tooltip: 'Collapse',
                       onTap: _toggleExpanded,
@@ -554,6 +559,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
         tooltip: 'Collapse',
         onTap: _toggleExpanded,
       ),
+      _ToolbarButton(
+        icon: Icons.format_clear,
+        tooltip: 'Reset text style',
+        onTap: _resetTextStyle,
+      ),
       divider,
       _ToolbarButton(
         icon: Icons.format_bold,
@@ -594,12 +604,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
             : AppColorPalette.getContrastingTextColor(activeMarkerColor),
         onTap: _showMarkerColorPicker,
       ),
-      _ToolbarButton(
-        icon: Icons.code,
-        tooltip: 'Code block',
-        isActive: _hasFormat(Attribute.codeBlock),
-        onTap: _toggleCodeBlock,
-      ),
       divider,
       _ToolbarButton(
         icon: Icons.check_box,
@@ -612,6 +616,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
         tooltip: 'Numbered list',
         isActive: _hasFormat(Attribute.ol),
         onTap: () => _toggleAttribute(Attribute.ol),
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Code block',
+        isActive: _hasFormat(Attribute.codeBlock),
+        onTap: _toggleCodeBlock,
       ),
       divider,
       _ToolbarButton(
@@ -697,12 +707,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
         onTap: _showMarkerColorPicker,
       ),
       _ToolbarButton(
-        icon: Icons.code,
-        tooltip: 'Code block',
-        isActive: _hasFormat(Attribute.codeBlock),
-        onTap: _toggleCodeBlock,
-      ),
-      _ToolbarButton(
         icon: Icons.check_box,
         tooltip: 'Checklist',
         isActive: _hasFormat(Attribute.checked),
@@ -713,6 +717,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
         tooltip: 'Numbered list',
         isActive: _hasFormat(Attribute.ol),
         onTap: () => _toggleAttribute(Attribute.ol),
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Code block',
+        isActive: _hasFormat(Attribute.codeBlock),
+        onTap: _toggleCodeBlock,
       ),
       _ToolbarButton(
         icon: Icons.format_align_left,
@@ -793,6 +803,20 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   void _toggleCodeBlock() {
     _toggleAttribute(Attribute.codeBlock);
+  }
+
+  void _resetTextStyle() {
+    const textStyleAttributes = <Attribute<dynamic>>[
+      Attribute.bold,
+      Attribute.italic,
+      Attribute.underline,
+      Attribute.strikeThrough,
+      Attribute.color,
+      Attribute.background,
+    ];
+    for (final attribute in textStyleAttributes) {
+      widget.controller.formatSelection(Attribute.clone(attribute, null));
+    }
   }
 
   void _setAlignment(Attribute<String?> alignment) {

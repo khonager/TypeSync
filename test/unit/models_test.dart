@@ -113,6 +113,40 @@ void main() {
     });
   });
 
+  group('Note Model', () {
+    test('Note.toJson and fromJson preserve spellcheck language override', () {
+      final original = Note(
+        id: 'note-1',
+        title: 'Deutsch',
+        content: 'Das ist ein Test',
+        createdAt: DateTime(2024, 1, 1),
+        updatedAt: DateTime(2024, 1, 2),
+        userId: 'user-1',
+        spellcheckLanguageCode: 'de',
+      );
+
+      final restored = Note.fromJson(original.toJson());
+
+      expect(restored.spellcheckLanguageCode, 'de');
+    });
+
+    test('Note.copyWith can clear spellcheck language override', () {
+      final original = Note(
+        id: 'note-2',
+        title: 'English',
+        content: 'This is a test',
+        createdAt: DateTime(2024, 1, 1),
+        updatedAt: DateTime(2024, 1, 2),
+        userId: 'user-1',
+        spellcheckLanguageCode: 'en',
+      );
+
+      final updated = original.copyWith(spellcheckLanguageCode: null);
+
+      expect(updated.spellcheckLanguageCode, isNull);
+    });
+  });
+
   group('Data Repair Service', () {
     test('detects and describes legacy folder and note repairs', () {
       final folder = Folder(

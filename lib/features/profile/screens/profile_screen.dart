@@ -127,7 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Future<void> _refreshCloudStorageInfo() async {
+  Future<void> _refreshCloudStorageInfo({bool runAudit = false}) async {
     final authService = context.read<AuthService>();
     if (authService.isGuestMode) {
       return;
@@ -144,6 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     await storageService.loadStorageInfo(
       cloudUserId,
       fallbackUser: authService.currentUser,
+      runAudit: runAudit,
     );
   }
 
@@ -208,9 +209,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     bool refreshCloud = true,
     bool refreshLocal = true,
     bool showLocalLoadingState = false,
+    bool runCloudAudit = false,
   }) async {
     if (refreshCloud) {
-      await _refreshCloudStorageInfo();
+      await _refreshCloudStorageInfo(runAudit: runCloudAudit);
     }
     if (refreshLocal && mounted) {
       await _refreshLocalStorageInfo(showLoadingState: showLocalLoadingState);
@@ -249,7 +251,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadCachedLocalStorageInfo();
       if (!mounted) return;
-      await _refreshStorageInfo(refreshLocal: false);
+      await _refreshStorageInfo(
+        refreshLocal: false,
+        runCloudAudit: true,
+      );
     });
   }
 
@@ -284,7 +289,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         !context.read<AuthService>().isGuestMode) {
-      _refreshStorageInfo(showLocalLoadingState: false);
+      _refreshStorageInfo(
+        showLocalLoadingState: false,
+        runCloudAudit: true,
+      );
     }
   }
 
@@ -388,10 +396,28 @@ class _ProfileScreenState extends State<ProfileScreen>
                       'Cloud Storage',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    Text(
-                      storageService.usageFormatted,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    if (storageService.isLoading &&
+                        !storageService.hasLoadedStorageInfo)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Loading...',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        storageService.usageFormatted,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -399,11 +425,30 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: storageService.usagePercent,
+                    value: storageService.isLoading &&
+                            !storageService.hasLoadedStorageInfo
+                        ? null
+                        : storageService.usagePercent.clamp(0, 1),
                     backgroundColor: Colors.grey.withValues(alpha: 0.3),
                     minHeight: 8,
                   ),
                 ),
+                const SizedBox(height: 12),
+                if (storageService.isLoading &&
+                    !storageService.hasLoadedStorageInfo)
+                  Text(
+                    'Checking cloud usage...',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  )
+                else
+                  Text(
+                    _formatExactBytes(storageService.storageUsedBytes),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
                 const SizedBox(height: 12),
                 // Subscription tier
                 Row(
@@ -415,81 +460,89 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                     TextButton(
                       onPressed: () {
-                        AppRouter.navigateTo(context, AppRouter.subscription);
+                        AppRouter.navigateTo(
+                          context,
+                          AppRouter.subscription,
+                        );
                       },
                       child: const Text('Upgrade'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
-                  _formatExactBytes(storageService.storageUsedBytes),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  storageService.hasAuditedStorageInfo
+                      ? 'Quota checks use the saved account total. The breakdown below was verified automatically.'
+                      : 'Showing the latest saved total now. Cloud usage details are being verified automatically.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Notes content',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      _formatBytes(storageService.cloudContentBytes),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Note attachments',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      _formatBytes(storageService.cloudAttachmentBytes),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Cloud files',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      '${storageService.cloudFileCount}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Cloud notes',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Text(
-                      '${storageService.cloudNoteCount}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                if (storageService.cloudRecordedBytes >
-                    [
-                      storageService.cloudContentBytes +
-                          storageService.cloudAttachmentBytes,
-                      storageService.cloudStoredFileBytes,
-                    ].reduce((a, b) => a > b ? a : b)) ...[
+                if (storageService.hasAuditedStorageInfo) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Notes content',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudContentBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Note attachments',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatBytes(storageService.cloudAttachmentBytes),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Cloud files',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        '${storageService.cloudFileCount}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Cloud notes',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        '${storageService.cloudNoteCount}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ],
+                if (storageService.hasAuditedStorageInfo &&
+                    storageService.cloudRecordedBytes >
+                        [
+                          storageService.cloudContentBytes +
+                              storageService.cloudAttachmentBytes,
+                          storageService.cloudStoredFileBytes,
+                        ].reduce((a, b) => a > b ? a : b)) ...[
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
