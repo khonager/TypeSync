@@ -85,6 +85,8 @@ PLAN_LIMIT_BY_TIER = {
     3: REVENUECAT_PLAN_BY_ENTITLEMENT["pro"]["limit"],
 }
 
+MAX_ADMIN_GRANT_DURATION_DAYS = 3650
+
 
 def _plan_from_id(plan_id: str | None) -> dict:
     if plan_id == FREE_PLAN["plan_id"]:
@@ -1125,14 +1127,22 @@ def set_admin_entitlement(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             message="Choose a valid TypeSync plan.",
         )
+    # Callable payloads can decode whole JSON numbers as floats in some
+    # Firebase Functions runtimes. Normalize those values before validating so
+    # the preset 30-day and one-year grants are treated the same as custom ones.
+    if isinstance(duration_days, float) and duration_days.is_integer():
+        duration_days = int(duration_days)
     if duration_days is not None and (
-        not isinstance(duration_days, int)
+        type(duration_days) is not int
         or duration_days < 1
-        or duration_days > 3650
+        or duration_days > MAX_ADMIN_GRANT_DURATION_DAYS
     ):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            message="Grant duration must be between 1 and 3650 days.",
+            message=(
+                "Grant duration must be between 1 and "
+                f"{MAX_ADMIN_GRANT_DURATION_DAYS} days."
+            ),
         )
 
     try:
