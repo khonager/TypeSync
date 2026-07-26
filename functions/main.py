@@ -993,27 +993,30 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
 
 @https_fn.on_request()
 def audit_storage_usage(req: https_fn.Request) -> https_fn.Response:
-    if req.method != "POST":
-        return https_fn.Response("Method not allowed", status=405)
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
 
-    uid = _verified_uid(req)
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=401, cors=True)
 
     try:
         payload = req.get_json(silent=True) or {}
         target_uid = payload.get("userId")
     except Exception as exc:
         print(f"Bad audit payload: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": "Invalid JSON body"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "Invalid JSON body"}, status=400, cors=True)
 
     if target_uid != uid:
-        return https_fn.Response(
-            json.dumps({"error": "userId does not match authenticated user"}),
+        return _json_response(
+            {"error": "userId does not match authenticated user"},
             status=403,
-            content_type="application/json",
+            cors=True,
         )
 
     try:
@@ -1025,24 +1028,17 @@ def audit_storage_usage(req: https_fn.Request) -> https_fn.Response:
             merge=True,
         )
 
-        return https_fn.Response(
-            json.dumps(
-                {
-                    "storageUsedBytes": total_bytes,
-                    "storedFileBytes": total_bytes,
-                    "storedFileCount": object_count,
-                }
-            ),
-            status=200,
-            content_type="application/json",
+        return _json_response(
+            {
+                "storageUsedBytes": total_bytes,
+                "storedFileBytes": total_bytes,
+                "storedFileCount": object_count,
+            },
+            cors=True,
         )
     except Exception as exc:
         print(f"Storage audit failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": f"Audit failed: {exc}"}),
-            status=500,
-            content_type="application/json",
-        )
+        return _json_response({"error": f"Audit failed: {exc}"}, status=500, cors=True)
 
 
 @https_fn.on_request(secrets=[REVENUECAT_WEBHOOK_AUTH_TOKEN])

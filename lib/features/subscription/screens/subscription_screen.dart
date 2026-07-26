@@ -26,23 +26,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   String? _configuredUserId;
 
   @override
+  void initState() {
+    super.initState();
+    // Usage must not wait for RevenueCat configuration. In particular, the
+    // web billing setup can take longer than the storage lookup.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_refreshEntitlements());
+      }
+    });
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final auth = context.read<AuthService>();
-    final billing = context.read<BillingService>();
-    final userId = auth.userId;
+    final userId = context.read<AuthService>().userId;
     if (userId != _configuredUserId) {
       _configuredUserId = userId;
-      unawaited(billing.configureForUser(userId));
-      unawaited(context.read<AdminEntitlementService>().refreshAccess(userId));
+      unawaited(_configureAndRefreshForUser(userId));
     }
+  }
+
+  /// Configures purchase services and loads the current plan's usage whenever
+  /// this page is opened or the signed-in user changes.
+  Future<void> _configureAndRefreshForUser(String? userId) async {
+    final billing = context.read<BillingService>();
+    final adminEntitlements = context.read<AdminEntitlementService>();
+    final auth = context.read<AuthService>();
+    await billing.configureForUser(userId);
+    await adminEntitlements.refreshAccess(userId);
+
+    if (!mounted || auth.userId != userId) return;
+    await _refreshEntitlements();
   }
 
   Future<void> _refreshEntitlements() async {
     final billing = context.read<BillingService>();
     final storage = context.read<StorageService>();
     final auth = context.read<AuthService>();
-    await billing.refreshCustomerInfo();
+    // Neither lookup depends on the other, so begin the billing refresh
+    // without delaying the storage value shown on this page.
+    final customerInfoRefresh = billing.refreshCustomerInfo();
     final userId = auth.userId;
     if (userId != null) {
       await storage.loadStorageInfo(
@@ -51,6 +75,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         runAudit: true,
       );
     }
+    await customerInfoRefresh;
   }
 
   Future<void> _purchase(SubscriptionInfo plan) async {
