@@ -16,7 +16,9 @@ workflows:
         BUNDLE_ID: "de.khonager.typesync"
         APP_STORE_APP_ID: "6762024261"
 
-      flutter: stable
+      # flutter_quill 10.x is used by the custom editor and is incompatible
+      # with the newer TextInputClient API in current Flutter stable.
+      flutter: 3.27.3
       xcode: latest
       cocoapods: default
 
@@ -98,7 +100,8 @@ workflows:
       groups:
         - app_store_credentials
 
-      flutter: stable
+      # Keep development artifacts on the same Flutter version as TestFlight.
+      flutter: 3.27.3
       xcode: latest
       cocoapods: default
 
