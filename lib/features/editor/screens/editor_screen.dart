@@ -5032,8 +5032,20 @@ class _EditorScreenState extends State<EditorScreen>
 
     for (final file in files) {
       try {
-        final filePath = file.path;
         final fileName = file.name;
+
+        // On web, XFile.path is a browser object URL rather than a path that
+        // dart:io can open. Reading it through File causes the unsupported
+        // `_Namespace` exception reported when dropping an attachment.
+        if (kIsWeb) {
+          await _attachFileToCurrentNote(
+            fileName: fileName,
+            bytes: await file.readAsBytes(),
+          );
+          continue;
+        }
+
+        final filePath = file.path;
 
         // Read file content
         final fileData = File(filePath);
