@@ -71,7 +71,10 @@ class SyncService extends ChangeNotifier {
   DateTime? _lastSyncTime;
   bool _isOnline = true;
   Timer? _refreshTimeoutTimer;
+  Timer? _linuxWorkspaceRefreshTimer;
   bool _awaitingRefreshResult = false;
+
+  static const Duration _linuxWorkspaceRefreshInterval = Duration(seconds: 15);
 
   // Stream subscriptions for real-time updates (cloud_firestore)
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notesSubscription;
@@ -221,7 +224,9 @@ class SyncService extends ChangeNotifier {
   void startCoreListening(String userId) {
     if (_currentUserId == userId &&
         _listenersActive &&
-        (_settingsSubscription != null || _fdSettingsSubscription != null)) {
+        (_settingsSubscription != null || _fdSettingsSubscription != null) &&
+        (_calendarSubscription != null ||
+            _linuxWorkspaceRefreshTimer != null)) {
       _diagnostics.info(
         'SyncService',
         'SYNC_LIFECYCLE reused core listeners for user=$userId generation=$_listenerGeneration',
@@ -268,6 +273,7 @@ class SyncService extends ChangeNotifier {
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      _startLinuxWorkspaceRefreshTimer(userId);
       _startCoreListeningFiredart(userId, generation);
       return;
     }
@@ -301,6 +307,41 @@ class SyncService extends ChangeNotifier {
           }
         },
         onError: (Object error) => _setError('Failed to sync settings: $error'),
+      );
+
+      // Calendar events need a collection listener because, unlike an open
+      // note, there is no single active document to subscribe to.
+      _calendarSubscription = firestore
+          .collection('calendar_events')
+          .where('userId', isEqualTo: userId)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (generation != _listenerGeneration) {
+            return;
+          }
+
+          final events = <CalendarEvent>[];
+          for (final doc in snapshot.docs) {
+            try {
+              events.add(CalendarEvent.fromJson(doc.data()));
+            } catch (e) {
+              _diagnostics.warning(
+                'SyncService',
+                'Skipped malformed calendar event ${doc.id} during live update: $e',
+              );
+            }
+          }
+
+          onCalendarUpdated?.call(events);
+          _lastSyncTime = DateTime.now();
+          _markRefreshSucceeded('Received calendar update');
+          if (_status == SyncStatus.syncing) {
+            _setStatus(SyncStatus.synced);
+          }
+        },
+        onError: (Object error) =>
+            _setError('Failed to sync calendar events: $error'),
       );
     } catch (e) {
       // Firebase not initialized or unavailable
@@ -382,7 +423,6 @@ class SyncService extends ChangeNotifier {
       final eventDocs = await firestore
           .collection('calendar_events')
           .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
           .get();
       final events = eventDocs.docs
           .map((doc) => CalendarEvent.fromJson(doc.data()))
@@ -422,6 +462,71 @@ class SyncService extends ChangeNotifier {
       return true;
     } catch (e) {
       _setError('Workspace snapshot fetch failed: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _fetchCalendarSnapshot(String userId) async {
+    if (!_isOnline || !_syncEnabled || _currentUserId != userId) {
+      return true;
+    }
+
+    final generation = _listenerGeneration;
+    try {
+      final events = <CalendarEvent>[];
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final firestore = _firedartFirestore;
+        if (firestore == null) {
+          return false;
+        }
+        final docs = await firestore
+            .collection('calendar_events')
+            .where('userId', isEqualTo: userId)
+            .get();
+        for (final doc in docs) {
+          try {
+            final data = Map<String, dynamic>.from(doc.map);
+            data['id'] = doc.id;
+            events.add(CalendarEvent.fromJson(data));
+          } catch (e) {
+            _diagnostics.warning(
+              'SyncService',
+              'Skipped malformed Linux calendar event ${doc.id} during foreground refresh: $e',
+            );
+          }
+        }
+      } else {
+        final firestore = _firebaseFirestore;
+        if (firestore == null) {
+          return false;
+        }
+        final snapshot = await firestore
+            .collection('calendar_events')
+            .where('userId', isEqualTo: userId)
+            .get();
+        for (final doc in snapshot.docs) {
+          try {
+            events.add(CalendarEvent.fromJson(doc.data()));
+          } catch (e) {
+            _diagnostics.warning(
+              'SyncService',
+              'Skipped malformed calendar event ${doc.id} during foreground refresh: $e',
+            );
+          }
+        }
+      }
+
+      if (generation != _listenerGeneration || _currentUserId != userId) {
+        return false;
+      }
+      onCalendarUpdated?.call(events);
+      _lastSyncTime = DateTime.now();
+      return true;
+    } catch (e) {
+      _diagnostics.warning(
+        'SyncService',
+        'Calendar foreground refresh failed for user=$userId: $e',
+      );
       return false;
     }
   }
@@ -630,7 +735,6 @@ class SyncService extends ChangeNotifier {
       final eventDocs = await firestore
           .collection('calendar_events')
           .where('userId', isEqualTo: userId)
-          .where('isDeleted', isEqualTo: false)
           .get();
       final events = eventDocs.map((doc) {
         final data = Map<String, dynamic>.from(doc.map);
@@ -708,6 +812,8 @@ class SyncService extends ChangeNotifier {
       'SYNC_LIFECYCLE stopping listeners user=$_currentUserId generation=$_listenerGeneration reason=$reason hadListeners=$hadListeners',
     );
     _cancelRefreshTimeout();
+    _linuxWorkspaceRefreshTimer?.cancel();
+    _linuxWorkspaceRefreshTimer = null;
     _notesSubscription?.cancel();
     _foldersSubscription?.cancel();
     _calendarSubscription?.cancel();
@@ -744,10 +850,32 @@ class SyncService extends ChangeNotifier {
 
   void _cancelCoreListeners() {
     _settingsSubscription?.cancel();
+    _calendarSubscription?.cancel();
     _fdSettingsSubscription?.cancel();
     _settingsSubscription = null;
+    _calendarSubscription = null;
     _fdSettingsSubscription = null;
+    _linuxWorkspaceRefreshTimer?.cancel();
+    _linuxWorkspaceRefreshTimer = null;
     _listenersActive = false;
+  }
+
+  void _startLinuxWorkspaceRefreshTimer(String userId) {
+    _linuxWorkspaceRefreshTimer?.cancel();
+    // Firedart cannot stream a user-filtered query. Polling the scoped
+    // snapshot keeps Linux clients current without attempting an unfiltered
+    // collection listener that Firestore security rules would reject.
+    _linuxWorkspaceRefreshTimer = Timer.periodic(
+      _linuxWorkspaceRefreshInterval,
+      (_) {
+        if (_currentUserId == userId &&
+            _listenersActive &&
+            _syncEnabled &&
+            _isOnline) {
+          unawaited(_fetchCalendarSnapshot(userId));
+        }
+      },
+    );
   }
 
   /// Trigger a sync operation (debounced)
