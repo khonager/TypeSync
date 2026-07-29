@@ -61,7 +61,7 @@ class CalendarProvider extends ChangeNotifier {
               eventDateFor(e).day == date.day,
         )
         .toList()
-      ..sort((a, b) => eventDateFor(a).compareTo(eventDateFor(b)));
+      ..sort(CalendarEvent.compareForCalendarDisplay);
   }
 
   /// Get upcoming events

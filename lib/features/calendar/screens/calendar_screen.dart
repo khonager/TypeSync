@@ -1021,7 +1021,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return source.where((event) {
       return selectedKeys.contains(_dateKey(_dateOnly(event.calendarDate)));
     }).toList()
-      ..sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      ..sort(CalendarEvent.compareForCalendarDisplay);
   }
 
   List<CalendarEvent> _eventsInRange(
@@ -1034,7 +1034,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return !eventDate.isBefore(_dateOnly(start)) &&
           !eventDate.isAfter(_dateOnly(end));
     }).toList()
-      ..sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      ..sort(CalendarEvent.compareForCalendarDisplay);
   }
 
   List<_CalendarEventGroup> _buildEventGroups(
@@ -1052,11 +1052,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     final groups = grouped.values.map((items) {
-      items.sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      items.sort(CalendarEvent.compareForCalendarDisplay);
       return _CalendarEventGroup(items);
     }).toList()
       ..sort(
-        (a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate),
+        (a, b) => CalendarEvent.compareForCalendarDisplay(
+          a.primary,
+          b.primary,
+        ),
       );
 
     return groups;
