@@ -53,11 +53,15 @@ class HomeUpcomingSection extends StatelessWidget {
           child: HomeUpcomingCard(
             items: items,
             onItemTap: (item) {
+              final arguments = item.kind == UpcomingItemKind.calendar
+                  ? <String, Object>{'initialDate': item.dateTime}
+                  : null;
               AppRouter.navigateTo(
                 context,
                 item.kind == UpcomingItemKind.homework
                     ? AppRouter.homework
                     : AppRouter.calendar,
+                arguments: arguments,
               );
             },
             onItemCheck: (item) async {
