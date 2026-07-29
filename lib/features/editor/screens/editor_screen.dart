@@ -295,6 +295,7 @@ class _EditorScreenState extends State<EditorScreen>
   bool _isDragging = false;
   bool _isUpdatingFromExternal = false;
   bool _isApplyingChecklistMetadata = false;
+  bool _shouldUncheckChecklistContinuation = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
   bool _hasStartedCloudMigration = false;
@@ -445,6 +446,7 @@ class _EditorScreenState extends State<EditorScreen>
     await _loadAttachmentPreferences();
 
     // Listen for content changes
+    _quillController.onReplaceText = _handleEditorReplaceText;
     _quillController.addListener(_onContentChanged);
 
     setState(() {
@@ -509,6 +511,7 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _onContentChanged() {
     if (_isUpdatingFromExternal) return;
+    _applyPendingChecklistContinuationState();
     TypeSyncSpellcheckerService.instance.setInlineSpellcheckTextSegments(
       _manualSpellcheckTextSegments(),
     );
@@ -518,6 +521,45 @@ class _EditorScreenState extends State<EditorScreen>
     _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
+  }
+
+  bool _handleEditorReplaceText(int index, int length, Object? data) {
+    _shouldUncheckChecklistContinuation =
+        data == '\n' && (_currentChecklistLineState()?.isChecked ?? false);
+    return true;
+  }
+
+  void _applyPendingChecklistContinuationState() {
+    if (!_shouldUncheckChecklistContinuation) return;
+    _shouldUncheckChecklistContinuation = false;
+
+    final selection = _quillController.selection;
+    if (!selection.isValid) return;
+
+    final continuationOffset = selection.baseOffset;
+    _isApplyingChecklistMetadata = true;
+    try {
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        Attribute.unchecked,
+        shouldNotifyListeners: false,
+      );
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        _checklistMetadataAttribute(_checklistCreatedAtAttributeKey, null),
+        shouldNotifyListeners: false,
+      );
+      _quillController.formatText(
+        continuationOffset,
+        0,
+        _checklistMetadataAttribute(_checklistCheckedAtAttributeKey, null),
+        shouldNotifyListeners: false,
+      );
+    } finally {
+      _isApplyingChecklistMetadata = false;
+    }
   }
 
   void _ensureChecklistMetadata() {
@@ -748,10 +790,7 @@ class _EditorScreenState extends State<EditorScreen>
       _quillController.formatText(
         continuationOffset,
         0,
-        Attribute.clone(
-          checklistLine.isChecked ? Attribute.checked : Attribute.unchecked,
-          null,
-        ),
+        Attribute.unchecked,
       );
       _quillController.formatText(
         continuationOffset,
@@ -5444,6 +5483,7 @@ class _EditorScreenState extends State<EditorScreen>
         document,
         preferredSelection ?? previousController.selection,
       ),
+      onReplaceText: _handleEditorReplaceText,
     );
     nextController.addListener(_onContentChanged);
     previousController.removeListener(_onContentChanged);
