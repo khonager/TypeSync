@@ -60,13 +60,35 @@ void main() {
     await tester.enterText(boardTitleField, 'Renamed board');
     await tester.pump();
     expect(boardTitleField.evaluate().single, isNotNull);
-    expect(Focus.of(boardTitleField.evaluate().single).hasFocus, isTrue);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: boardTitleField,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
     expect(controller.document.toDelta().toJson(), originalDocument);
 
     final columnTitleField = find.widgetWithText(TextFormField, 'Column').first;
     await tester.enterText(columnTitleField, 'Renamed column');
     await tester.pump();
-    expect(Focus.of(columnTitleField.evaluate().single).hasFocus, isTrue);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: columnTitleField,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
     expect(controller.document.toDelta().toJson(), originalDocument);
 
     await tester.tap(find.byTooltip('Save and close'));
