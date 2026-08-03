@@ -114,13 +114,16 @@ class _TypeSyncKanbanEmbedWidget extends StatelessWidget {
   }
 
   Future<void> _editBoard(BuildContext context) async {
-    await showDialog<void>(
+    final nextBoard = await showDialog<TypeSyncKanbanData>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => _TypeSyncKanbanEditorDialog(
         initialBoard: board,
-        onBoardChanged: _persistBoard,
       ),
     );
+    if (nextBoard != null) {
+      _persistBoard(nextBoard);
+    }
   }
 
   void _persistBoard(TypeSyncKanbanData nextBoard) {
@@ -287,11 +290,9 @@ class _KanbanCardPreview extends StatelessWidget {
 
 class _TypeSyncKanbanEditorDialog extends StatefulWidget {
   final TypeSyncKanbanData initialBoard;
-  final ValueChanged<TypeSyncKanbanData> onBoardChanged;
 
   const _TypeSyncKanbanEditorDialog({
     required this.initialBoard,
-    required this.onBoardChanged,
   });
 
   @override
@@ -328,8 +329,8 @@ class _TypeSyncKanbanEditorDialogState
         children: [
           const Expanded(child: Text('Edit kanban board')),
           IconButton(
-            tooltip: 'Close',
-            onPressed: () => Navigator.pop(context),
+            tooltip: 'Save and close',
+            onPressed: () => Navigator.pop(context, _board),
             icon: const Icon(Icons.close),
           ),
         ],
@@ -370,7 +371,7 @@ class _TypeSyncKanbanEditorDialogState
                       ),
                 ),
                 Text(
-                  'Changes save and sync automatically',
+                  'Changes save and sync when you close this dialog',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w600,
@@ -416,7 +417,6 @@ class _TypeSyncKanbanEditorDialogState
     setState(() {
       _board = nextBoard;
     });
-    widget.onBoardChanged(nextBoard);
   }
 
   Widget _buildEditableColumn(BuildContext context, int columnIndex) {

@@ -295,6 +295,7 @@ class _EditorScreenState extends State<EditorScreen>
   bool _isDragging = false;
   bool _isUpdatingFromExternal = false;
   bool _isApplyingChecklistMetadata = false;
+  bool _isHandlingChecklistContinuation = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
   bool _hasStartedCloudMigration = false;
@@ -445,6 +446,7 @@ class _EditorScreenState extends State<EditorScreen>
     await _loadAttachmentPreferences();
 
     // Listen for content changes
+    _quillController.onReplaceText = _handleEditorReplaceText;
     _quillController.addListener(_onContentChanged);
 
     setState(() {
@@ -518,6 +520,16 @@ class _EditorScreenState extends State<EditorScreen>
     _refreshSearchMatches();
     _scheduleSave();
     _scheduleCaretOffsetPersist();
+  }
+
+  bool _handleEditorReplaceText(int index, int length, Object? data) {
+    if (!_isHandlingChecklistContinuation &&
+        data == '\n' &&
+        (_currentChecklistLineState()?.isChecked ?? false)) {
+      _handleChecklistContinuationShortcut();
+      return false;
+    }
+    return true;
   }
 
   void _ensureChecklistMetadata() {
@@ -732,7 +744,12 @@ class _EditorScreenState extends State<EditorScreen>
     if (!_focusNode.hasFocus) return;
 
     final checklistLine = _currentChecklistLineState();
-    _insertEditorNewline();
+    _isHandlingChecklistContinuation = true;
+    try {
+      _insertEditorNewline();
+    } finally {
+      _isHandlingChecklistContinuation = false;
+    }
 
     if (checklistLine == null) {
       return;
@@ -748,10 +765,7 @@ class _EditorScreenState extends State<EditorScreen>
       _quillController.formatText(
         continuationOffset,
         0,
-        Attribute.clone(
-          checklistLine.isChecked ? Attribute.checked : Attribute.unchecked,
-          null,
-        ),
+        Attribute.unchecked,
       );
       _quillController.formatText(
         continuationOffset,
@@ -5032,8 +5046,20 @@ class _EditorScreenState extends State<EditorScreen>
 
     for (final file in files) {
       try {
-        final filePath = file.path;
         final fileName = file.name;
+
+        // On web, XFile.path is a browser object URL rather than a path that
+        // dart:io can open. Reading it through File causes the unsupported
+        // `_Namespace` exception reported when dropping an attachment.
+        if (kIsWeb) {
+          await _attachFileToCurrentNote(
+            fileName: fileName,
+            bytes: await file.readAsBytes(),
+          );
+          continue;
+        }
+
+        final filePath = file.path;
 
         // Read file content
         final fileData = File(filePath);
@@ -5432,6 +5458,7 @@ class _EditorScreenState extends State<EditorScreen>
         document,
         preferredSelection ?? previousController.selection,
       ),
+      onReplaceText: _handleEditorReplaceText,
     );
     nextController.addListener(_onContentChanged);
     previousController.removeListener(_onContentChanged);

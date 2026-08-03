@@ -85,6 +85,8 @@ PLAN_LIMIT_BY_TIER = {
     3: REVENUECAT_PLAN_BY_ENTITLEMENT["pro"]["limit"],
 }
 
+MAX_ADMIN_GRANT_DURATION_DAYS = 3650
+
 
 def _plan_from_id(plan_id: str | None) -> dict:
     if plan_id == FREE_PLAN["plan_id"]:
@@ -736,10 +738,17 @@ def _verified_uid(req: https_fn.Request) -> str:
 
 @https_fn.on_request()
 def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
-    if req.method != "POST":
-        return https_fn.Response("Method not allowed", status=405)
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
 
-    uid = _verified_uid(req)
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=401, cors=True)
 
     try:
         payload = req.get_json(silent=True) or {}
@@ -749,24 +758,20 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
         content_type = payload.get("contentType") or "application/octet-stream"
     except Exception as exc:
         print(f"Bad upload payload: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": "Invalid JSON body"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "Invalid JSON body"}, status=400, cors=True)
 
     if target_uid != uid:
-        return https_fn.Response(
-            json.dumps({"error": "userId does not match authenticated user"}),
+        return _json_response(
+            {"error": "userId does not match authenticated user"},
             status=403,
-            content_type="application/json",
+            cors=True,
         )
 
     if not destination_path or not data_b64:
-        return https_fn.Response(
-            json.dumps({"error": "destinationPath and dataBase64 are required"}),
+        return _json_response(
+            {"error": "destinationPath and dataBase64 are required"},
             status=400,
-            content_type="application/json",
+            cors=True,
         )
 
     object_path = f"users/{uid}/{destination_path}"
@@ -775,11 +780,7 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
         file_bytes = base64.b64decode(data_b64)
     except Exception as exc:
         print(f"Base64 decode failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": "Invalid base64 payload"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "Invalid base64 payload"}, status=400, cors=True)
 
     download_token = str(uuid.uuid4())
     bucket = _storage().bucket()
@@ -792,10 +793,10 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             existing_size = int(blob.size or 0)
     except Exception as exc:
         print(f"Existing object lookup failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": f"Could not inspect existing object: {exc}"}),
+        return _json_response(
+            {"error": f"Could not inspect existing object: {exc}"},
             status=500,
-            content_type="application/json",
+            cors=True,
         )
 
     upload_size = len(file_bytes)
@@ -857,11 +858,7 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             payload = json.loads(str(exc))
         except Exception:
             payload = {"error": str(exc)}
-        return https_fn.Response(
-            json.dumps(payload),
-            status=403,
-            content_type="application/json",
-        )
+        return _json_response(payload, status=403, cors=True)
 
     try:
         blob.metadata = {"firebaseStorageDownloadTokens": download_token}
@@ -873,19 +870,16 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             f"{quote(object_path, safe='')}?alt=media&token={download_token}"
         )
 
-        return https_fn.Response(
-            json.dumps(
-                {
-                    "downloadUrl": download_url,
-                    "size": len(file_bytes),
-                    "bucket": bucket_name,
-                    "path": object_path,
-                    "storageUsedBytes": storage_used_bytes,
-                    "storageLimitBytes": storage_limit_bytes,
-                }
-            ),
-            status=200,
-            content_type="application/json",
+        return _json_response(
+            {
+                "downloadUrl": download_url,
+                "size": len(file_bytes),
+                "bucket": bucket_name,
+                "path": object_path,
+                "storageUsedBytes": storage_used_bytes,
+                "storageLimitBytes": storage_limit_bytes,
+            },
+            cors=True,
         )
     except Exception as exc:
         if quota_delta > 0:
@@ -896,19 +890,22 @@ def upload_storage_object(req: https_fn.Request) -> https_fn.Response:
             except Exception as rollback_exc:
                 print(f"Storage usage rollback failed: {rollback_exc}")
         print(f"Storage upload failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": f"Upload failed: {exc}"}),
-            status=500,
-            content_type="application/json",
-        )
+        return _json_response({"error": f"Upload failed: {exc}"}, status=500, cors=True)
 
 
 @https_fn.on_request()
 def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
-    if req.method != "POST":
-        return https_fn.Response("Method not allowed", status=405)
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
 
-    uid = _verified_uid(req)
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=401, cors=True)
 
     try:
         payload = req.get_json(silent=True) or {}
@@ -916,45 +913,31 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
         object_path = payload.get("objectPath")
     except Exception as exc:
         print(f"Bad delete payload: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": "Invalid JSON body"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "Invalid JSON body"}, status=400, cors=True)
 
     if target_uid != uid:
-        return https_fn.Response(
-            json.dumps({"error": "userId does not match authenticated user"}),
+        return _json_response(
+            {"error": "userId does not match authenticated user"},
             status=403,
-            content_type="application/json",
+            cors=True,
         )
 
     if not object_path or not isinstance(object_path, str):
-        return https_fn.Response(
-            json.dumps({"error": "objectPath is required"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "objectPath is required"}, status=400, cors=True)
 
     expected_prefix = f"users/{uid}/"
     if not object_path.startswith(expected_prefix):
-        return https_fn.Response(
-            json.dumps(
-                {"error": "objectPath is outside the authenticated user scope"}
-            ),
+        return _json_response(
+            {"error": "objectPath is outside the authenticated user scope"},
             status=403,
-            content_type="application/json",
+            cors=True,
         )
 
     try:
         bucket = _storage().bucket()
         blob = bucket.blob(object_path)
         if not blob.exists():
-            return https_fn.Response(
-                json.dumps({"error": "Object not found"}),
-                status=404,
-                content_type="application/json",
-            )
+            return _json_response({"error": "Object not found"}, status=404, cors=True)
 
         blob.reload()
         size = int(blob.size or 0)
@@ -967,51 +950,47 @@ def delete_storage_object(req: https_fn.Request) -> https_fn.Response:
         storage_used_bytes = max(current_usage - size, 0)
         user_ref.set({"storageUsedBytes": storage_used_bytes}, merge=True)
 
-        return https_fn.Response(
-            json.dumps(
-                {
-                    "deleted": True,
-                    "size": size,
-                    "bucket": bucket.name,
-                    "path": object_path,
-                    "storageUsedBytes": storage_used_bytes,
-                }
-            ),
-            status=200,
-            content_type="application/json",
+        return _json_response(
+            {
+                "deleted": True,
+                "size": size,
+                "bucket": bucket.name,
+                "path": object_path,
+                "storageUsedBytes": storage_used_bytes,
+            },
+            cors=True,
         )
     except Exception as exc:
         print(f"Delete storage object failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": f"Delete failed: {exc}"}),
-            status=500,
-            content_type="application/json",
-        )
+        return _json_response({"error": f"Delete failed: {exc}"}, status=500, cors=True)
 
 
 @https_fn.on_request()
 def audit_storage_usage(req: https_fn.Request) -> https_fn.Response:
-    if req.method != "POST":
-        return https_fn.Response("Method not allowed", status=405)
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
 
-    uid = _verified_uid(req)
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=401, cors=True)
 
     try:
         payload = req.get_json(silent=True) or {}
         target_uid = payload.get("userId")
     except Exception as exc:
         print(f"Bad audit payload: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": "Invalid JSON body"}),
-            status=400,
-            content_type="application/json",
-        )
+        return _json_response({"error": "Invalid JSON body"}, status=400, cors=True)
 
     if target_uid != uid:
-        return https_fn.Response(
-            json.dumps({"error": "userId does not match authenticated user"}),
+        return _json_response(
+            {"error": "userId does not match authenticated user"},
             status=403,
-            content_type="application/json",
+            cors=True,
         )
 
     try:
@@ -1023,24 +1002,17 @@ def audit_storage_usage(req: https_fn.Request) -> https_fn.Response:
             merge=True,
         )
 
-        return https_fn.Response(
-            json.dumps(
-                {
-                    "storageUsedBytes": total_bytes,
-                    "storedFileBytes": total_bytes,
-                    "storedFileCount": object_count,
-                }
-            ),
-            status=200,
-            content_type="application/json",
+        return _json_response(
+            {
+                "storageUsedBytes": total_bytes,
+                "storedFileBytes": total_bytes,
+                "storedFileCount": object_count,
+            },
+            cors=True,
         )
     except Exception as exc:
         print(f"Storage audit failed: {exc}")
-        return https_fn.Response(
-            json.dumps({"error": f"Audit failed: {exc}"}),
-            status=500,
-            content_type="application/json",
-        )
+        return _json_response({"error": f"Audit failed: {exc}"}, status=500, cors=True)
 
 
 @https_fn.on_request(secrets=[REVENUECAT_WEBHOOK_AUTH_TOKEN])
@@ -1125,14 +1097,22 @@ def set_admin_entitlement(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             message="Choose a valid TypeSync plan.",
         )
+    # Callable payloads can decode whole JSON numbers as floats in some
+    # Firebase Functions runtimes. Normalize those values before validating so
+    # the preset 30-day and one-year grants are treated the same as custom ones.
+    if isinstance(duration_days, float) and duration_days.is_integer():
+        duration_days = int(duration_days)
     if duration_days is not None and (
-        not isinstance(duration_days, int)
+        type(duration_days) is not int
         or duration_days < 1
-        or duration_days > 3650
+        or duration_days > MAX_ADMIN_GRANT_DURATION_DAYS
     ):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            message="Grant duration must be between 1 and 3650 days.",
+            message=(
+                "Grant duration must be between 1 and "
+                f"{MAX_ADMIN_GRANT_DURATION_DAYS} days."
+            ),
         )
 
     try:

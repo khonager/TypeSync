@@ -16,7 +16,9 @@ workflows:
         BUNDLE_ID: "de.khonager.typesync"
         APP_STORE_APP_ID: "6762024261"
 
-      flutter: stable
+      # flutter_quill 10.x is used by the custom editor and is incompatible
+      # with the newer TextInputClient API in current Flutter stable.
+      flutter: 3.27.3
       xcode: latest
       cocoapods: default
 
@@ -40,8 +42,12 @@ workflows:
 
       - name: Validate RevenueCat Apple key
         script: |
-          if [ -z "$REVENUECAT_APPLE_API_KEY" ]; then
+          if [ -z "${REVENUECAT_APPLE_API_KEY:-}" ]; then
             echo "REVENUECAT_APPLE_API_KEY is required for TestFlight releases"
+            exit 1
+          fi
+          if [[ "$REVENUECAT_APPLE_API_KEY" == *$'\n'* || "$REVENUECAT_APPLE_API_KEY" == *$'\r'* ]]; then
+            echo "REVENUECAT_APPLE_API_KEY must contain only the public Apple key, without a command prefix or line break"
             exit 1
           fi
           case "$REVENUECAT_APPLE_API_KEY" in
@@ -53,12 +59,24 @@ workflows:
 
       - name: Flutter build ipa
         script: |
-          flutter build ipa --release \
-            --no-tree-shake-icons \
-            --build-name=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//') \
-            --build-number=$(grep '^version:' pubspec.yaml | sed 's/.*+//') \
-            --dart-define=REVENUECAT_APPLE_API_KEY="$REVENUECAT_APPLE_API_KEY" \
+          build_name=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          build_number=$(sed -n 's/^version: .*+\([0-9][0-9]*\).*/\1/p' pubspec.yaml)
+          if [ -z "$build_name" ] || [ -z "$build_number" ]; then
+            echo "pubspec.yaml must contain a version in the form x.y.z+buildNumber"
+            exit 1
+          fi
+
+          # Keep each Flutter flag as one shell argument. In particular, do not
+          # store a whole `--dart-define=...` command in the Codemagic variable.
+          build_args=(
+            --release
+            --no-tree-shake-icons
+            "--build-name=$build_name"
+            "--build-number=$build_number"
+            "--dart-define=REVENUECAT_APPLE_API_KEY=$REVENUECAT_APPLE_API_KEY"
             --export-options-plist=/Users/builder/export_options.plist
+          )
+          flutter build ipa "${build_args[@]}"
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -82,7 +100,8 @@ workflows:
       groups:
         - app_store_credentials
 
-      flutter: stable
+      # Keep development artifacts on the same Flutter version as TestFlight.
+      flutter: 3.27.3
       xcode: latest
       cocoapods: default
 

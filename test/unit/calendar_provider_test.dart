@@ -25,6 +25,81 @@ void main() {
   });
 
   group('CalendarProvider todo completion', () {
+    test('applies new calendar events received while the app is open',
+        () async {
+      final provider = CalendarProvider();
+      await provider.initialize('user-live-calendar');
+      final remoteEvent = CalendarEvent(
+        id: 'remote-event',
+        userId: 'user-live-calendar',
+        title: 'Added on another device',
+        startTime: DateTime(2026, 7, 29, 14),
+        createdAt: DateTime(2026, 7, 29, 13),
+        isDirty: false,
+      );
+
+      provider.handleCloudUpdate([remoteEvent]);
+
+      expect(provider.getEventById(remoteEvent.id), remoteEvent);
+      expect(provider.getEventsForDate(remoteEvent.startTime), [remoteEvent]);
+    });
+
+    test('hides events deleted on another device', () async {
+      final provider = CalendarProvider();
+      await provider.initialize('user-live-calendar-delete');
+      final remoteEvent = CalendarEvent(
+        id: 'remote-deleted-event',
+        userId: 'user-live-calendar-delete',
+        title: 'Deleted elsewhere',
+        startTime: DateTime(2026, 7, 29, 14),
+        createdAt: DateTime(2026, 7, 29, 13),
+        isDirty: false,
+      );
+      provider.handleCloudUpdate([remoteEvent]);
+
+      provider.handleCloudUpdate([
+        remoteEvent.copyWith(isDeleted: true),
+      ]);
+
+      expect(provider.events, isEmpty);
+      expect(provider.getEventsForDate(remoteEvent.startTime), isEmpty);
+    });
+
+    test('lists completed todos after active calendar items', () async {
+      final provider = CalendarProvider();
+      await provider.initialize('user-calendar-order');
+
+      final day = DateTime(2026, 7, 6);
+      final completedTodo = await provider.createEvent(
+        userId: 'user-calendar-order',
+        title: 'Completed first',
+        startTime: day.add(const Duration(hours: 8)),
+        type: EventType.todo,
+      );
+      final activeTodo = await provider.createEvent(
+        userId: 'user-calendar-order',
+        title: 'Active second',
+        startTime: day.add(const Duration(hours: 10)),
+        type: EventType.todo,
+      );
+      final event = await provider.createEvent(
+        userId: 'user-calendar-order',
+        title: 'Calendar event',
+        startTime: day.add(const Duration(hours: 9)),
+        type: EventType.reminder,
+      );
+
+      await provider.toggleTodoCompletion(
+        eventId: completedTodo!.id,
+        isCompleted: true,
+      );
+
+      expect(
+        provider.getEventsForDate(day).map((item) => item.id),
+        [event!.id, activeTodo!.id, completedTodo.id],
+      );
+    });
+
     test('completed todo stays on its current calendar day', () async {
       final provider = CalendarProvider();
       await provider.initialize('user-1');

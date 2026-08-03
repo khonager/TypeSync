@@ -66,6 +66,24 @@ class CalendarEvent extends Equatable {
 
   bool get isTodo => type == EventType.todo;
 
+  /// Orders calendar list entries with checked todos after active items.
+  ///
+  /// Within either section, items retain their chronological order.
+  static int compareForCalendarDisplay(CalendarEvent a, CalendarEvent b) {
+    final completionOrder = (a.isTodo && a.isCompleted ? 1 : 0).compareTo(
+      b.isTodo && b.isCompleted ? 1 : 0,
+    );
+    if (completionOrder != 0) return completionOrder;
+
+    final dateOrder = a.calendarDate.compareTo(b.calendarDate);
+    if (dateOrder != 0) return dateOrder;
+
+    final titleOrder = a.title.compareTo(b.title);
+    if (titleOrder != 0) return titleOrder;
+
+    return a.id.compareTo(b.id);
+  }
+
   // Calendar placement should follow the event's stored date.
   // Completed todos keep the date they had when they were checked.
   DateTime get calendarDate => startTime;

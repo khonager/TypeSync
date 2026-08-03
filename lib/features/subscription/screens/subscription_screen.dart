@@ -26,23 +26,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   String? _configuredUserId;
 
   @override
+  void initState() {
+    super.initState();
+    // Usage must not wait for RevenueCat configuration. In particular, the
+    // web billing setup can take longer than the storage lookup.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_refreshEntitlements());
+      }
+    });
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final auth = context.read<AuthService>();
-    final billing = context.read<BillingService>();
-    final userId = auth.userId;
+    final userId = context.read<AuthService>().userId;
     if (userId != _configuredUserId) {
       _configuredUserId = userId;
-      unawaited(billing.configureForUser(userId));
-      unawaited(context.read<AdminEntitlementService>().refreshAccess(userId));
+      unawaited(_configureAndRefreshForUser(userId));
     }
+  }
+
+  /// Configures purchase services and loads the current plan's usage whenever
+  /// this page is opened or the signed-in user changes.
+  Future<void> _configureAndRefreshForUser(String? userId) async {
+    final billing = context.read<BillingService>();
+    final adminEntitlements = context.read<AdminEntitlementService>();
+    final auth = context.read<AuthService>();
+    await billing.configureForUser(userId);
+    await adminEntitlements.refreshAccess(userId);
+
+    if (!mounted || auth.userId != userId) return;
+    await _refreshEntitlements();
   }
 
   Future<void> _refreshEntitlements() async {
     final billing = context.read<BillingService>();
     final storage = context.read<StorageService>();
     final auth = context.read<AuthService>();
-    await billing.refreshCustomerInfo();
+    // Neither lookup depends on the other, so begin the billing refresh
+    // without delaying the storage value shown on this page.
+    final customerInfoRefresh = billing.refreshCustomerInfo();
     final userId = auth.userId;
     if (userId != null) {
       await storage.loadStorageInfo(
@@ -51,6 +75,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         runAudit: true,
       );
     }
+    await customerInfoRefresh;
   }
 
   Future<void> _purchase(SubscriptionInfo plan) async {
@@ -322,20 +347,42 @@ class _AdminEntitlementCard extends StatefulWidget {
 
 class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
   final _emailController = TextEditingController();
+  final _customDurationController = TextEditingController();
   SubscriptionTier _tier = SubscriptionTier.basic;
-  int? _durationDays;
+  _GrantDuration _duration = _GrantDuration.untilRevoked;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _customDurationController.dispose();
     super.dispose();
   }
+
+  int? get _durationDays => switch (_duration) {
+        _GrantDuration.untilRevoked => null,
+        _GrantDuration.thirtyDays => 30,
+        _GrantDuration.oneYear => 365,
+        _GrantDuration.custom => int.tryParse(_customDurationController.text),
+      };
 
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter the account email address.')),
+      );
+      return;
+    }
+
+    if (_tier != SubscriptionTier.free &&
+        _duration == _GrantDuration.custom &&
+        (_durationDays == null ||
+            _durationDays! < 1 ||
+            _durationDays! > 3650)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a whole number of days between 1 and 3650.'),
+        ),
       );
       return;
     }
@@ -392,7 +439,9 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
             const SizedBox(height: 4),
             Text(
               'Grant a plan to a registered account. Paid subscriptions remain intact; this only adds or removes the admin grant.',
-              style: theme.textTheme.bodySmall,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
             ),
             const SizedBox(height: 14),
             TextField(
@@ -432,24 +481,50 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
             ),
             if (_tier != SubscriptionTier.free) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<int?>(
-                key: ValueKey(_durationDays),
+              DropdownButtonFormField<_GrantDuration>(
+                key: ValueKey(_duration),
                 // `initialValue` was added after the Flutter version used in CI.
                 // ignore: deprecated_member_use
-                value: _durationDays,
+                value: _duration,
                 decoration: const InputDecoration(
                   labelText: 'Grant duration',
                   border: OutlineInputBorder(),
                 ),
                 items: const [
-                  DropdownMenuItem(value: null, child: Text('Until revoked')),
-                  DropdownMenuItem(value: 30, child: Text('30 days')),
-                  DropdownMenuItem(value: 365, child: Text('1 year')),
+                  DropdownMenuItem(
+                    value: _GrantDuration.untilRevoked,
+                    child: Text('Until revoked'),
+                  ),
+                  DropdownMenuItem(
+                    value: _GrantDuration.thirtyDays,
+                    child: Text('30 days'),
+                  ),
+                  DropdownMenuItem(
+                    value: _GrantDuration.oneYear,
+                    child: Text('1 year'),
+                  ),
+                  DropdownMenuItem(
+                    value: _GrantDuration.custom,
+                    child: Text('Custom number of days'),
+                  ),
                 ],
                 onChanged: admin.isLoading
                     ? null
-                    : (days) => setState(() => _durationDays = days),
+                    : (duration) => setState(() => _duration = duration!),
               ),
+              if (_duration == _GrantDuration.custom) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _customDurationController,
+                  enabled: !admin.isLoading,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Number of days',
+                    helperText: 'Enter a whole number from 1 to 3650.',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ],
             const SizedBox(height: 12),
             Align(
@@ -476,6 +551,8 @@ class _AdminEntitlementCardState extends State<_AdminEntitlementCard> {
     );
   }
 }
+
+enum _GrantDuration { untilRevoked, thirtyDays, oneYear, custom }
 
 class _SetupNotice extends StatelessWidget {
   final BillingService billing;

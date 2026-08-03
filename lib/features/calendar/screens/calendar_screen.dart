@@ -185,6 +185,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final args = ModalRoute.of(context)?.settings.arguments;
     final shouldOpenComposer = args is Map && args['openComposer'] == true;
+    final initialDate = args is Map ? args['initialDate'] : null;
+    if (initialDate is DateTime) {
+      final eventDay = _clampToCalendarRange(_dateOnly(initialDate));
+      _visiblePageDay = eventDay;
+      _selectOnly(eventDay);
+    }
     if (shouldOpenComposer) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1021,7 +1027,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return source.where((event) {
       return selectedKeys.contains(_dateKey(_dateOnly(event.calendarDate)));
     }).toList()
-      ..sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      ..sort(CalendarEvent.compareForCalendarDisplay);
   }
 
   List<CalendarEvent> _eventsInRange(
@@ -1034,7 +1040,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return !eventDate.isBefore(_dateOnly(start)) &&
           !eventDate.isAfter(_dateOnly(end));
     }).toList()
-      ..sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      ..sort(CalendarEvent.compareForCalendarDisplay);
   }
 
   List<_CalendarEventGroup> _buildEventGroups(
@@ -1052,11 +1058,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     final groups = grouped.values.map((items) {
-      items.sort((a, b) => a.calendarDate.compareTo(b.calendarDate));
+      items.sort(CalendarEvent.compareForCalendarDisplay);
       return _CalendarEventGroup(items);
     }).toList()
       ..sort(
-        (a, b) => a.primary.calendarDate.compareTo(b.primary.calendarDate),
+        (a, b) => CalendarEvent.compareForCalendarDisplay(
+          a.primary,
+          b.primary,
+        ),
       );
 
     return groups;
@@ -1442,6 +1451,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _lastInteractedDay = normalizedDay;
     _focusedDay = normalizedDay;
     _selectedWeekStart = _startOfIsoWeek(normalizedDay);
+  }
+
+  DateTime _clampToCalendarRange(DateTime day) {
+    if (day.isBefore(_firstCalendarDay)) {
+      return _firstCalendarDay;
+    }
+    if (day.isAfter(_lastCalendarDay)) {
+      return _lastCalendarDay;
+    }
+    return day;
   }
 
   void _toggleDaySelection(DateTime day) {
