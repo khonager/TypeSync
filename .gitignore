@@ -46,6 +46,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 **/android/local.properties
+release-keystore.jks
 
 # Generated files
 *.g.dart
