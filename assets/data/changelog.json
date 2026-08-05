@@ -1,7 +1,32 @@
 {
   "schemaVersion": 2,
-  "latestVersion": "1.1.18",
+  "latestVersion": "1.1.19",
   "releases": [
+    {
+      "version": "1.1.19",
+      "date": "2026-08-05",
+      "title": "Calendar, Writing + Platform Reliability",
+      "important": [
+        "TypeSync now offers a more capable writing and planning workflow, with built-in English and German spellcheck, date-range calendar selection, and broader editor keyboard controls."
+      ],
+      "newFeatures": [
+        "Added English and German spellcheck with automatic language detection and a global option to disable spellchecking.",
+        "Added date-range selection in Calendar, making it easier to review events across a chosen period.",
+        "Added editor productivity controls including multi-selection, Shift-click selection, Alt+Arrow checklist reordering, a reset-text action, and code-block movement.",
+        "Added shared sync preferences for expanded attachments, so their state is available across devices.",
+        "Completed calendar todos now move to the bottom of the list."
+      ],
+      "fixesImprovements": [
+        "Calendar now refreshes automatically after sync activity, and opening an event navigates to its correct position.",
+        "Improved Kanban block creation and editing reliability, and made checklist items start unchecked consistently.",
+        "Improved spellcheck performance in large notes and refined editor hover, selection, alignment, and search behavior.",
+        "Fixed subscription-plan refresh and admin entitlement granting, including Linux-specific payment-plan support.",
+        "Improved mobile authentication persistence/logout handling, file upload behavior, and Linux and iOS release builds."
+      ],
+      "notes": [
+        "These notes summarize user-facing changes shipped after `v1.1.18` (2026-06-11); build-output and workflow-only commits are not listed individually."
+      ]
+    },
     {
       "version": "1.1.18",
       "date": "2026-06-11",
