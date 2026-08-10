@@ -137,11 +137,7 @@ class FolderGridItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // Parse background color if set
     final bgColor = folder.backgroundColor != null
-        ? Color(
-            AppColorPalette.resolveBackgroundColor(
-              folder.backgroundColor!,
-            ).toARGB32(),
-          )
+        ? Color(int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.folderDefault;
 
     final child = DragTarget<String>(
@@ -395,7 +391,7 @@ class FolderListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = folder.backgroundColor != null
-        ? AppColorPalette.resolveBackgroundColor(folder.backgroundColor!)
+        ? Color(int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
     final textColor = AppColorPalette.getContrastingTextColor(bgColor);
     final secondaryTextColor = textColor.withValues(alpha: 0.7);

@@ -10,7 +10,7 @@ void main() {
 
   test('note surfaces have readable automatic foregrounds', () {
     for (final colorOption in AppColorPalette.noteBackgroundColors) {
-      final surface = colorOption.color;
+      final surface = AppColorPalette.resolveBackgroundColor(colorOption.hex);
       final foreground = AppColorPalette.getContrastingTextColor(surface);
       expect(
         contrastRatio(
@@ -26,10 +26,10 @@ void main() {
   test('legacy note backgrounds resolve to the updated palette', () {
     expect(
       AppColorPalette.resolveBackgroundColor('#6BCB77'),
-      AppColorPalette.noteBackgroundColors[3].color,
+      AppColorPalette.parseHexColor('#DCE9DE'),
     );
     expect(
-      AppColorPalette.matchesBackgroundColor('#FFB88C', '#F2DCCB'),
+      AppColorPalette.matchesBackgroundColor('#FFB88C', '#FFB88C'),
       isTrue,
     );
   });

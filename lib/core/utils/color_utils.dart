@@ -18,78 +18,78 @@ class AppColorPalette {
   // ===========================================
   // NOTE BACKGROUND COLORS
   // ===========================================
-  // Calm, low-chroma digital surfaces for long-form reading. They are not
-  // intended to look textured or like physical paper.
+  // Vibrant picker swatches. The editor resolves these values to separate,
+  // muted reading surfaces before applying them as a note background.
 
   static const List<ColorOption> noteBackgroundColors = [
     ColorOption(
       id: 'coral',
       name: 'Coral',
-      color: Color(0xFFF0D6D4),
-      hex: '#F0D6D4',
-      isLight: true,
+      color: Color(0xFFFF6B6B),
+      hex: '#FF6B6B',
+      isLight: false,
     ),
     ColorOption(
       id: 'peach',
       name: 'Peach',
-      color: Color(0xFFF2DCCB),
-      hex: '#F2DCCB',
+      color: Color(0xFFFFB88C),
+      hex: '#FFB88C',
       isLight: true,
     ),
     ColorOption(
       id: 'amber',
       name: 'Amber',
-      color: Color(0xFFF2E6B8),
-      hex: '#F2E6B8',
+      color: Color(0xFFFFD93D),
+      hex: '#FFD93D',
       isLight: true,
     ),
     ColorOption(
       id: 'lime',
       name: 'Lime',
-      color: Color(0xFFDCE9DE),
-      hex: '#DCE9DE',
-      isLight: true,
+      color: Color(0xFF6BCB77),
+      hex: '#6BCB77',
+      isLight: false,
     ),
     ColorOption(
       id: 'mint',
       name: 'Mint',
-      color: Color(0xFFD3E9E2),
-      hex: '#D3E9E2',
-      isLight: true,
+      color: Color(0xFF4ECDC4),
+      hex: '#4ECDC4',
+      isLight: false,
     ),
     ColorOption(
       id: 'sky',
       name: 'Sky',
-      color: Color(0xFFD9E7F2),
-      hex: '#D9E7F2',
-      isLight: true,
+      color: Color(0xFF74C0FC),
+      hex: '#74C0FC',
+      isLight: false,
     ),
     ColorOption(
       id: 'lavender',
       name: 'Lavender',
-      color: Color(0xFFE3DCEF),
-      hex: '#E3DCEF',
-      isLight: true,
+      color: Color(0xFFA29BFE),
+      hex: '#A29BFE',
+      isLight: false,
     ),
     ColorOption(
       id: 'rose',
       name: 'Rose',
-      color: Color(0xFFF0D9E3),
-      hex: '#F0D9E3',
-      isLight: true,
+      color: Color(0xFFFF8CC8),
+      hex: '#FF8CC8',
+      isLight: false,
     ),
     ColorOption(
       id: 'slate',
       name: 'Slate',
-      color: Color(0xFFDDE2E4),
-      hex: '#DDE2E4',
-      isLight: true,
+      color: Color(0xFF95A5A6),
+      hex: '#95A5A6',
+      isLight: false,
     ),
     ColorOption(
       id: 'warm-gray',
       name: 'Warm Gray',
-      color: Color(0xFFE7E1DC),
-      hex: '#E7E1DC',
+      color: Color(0xFFBDC3C7),
+      hex: '#BDC3C7',
       isLight: true,
     ),
   ];
@@ -375,10 +375,10 @@ class AppColorPalette {
 
   /// Get icon color for a background
   ///
-  /// Uses the same high-contrast foreground as note text, so file and folder
-  /// symbols remain distinct on every selectable surface.
+  /// Returns an icon color appropriate for a vibrant file surface.
   static Color getIconColor(Color backgroundColor) {
-    return getContrastingTextColor(backgroundColor);
+    final luminance = backgroundColor.computeLuminance();
+    return luminance > 0.5 ? Colors.black54 : Colors.white70;
   }
 }
 

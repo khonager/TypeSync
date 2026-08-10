@@ -135,7 +135,7 @@ class FileGridItem extends StatelessWidget {
     }
 
     final bgColor = note.backgroundColor != null
-        ? AppColorPalette.resolveBackgroundColor(note.backgroundColor!)
+        ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
@@ -214,8 +214,10 @@ class FileGridItem extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: note.backgroundColor != null
-                    ? AppColorPalette.resolveBackgroundColor(
-                        note.backgroundColor!,
+                    ? Color(
+                        int.parse(
+                          note.backgroundColor!.replaceFirst('#', '0xFF'),
+                        ),
                       )
                     : AppTheme.darkSurface,
                 borderRadius: BorderRadius.circular(12),
@@ -397,7 +399,7 @@ class FileListItem extends StatelessWidget {
     }
 
     final bgColor = note.backgroundColor != null
-        ? AppColorPalette.resolveBackgroundColor(note.backgroundColor!)
+        ? Color(int.parse(note.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.darkSurface;
 
     final iconColor = AppColorPalette.getIconColor(bgColor);
