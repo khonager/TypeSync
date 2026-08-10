@@ -18,78 +18,78 @@ class AppColorPalette {
   // ===========================================
   // NOTE BACKGROUND COLORS
   // ===========================================
-  // These are subtle, muted colors that work as backgrounds
-  // and provide good contrast with text in both themes
+  // Calm, low-chroma digital surfaces for long-form reading. They are not
+  // intended to look textured or like physical paper.
 
   static const List<ColorOption> noteBackgroundColors = [
     ColorOption(
       id: 'coral',
       name: 'Coral',
-      color: Color(0xFFFF6B6B),
-      hex: '#FF6B6B',
-      isLight: false,
+      color: Color(0xFFF0D6D4),
+      hex: '#F0D6D4',
+      isLight: true,
     ),
     ColorOption(
       id: 'peach',
       name: 'Peach',
-      color: Color(0xFFFFB88C),
-      hex: '#FFB88C',
+      color: Color(0xFFF2DCCB),
+      hex: '#F2DCCB',
       isLight: true,
     ),
     ColorOption(
       id: 'amber',
       name: 'Amber',
-      color: Color(0xFFFFD93D),
-      hex: '#FFD93D',
+      color: Color(0xFFF2E6B8),
+      hex: '#F2E6B8',
       isLight: true,
     ),
     ColorOption(
       id: 'lime',
       name: 'Lime',
-      color: Color(0xFF6BCB77),
-      hex: '#6BCB77',
-      isLight: false,
+      color: Color(0xFFDCE9DE),
+      hex: '#DCE9DE',
+      isLight: true,
     ),
     ColorOption(
       id: 'mint',
       name: 'Mint',
-      color: Color(0xFF4ECDC4),
-      hex: '#4ECDC4',
-      isLight: false,
+      color: Color(0xFFD3E9E2),
+      hex: '#D3E9E2',
+      isLight: true,
     ),
     ColorOption(
       id: 'sky',
       name: 'Sky',
-      color: Color(0xFF74C0FC),
-      hex: '#74C0FC',
-      isLight: false,
+      color: Color(0xFFD9E7F2),
+      hex: '#D9E7F2',
+      isLight: true,
     ),
     ColorOption(
       id: 'lavender',
       name: 'Lavender',
-      color: Color(0xFFA29BFE),
-      hex: '#A29BFE',
-      isLight: false,
+      color: Color(0xFFE3DCEF),
+      hex: '#E3DCEF',
+      isLight: true,
     ),
     ColorOption(
       id: 'rose',
       name: 'Rose',
-      color: Color(0xFFFF8CC8),
-      hex: '#FF8CC8',
-      isLight: false,
+      color: Color(0xFFF0D9E3),
+      hex: '#F0D9E3',
+      isLight: true,
     ),
     ColorOption(
       id: 'slate',
       name: 'Slate',
-      color: Color(0xFF95A5A6),
-      hex: '#95A5A6',
-      isLight: false,
+      color: Color(0xFFDDE2E4),
+      hex: '#DDE2E4',
+      isLight: true,
     ),
     ColorOption(
       id: 'warm-gray',
       name: 'Warm Gray',
-      color: Color(0xFFBDC3C7),
-      hex: '#BDC3C7',
+      color: Color(0xFFE7E1DC),
+      hex: '#E7E1DC',
       isLight: true,
     ),
   ];
@@ -305,19 +305,52 @@ class AppColorPalette {
     return Color(int.parse(normalized, radix: 16));
   }
 
+  /// Maps saturated legacy colors saved by earlier versions to their muted,
+  /// readable counterparts. The original values remain supported in storage.
+  static const Map<String, String> _legacyBackgroundColors = {
+    '#FF6B6B': '#F0D6D4',
+    '#FFB88C': '#F2DCCB',
+    '#FFD93D': '#F2E6B8',
+    '#6BCB77': '#DCE9DE',
+    '#4ECDC4': '#D3E9E2',
+    '#74C0FC': '#D9E7F2',
+    '#A29BFE': '#E3DCEF',
+    '#FF8CC8': '#F0D9E3',
+    '#95A5A6': '#DDE2E4',
+    '#BDC3C7': '#E7E1DC',
+  };
+
+  /// Resolves both current and legacy note background values for display.
+  static Color resolveBackgroundColor(String hex) {
+    final normalized = normalizeHex(hex);
+    return parseHexColor(_legacyBackgroundColors[normalized] ?? normalized);
+  }
+
+  /// Allows a legacy saved value to remain selected in the updated picker.
+  static bool matchesBackgroundColor(String? savedHex, String paletteHex) {
+    if (savedHex == null || savedHex.trim().isEmpty) return false;
+    try {
+      return resolveBackgroundColor(savedHex).toARGB32() ==
+          resolveBackgroundColor(paletteHex).toARGB32();
+    } on FormatException {
+      return false;
+    }
+  }
+
   static bool isLightColorHex(String hex) {
     return parseHexColor(hex).computeLuminance() > 0.6;
   }
 
   /// Get contrasting text color for a background
   ///
-  /// Returns white for dark backgrounds, black for light backgrounds
+  /// Returns the foreground with the highest contrast against [backgroundColor].
   static Color getContrastingTextColor(Color backgroundColor) {
-    // Calculate relative luminance
-    final double luminance = backgroundColor.computeLuminance();
-
-    // Use white text on dark backgrounds (luminance < 0.5), black on light
-    return luminance > 0.5 ? Colors.black87 : Colors.white;
+    const darkInk = Color(0xFF1D1B20);
+    final backgroundLuminance = backgroundColor.computeLuminance();
+    final darkContrast =
+        (backgroundLuminance + 0.05) / (darkInk.computeLuminance() + 0.05);
+    final lightContrast = 1.05 / (backgroundLuminance + 0.05);
+    return darkContrast >= lightContrast ? darkInk : Colors.white;
   }
 
   /// Get adaptive text color based on theme brightness
@@ -342,16 +375,10 @@ class AppColorPalette {
 
   /// Get icon color for a background
   ///
-  /// Returns appropriate icon color based on background brightness
+  /// Uses the same high-contrast foreground as note text, so file and folder
+  /// symbols remain distinct on every selectable surface.
   static Color getIconColor(Color backgroundColor) {
-    final double luminance = backgroundColor.computeLuminance();
-    if (luminance > 0.5) {
-      // Light background - use dark icon
-      return Colors.black54;
-    } else {
-      // Dark background - use light icon
-      return Colors.white70;
-    }
+    return getContrastingTextColor(backgroundColor);
   }
 }
 

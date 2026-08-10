@@ -1758,7 +1758,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final bgColor = _note?.backgroundColor != null
-        ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
+        ? AppColorPalette.resolveBackgroundColor(_note!.backgroundColor!)
         : null;
     final requiredVersion = _requiredAppVersionForCurrentNote();
     final currentVersion = VersionCompatibility.normalize(kCurrentAppVersion);
@@ -1792,19 +1792,18 @@ class _EditorScreenState extends State<EditorScreen>
     final content = widget.embedded
         ? DecoratedBox(
             decoration: BoxDecoration(
-              color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+              color: Theme.of(context).scaffoldBackgroundColor,
             ),
             child: Column(
               children: [
-                _buildEmbeddedHeader(bgColor),
+                _buildEmbeddedHeader(),
                 Expanded(child: editorBody),
               ],
             ),
           )
         : Scaffold(
-            backgroundColor:
-                bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-            appBar: _buildAppBar(bgColor),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            appBar: _buildAppBar(),
             body: editorBody,
           );
 
@@ -1838,9 +1837,9 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar(Color? bgColor) {
+  PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+      backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
       flexibleSpace: desktopWindowDragArea(),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios),
@@ -1856,7 +1855,7 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  Widget _buildEmbeddedHeader(Color? bgColor) {
+  Widget _buildEmbeddedHeader() {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1871,7 +1870,7 @@ class _EditorScreenState extends State<EditorScreen>
             height: 56,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+              color: Theme.of(context).appBarTheme.backgroundColor,
               border: Border(
                 bottom: BorderSide(
                   color: colors.outline.withValues(alpha: 0.2),
@@ -2326,7 +2325,7 @@ class _EditorScreenState extends State<EditorScreen>
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+      color: Theme.of(context).scaffoldBackgroundColor,
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
@@ -2606,6 +2605,9 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildEditorSurface(Color? bgColor) {
+    final textColor = bgColor == null
+        ? Theme.of(context).colorScheme.onSurface
+        : AppColorPalette.getContrastingTextColor(bgColor);
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -2617,82 +2619,91 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       ),
       padding: const EdgeInsets.all(12),
-      child: Stack(
-        key: _editorSurfaceKey,
-        children: [
-          Positioned.fill(
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  shift: true,
-                ): _handleChecklistContinuationShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  control: true,
-                ): _handleChecklistOppositeStateShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  meta: true,
-                ): _handleChecklistOppositeStateShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.arrowUp,
-                  alt: true,
-                ): () => _moveSelectedChecklistItems(-1),
-                const SingleActivator(
-                  LogicalKeyboardKey.arrowDown,
-                  alt: true,
-                ): () => _moveSelectedChecklistItems(1),
-              },
-              child: QuillEditor(
-                controller: _quillController,
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-                configurations: QuillEditorConfigurations(
-                  editorKey: _editorKey,
-                  onTapDown: (details, _) {
-                    _selectionBeforeShiftClick =
-                        _isShiftMouseClick(details.kind)
-                            ? _quillController.selection
-                            : null;
-                    return false;
-                  },
-                  onTapUp: (details, getPositionForOffset) {
-                    final selection = _selectionBeforeShiftClick;
-                    _selectionBeforeShiftClick = null;
-
-                    if (!_isShiftMouseClick(details.kind) ||
-                        selection == null ||
-                        !selection.isValid) {
+      child: DefaultTextStyle.merge(
+        style: TextStyle(color: textColor),
+        child: Stack(
+          key: _editorSurfaceKey,
+          children: [
+            Positioned.fill(
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    shift: true,
+                  ): _handleChecklistContinuationShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    control: true,
+                  ): _handleChecklistOppositeStateShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    meta: true,
+                  ): _handleChecklistOppositeStateShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowUp,
+                    alt: true,
+                  ): () => _moveSelectedChecklistItems(-1),
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowDown,
+                    alt: true,
+                  ): () => _moveSelectedChecklistItems(1),
+                },
+                child: QuillEditor(
+                  controller: _quillController,
+                  focusNode: _focusNode,
+                  scrollController: _scrollController,
+                  configurations: QuillEditorConfigurations(
+                    editorKey: _editorKey,
+                    onTapDown: (details, _) {
+                      _selectionBeforeShiftClick =
+                          _isShiftMouseClick(details.kind)
+                              ? _quillController.selection
+                              : null;
                       return false;
-                    }
+                    },
+                    onTapUp: (details, getPositionForOffset) {
+                      final selection = _selectionBeforeShiftClick;
+                      _selectionBeforeShiftClick = null;
 
-                    final targetOffset = _safeDocumentOffset(
-                      getPositionForOffset(details.globalPosition).offset,
-                    );
-                    _quillController.updateSelection(
-                      extendSelectionFromShiftClick(
-                        selection: selection,
-                        targetOffset: targetOffset,
-                      ),
-                      ChangeSource.local,
-                    );
-                    return true;
-                  },
-                  embedBuilders: const [
-                    TypeSyncKanbanEmbedBuilder(),
-                    TypeSyncTableEmbedBuilder(),
-                    MarkdownTableEmbedBuilder(),
-                  ],
-                  customLeadingBlockBuilder: _buildChecklistHoverLeading,
-                  customStyleBuilder: _buildCustomEditorStyle,
+                      if (!_isShiftMouseClick(details.kind) ||
+                          selection == null ||
+                          !selection.isValid) {
+                        return false;
+                      }
+
+                      final targetOffset = _safeDocumentOffset(
+                        getPositionForOffset(details.globalPosition).offset,
+                      );
+                      _quillController.updateSelection(
+                        extendSelectionFromShiftClick(
+                          selection: selection,
+                          targetOffset: targetOffset,
+                        ),
+                        ChangeSource.local,
+                      );
+                      return true;
+                    },
+                    embedBuilders: const [
+                      TypeSyncKanbanEmbedBuilder(),
+                      TypeSyncTableEmbedBuilder(),
+                      MarkdownTableEmbedBuilder(),
+                    ],
+                    customLeadingBlockBuilder: _buildChecklistHoverLeading,
+                    customStyleBuilder: _buildCustomEditorStyle,
+                    textSelectionThemeData: TextSelectionThemeData(
+                      cursorColor: textColor,
+                      selectionColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.28),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-          if (_showMatchGlow && _matchGlowRect != null)
-            _buildMatchGlowOverlay(),
-        ],
+            if (_showMatchGlow && _matchGlowRect != null)
+              _buildMatchGlowOverlay(),
+          ],
+        ),
       ),
     );
   }
@@ -4831,7 +4842,10 @@ class _EditorScreenState extends State<EditorScreen>
                         colorOption.hex,
                         dialogContext,
                       ),
-                      isSelected: currentColor == colorOption.hex,
+                      isSelected: AppColorPalette.matchesBackgroundColor(
+                        currentColor,
+                        colorOption.hex,
+                      ),
                     ),
                   ),
                 ],

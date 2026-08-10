@@ -2781,7 +2781,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       colorOption.hex,
                       dialogContext,
                     ),
-                    isSelected: currentColor == colorOption.hex,
+                    isSelected: AppColorPalette.matchesBackgroundColor(
+                      currentColor,
+                      colorOption.hex,
+                    ),
                   ),
                 ),
               ],
@@ -2831,7 +2834,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       colorOption.hex,
                       dialogContext,
                     ),
-                    isSelected: currentColor == colorOption.hex,
+                    isSelected: AppColorPalette.matchesBackgroundColor(
+                      currentColor,
+                      colorOption.hex,
+                    ),
                   ),
                 ),
               ],
