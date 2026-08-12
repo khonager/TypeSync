@@ -36,6 +36,7 @@ import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/attachment_preferences_service.dart';
 import '../../../core/services/diagnostics_service.dart';
+import '../../../core/services/editor_color_palette_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -305,11 +306,11 @@ class _EditorScreenState extends State<EditorScreen>
   bool _attachmentsExpanded = false;
   EditorToolbarPlacement _toolbarPlacement = EditorToolbarPlacement.floating;
   Offset _toolbarPosition = const Offset(16, 100);
-  late final AnimationController _matchGlowController;
-  Timer? _matchGlowStopTimer;
+  late final AnimationController _matchHighlightController;
+  Timer? _matchHighlightStopTimer;
   OverlayEntry? _spellcheckHoverOverlay;
-  Rect? _matchGlowRect;
-  bool _showMatchGlow = false;
+  Rect? _matchHighlightRect;
+  bool _showMatchHighlight = false;
   bool _didAttemptInitialSearchJump = false;
   bool _isSearchPanelVisible = false;
   bool _matchCase = false;
@@ -365,9 +366,9 @@ class _EditorScreenState extends State<EditorScreen>
     TypeSyncSpellcheckerService.instance.hoveredIssue.addListener(
       _handleSpellcheckHoverChanged,
     );
-    _matchGlowController = AnimationController(
+    _matchHighlightController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 2400),
     );
     _initializeEditor();
   }
@@ -1656,10 +1657,10 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_persistCaretOffset(force: true));
     }
     unawaited(_persistToolbarPreferences());
-    _matchGlowStopTimer?.cancel();
+    _matchHighlightStopTimer?.cancel();
     _spellcheckHoverOverlay?.remove();
     _spellcheckHoverOverlay = null;
-    _matchGlowController.dispose();
+    _matchHighlightController.dispose();
     TypeSyncSpellcheckerService.instance.hoveredIssue.removeListener(
       _handleSpellcheckHoverChanged,
     );
@@ -1687,6 +1688,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild an active search highlight when the user changes their palette.
+    context.watch<EditorColorPaletteService>();
     return _buildEditor(context);
   }
 
@@ -2729,8 +2732,8 @@ class _EditorScreenState extends State<EditorScreen>
                 ),
               ),
             ),
-            if (_showMatchGlow && _matchGlowRect != null)
-              _buildMatchGlowOverlay(),
+            if (_showMatchHighlight && _matchHighlightRect != null)
+              _buildMatchHighlightOverlay(),
           ],
         ),
       ),
@@ -2771,38 +2774,41 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Widget _buildMatchGlowOverlay() {
-    final rect = _matchGlowRect!;
-    final width = (rect.width + 44).clamp(86.0, double.infinity);
-    final height = (rect.height + 26).clamp(36.0, double.infinity);
-    final left = (rect.left - 22).clamp(0.0, double.infinity);
-    final top = (rect.top - 12).clamp(0.0, double.infinity);
+  Widget _buildMatchHighlightOverlay() {
+    final rect = _matchHighlightRect!;
+    final markerColors = context
+        .watch<EditorColorPaletteService>()
+        .markerColors
+        .map((option) => option.colorWithOpacity)
+        .toList(growable: false);
+    final colors = markerColors.isEmpty
+        ? <Color>[Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)]
+        : markerColors;
 
     return Positioned(
-      left: left,
-      top: top,
-      width: width,
-      height: height,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
       child: IgnorePointer(
         child: AnimatedBuilder(
-          animation: _matchGlowController,
+          animation: _matchHighlightController,
           builder: (context, child) {
-            final pulse = _matchGlowController.value;
-            final spread = 6 + (pulse * 8);
-            final opacity = 0.3 + ((1 - pulse) * 0.45);
+            // Travel through every configured marker color twice, then end on
+            // the first color so the transition is seamless before removal.
+            final progress =
+                _matchHighlightController.value * colors.length * 2;
+            final colorIndex = progress.floor() % colors.length;
+            final nextColorIndex = (colorIndex + 1) % colors.length;
+            final color = Color.lerp(
+              colors[colorIndex],
+              colors[nextColorIndex],
+              progress - progress.floor(),
+            )!;
             return DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: opacity),
-                    blurRadius: 16 + spread,
-                    spreadRadius: spread,
-                  ),
-                ],
+                color: color,
+                borderRadius: BorderRadius.circular(2),
               ),
             );
           },
@@ -3019,7 +3025,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (!mounted) return;
       final editorState = _editorKey.currentState;
       if (editorState != null && _scrollController.hasClients) {
-        await _scrollToMatchAndPulse(editorState, safeStart);
+        await _scrollToMatchAndPulse(editorState, safeStart, safeEnd);
         return;
       }
       await Future.delayed(const Duration(milliseconds: 60));
@@ -3140,12 +3146,13 @@ class _EditorScreenState extends State<EditorScreen>
 
   Future<void> _scrollToMatchAndPulse(
     EditorState editorState,
-    int safeOffset,
+    int safeStart,
+    int safeEnd,
   ) async {
     Rect caretRect;
     try {
       caretRect = editorState.renderEditor.getLocalRectForCaret(
-        TextPosition(offset: safeOffset),
+        TextPosition(offset: safeStart),
       );
     } catch (_) {
       return;
@@ -3171,7 +3178,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (refreshedState == null) return;
     try {
       caretRect = refreshedState.renderEditor.getLocalRectForCaret(
-        TextPosition(offset: safeOffset),
+        TextPosition(offset: safeStart),
       );
     } catch (_) {
       return;
@@ -3184,29 +3191,40 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
 
+    Rect matchEndRect;
+    try {
+      matchEndRect = refreshedState.renderEditor.getLocalRectForCaret(
+        TextPosition(offset: safeEnd),
+      );
+    } catch (_) {
+      matchEndRect = caretRect;
+    }
+
+    final matchStart = editorRenderBox.localToGlobal(
+      caretRect.topLeft,
+      ancestor: overlayRenderObject,
+    );
+    final matchEnd = editorRenderBox.localToGlobal(
+      matchEndRect.bottomRight,
+      ancestor: overlayRenderObject,
+    );
     final overlayRect = Rect.fromPoints(
-      editorRenderBox.localToGlobal(
-        caretRect.topLeft,
-        ancestor: overlayRenderObject,
-      ),
-      editorRenderBox.localToGlobal(
-        caretRect.bottomRight,
-        ancestor: overlayRenderObject,
-      ),
+      matchStart,
+      matchEnd,
     );
 
     setState(() {
-      _matchGlowRect = overlayRect;
-      _showMatchGlow = true;
+      _matchHighlightRect = overlayRect;
+      _showMatchHighlight = true;
     });
 
-    _matchGlowStopTimer?.cancel();
-    _matchGlowController.repeat(reverse: true);
-    _matchGlowStopTimer = Timer(const Duration(milliseconds: 1650), () {
+    _matchHighlightStopTimer?.cancel();
+    _matchHighlightController.forward(from: 0);
+    _matchHighlightStopTimer = Timer(const Duration(milliseconds: 2400), () {
       if (!mounted) return;
-      _matchGlowController.stop();
+      _matchHighlightController.stop();
       setState(() {
-        _showMatchGlow = false;
+        _showMatchHighlight = false;
       });
     });
   }
