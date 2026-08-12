@@ -330,8 +330,10 @@ class AppColorPalette {
   static bool matchesBackgroundColor(String? savedHex, String paletteHex) {
     if (savedHex == null || savedHex.trim().isEmpty) return false;
     try {
-      return resolveBackgroundColor(savedHex).toARGB32() ==
-          resolveBackgroundColor(paletteHex).toARGB32();
+      // `Color.toARGB32()` is only available in newer Flutter SDKs. `Color`
+      // equality compares the same ARGB value and works with older SDKs too.
+      return resolveBackgroundColor(savedHex) ==
+          resolveBackgroundColor(paletteHex);
     } on FormatException {
       return false;
     }
