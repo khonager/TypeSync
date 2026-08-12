@@ -31,6 +31,7 @@ import '../../../core/utils/web_download_stub.dart'
 
 import '../../../core/models/note.dart';
 import '../../../core/models/typesync_kanban_embed.dart';
+import '../../../core/models/typesync_code_embed.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
@@ -58,6 +59,7 @@ import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
+import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 import '../utils/checklist_reorder.dart';
 import '../utils/shift_click_selection.dart';
@@ -2106,6 +2108,7 @@ class _EditorScreenState extends State<EditorScreen>
       onInsertPdf: _insertPdf,
       onInsertTable: _insertTable,
       onInsertKanban: _insertKanban,
+      onInsertCode: _insertCode,
       onToggleChecklist: _toggleChecklistCycle,
       onSetAlignment: _applyAlignment,
       placement: _toolbarPlacement,
@@ -2716,6 +2719,7 @@ class _EditorScreenState extends State<EditorScreen>
                     },
                     embedBuilders: const [
                       TypeSyncKanbanEmbedBuilder(),
+                      TypeSyncCodeEmbedBuilder(),
                       TypeSyncTableEmbedBuilder(),
                       MarkdownTableEmbedBuilder(),
                     ],
@@ -4837,6 +4841,44 @@ class _EditorScreenState extends State<EditorScreen>
       _markCurrentNoteRequiresVersion(
         TypeSyncKanbanEmbed.minimumSupportedAppVersion,
       ),
+    );
+    _focusNode.requestFocus();
+  }
+
+  void _insertCode() {
+    unawaited(_showCodeBlockCreator());
+  }
+
+  Future<void> _showCodeBlockCreator() async {
+    final code = await showDialog<TypeSyncCodeData>(
+      context: context,
+      builder: (_) => const TypeSyncCodeEditorDialog(
+        initial: TypeSyncCodeData(
+          id: 'new-code-block',
+          language: 'plaintext',
+          code: '',
+        ),
+      ),
+    );
+    if (!mounted || code == null) return;
+
+    final selection = _quillController.selection;
+    final baseOffset = selection.baseOffset < 0 ? 0 : selection.baseOffset;
+    final extentOffset =
+        selection.extentOffset < 0 ? baseOffset : selection.extentOffset;
+    final insertOffset = baseOffset <= extentOffset ? baseOffset : extentOffset;
+    final replaceLength = (baseOffset - extentOffset).abs();
+
+    _quillController.replaceText(
+      insertOffset,
+      selection.isValid ? replaceLength : 0,
+      TypeSyncCodeData.toBlockEmbed(
+        TypeSyncCodeData.empty().copyWith(
+          language: code.language,
+          code: code.code,
+        ),
+      ),
+      TextSelection.collapsed(offset: insertOffset + 1),
     );
     _focusNode.requestFocus();
   }

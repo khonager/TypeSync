@@ -32,6 +32,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertPdf;
   final VoidCallback onInsertTable;
   final VoidCallback onInsertKanban;
+  final VoidCallback onInsertCode;
   final VoidCallback onToggleChecklist;
   final ValueChanged<Attribute<String?>> onSetAlignment;
   final EditorToolbarPlacement placement;
@@ -46,6 +47,7 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertPdf,
     required this.onInsertTable,
     required this.onInsertKanban,
+    required this.onInsertCode,
     required this.onToggleChecklist,
     required this.onSetAlignment,
     required this.placement,
@@ -621,12 +623,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
         isActive: _hasFormat(Attribute.ol),
         onTap: () => _toggleAttribute(Attribute.ol),
       ),
-      _ToolbarButton(
-        icon: Icons.code,
-        tooltip: 'Code block',
-        isActive: _hasFormat(Attribute.codeBlock),
-        onTap: _toggleCodeBlock,
-      ),
       divider,
       _ToolbarButton(
         icon: Icons.format_align_left,
@@ -661,6 +657,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
         icon: Icons.view_kanban_outlined,
         tooltip: 'Insert kanban',
         onTap: widget.onInsertKanban,
+      ),
+      _ToolbarButton(
+        icon: Icons.code,
+        tooltip: 'Insert code block',
+        onTap: widget.onInsertCode,
       ),
     ];
   }
@@ -721,12 +722,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
         tooltip: 'Numbered list',
         isActive: _hasFormat(Attribute.ol),
         onTap: () => _toggleAttribute(Attribute.ol),
-      ),
-      _ToolbarButton(
-        icon: Icons.code,
-        tooltip: 'Code block',
-        isActive: _hasFormat(Attribute.codeBlock),
-        onTap: _toggleCodeBlock,
       ),
       _ToolbarButton(
         icon: Icons.format_align_left,
@@ -803,10 +798,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
     widget.controller.formatSelection(
       _hasFormat(attribute) ? Attribute.clone(attribute, null) : attribute,
     );
-  }
-
-  void _toggleCodeBlock() {
-    _toggleAttribute(Attribute.codeBlock);
   }
 
   void _resetTextStyle() {
