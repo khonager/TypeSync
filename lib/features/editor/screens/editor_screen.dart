@@ -1860,11 +1860,34 @@ class _EditorScreenState extends State<EditorScreen>
         icon: const Icon(Icons.arrow_back_ios),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Center(
-        child: _buildTitleField(),
+      // Keep the desktop header usable when the window is narrower than the
+      // default desktop size. The window caption buttons consume a sizeable
+      // part of the AppBar on Linux, so leaving all editor actions visible
+      // would otherwise squeeze the title field until controls overlap.
+      titleSpacing: 0,
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          final showTitle = maxWidth >= 220;
+          final showSideBySide = maxWidth >= 260;
+          final showStats = maxWidth >= 360;
+          final showSync = maxWidth >= 420;
+
+          return Row(
+            children: [
+              if (showTitle) Expanded(child: _buildTitleField()),
+              if (!showTitle) const Spacer(),
+              ..._buildHeaderActions(
+                showSideBySide: showSideBySide,
+                showStats: showStats,
+                showSync: showSync,
+              ),
+            ],
+          );
+        },
       ),
       actions: withDesktopWindowControls(
-        _buildHeaderActions(),
+        const [],
         enabled: !widget.embedded,
       ),
     );
