@@ -38,6 +38,8 @@ class EditorToolbar extends StatefulWidget {
   final ValueChanged<EditorToolbarPlacement> onPlacementChanged;
   final Offset initialPosition;
   final ValueChanged<Offset> onPositionChanged;
+  final Color defaultTextColor;
+  final Color previewSurfaceColor;
 
   const EditorToolbar({
     required this.controller,
@@ -50,6 +52,8 @@ class EditorToolbar extends StatefulWidget {
     required this.onPlacementChanged,
     required this.initialPosition,
     required this.onPositionChanged,
+    this.defaultTextColor = Colors.white,
+    this.previewSurfaceColor = AppTheme.darkTertiary,
     super.key,
   });
 
@@ -887,6 +891,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           previewLabel: type == _EditorColorPaletteType.text
                               ? 'Default'
                               : 'None',
+                          defaultTextColor: type == _EditorColorPaletteType.text
+                              ? widget.defaultTextColor
+                              : AppColorPalette.getContrastingTextColor(
+                                  widget.previewSurfaceColor,
+                                ),
+                          previewSurfaceColor: widget.previewSurfaceColor,
                         ),
                         ...colors.map(
                           (colorOption) => _ColorOption(
@@ -900,6 +910,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
                             tooltip: _buildColorTooltip(colorOption),
                             paletteType: type,
                             colorOption: colorOption,
+                            defaultTextColor: widget.defaultTextColor,
+                            previewSurfaceColor: widget.previewSurfaceColor,
                           ),
                         ),
                       ],
@@ -962,12 +974,25 @@ class _EditorToolbarState extends State<EditorToolbar> {
 
   String? _currentPaletteHex(_EditorColorPaletteType type) {
     final attributes = widget.controller.getSelectionStyle().attributes;
-    return switch (type) {
+    final color = switch (type) {
       _EditorColorPaletteType.text =>
         attributes[Attribute.color.key]?.value as String?,
       _EditorColorPaletteType.marker =>
         attributes[Attribute.background.key]?.value as String?,
     };
+    // Earlier dark-editor documents stored white as their explicit default.
+    // On a light note canvas it means the same thing as Default, not a custom
+    // text color, so expose it that way in the picker.
+    if (type == _EditorColorPaletteType.text && _isLegacyDefaultWhite(color)) {
+      return null;
+    }
+    return color;
+  }
+
+  bool _isLegacyDefaultWhite(String? hex) {
+    if (hex == null) return false;
+    final normalized = hex.replaceAll('#', '').toUpperCase();
+    return normalized == 'FFFFFF' || normalized == 'FFFFFFFF';
   }
 
   Color? _currentPaletteColor(_EditorColorPaletteType type) {
@@ -1126,6 +1151,8 @@ class _ColorOption extends StatelessWidget {
   final ColorOption? colorOption;
   final String? previewLabel;
   final String? tooltip;
+  final Color? defaultTextColor;
+  final Color previewSurfaceColor;
   final _EditorColorPaletteType paletteType;
   final bool enabled;
 
@@ -1136,6 +1163,8 @@ class _ColorOption extends StatelessWidget {
     this.colorOption,
     this.previewLabel,
     this.tooltip,
+    this.defaultTextColor,
+    this.previewSurfaceColor = AppTheme.darkTertiary,
     this.enabled = true,
   });
 
@@ -1150,7 +1179,7 @@ class _ColorOption extends StatelessWidget {
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.darkTertiary,
+        color: previewSurfaceColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
       ),
@@ -1158,6 +1187,7 @@ class _ColorOption extends StatelessWidget {
         paletteType: paletteType,
         colorOption: colorOption,
         fallbackLabel: previewLabel,
+        defaultTextColor: defaultTextColor,
       ),
     );
 
@@ -1195,11 +1225,13 @@ class _ColorPreview extends StatelessWidget {
   final _EditorColorPaletteType paletteType;
   final ColorOption? colorOption;
   final String? fallbackLabel;
+  final Color? defaultTextColor;
 
   const _ColorPreview({
     required this.paletteType,
     this.colorOption,
     this.fallbackLabel,
+    this.defaultTextColor,
   });
 
   @override
@@ -1210,7 +1242,7 @@ class _ColorPreview extends StatelessWidget {
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: AppTheme.darkTextPrimary,
+                color: defaultTextColor ?? AppTheme.darkTextPrimary,
                 fontWeight: FontWeight.w600,
               ),
           textAlign: TextAlign.center,
@@ -1230,7 +1262,8 @@ class _ColorPreview extends StatelessWidget {
           child: Text(
             'Marked',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: AppColorPalette.getContrastingTextColor(background),
+                  color: defaultTextColor ??
+                      AppColorPalette.getContrastingTextColor(background),
                   fontWeight: FontWeight.w700,
                 ),
           ),

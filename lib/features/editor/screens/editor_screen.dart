@@ -1308,6 +1308,9 @@ class _EditorScreenState extends State<EditorScreen>
       if (rawAttributes is Map) {
         final attributes = Map<String, dynamic>.from(rawAttributes)
           ..remove(_manualSpellcheckAttributeKey);
+        if (_isLegacyDefaultTextColor(attributes[Attribute.color.key])) {
+          attributes.remove(Attribute.color.key);
+        }
         if (attributes.isEmpty) {
           operation.remove('attributes');
         } else {
@@ -1347,6 +1350,12 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     return sanitized;
+  }
+
+  bool _isLegacyDefaultTextColor(Object? color) {
+    if (color is! String) return false;
+    final normalized = color.replaceAll('#', '').toUpperCase();
+    return normalized == 'FFFFFF' || normalized == 'FFFFFFFF';
   }
 
   List<Map<String, dynamic>>? _normalizeStringOperationForQuill(
@@ -2099,6 +2108,26 @@ class _EditorScreenState extends State<EditorScreen>
       onPlacementChanged: _setToolbarPlacement,
       initialPosition: _toolbarPosition,
       onPositionChanged: _setToolbarPosition,
+      defaultTextColor: _editorCanvasTextColor(),
+      previewSurfaceColor: _editorCanvasColor(),
+    );
+  }
+
+  Color _editorCanvasColor() {
+    final background = _note?.backgroundColor;
+    if (background == null || background.isEmpty) {
+      return Theme.of(context).scaffoldBackgroundColor;
+    }
+    return AppColorPalette.resolveBackgroundColor(background);
+  }
+
+  Color _editorCanvasTextColor() {
+    final background = _note?.backgroundColor;
+    if (background == null || background.isEmpty) {
+      return Theme.of(context).colorScheme.onSurface;
+    }
+    return AppColorPalette.getContrastingTextColor(
+      AppColorPalette.resolveBackgroundColor(background),
     );
   }
 
@@ -2605,9 +2634,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildEditorSurface(Color? bgColor) {
-    final textColor = bgColor == null
-        ? Theme.of(context).colorScheme.onSurface
-        : AppColorPalette.getContrastingTextColor(bgColor);
+    final textColor = _editorCanvasTextColor();
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -2696,6 +2723,7 @@ class _EditorScreenState extends State<EditorScreen>
                         context,
                       ).colorScheme.primary.withValues(alpha: 0.28),
                     ),
+                    customStyles: DefaultStyles(color: textColor),
                   ),
                 ),
               ),
@@ -2716,8 +2744,18 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   TextStyle _buildCustomEditorStyle(Attribute<dynamic> attribute) {
-    if (attribute.key != Attribute.background.key ||
-        attribute.value is! String) {
+    if (attribute.value is! String) {
+      return const TextStyle();
+    }
+
+    if (attribute.key == Attribute.color.key) {
+      if (_isLegacyDefaultTextColor(attribute.value)) {
+        return TextStyle(color: _editorCanvasTextColor());
+      }
+      return const TextStyle();
+    }
+
+    if (attribute.key != Attribute.background.key) {
       return const TextStyle();
     }
 
