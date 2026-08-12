@@ -29,7 +29,6 @@ class _HomePageWidgetSectionState extends State<HomePageWidgetSection> {
   HomePageWidgetType? _currentWidget;
   _LargestNotesMetric _largestMetric = _LargestNotesMetric.size;
   String? _appliedSelectionSignature;
-  HomePageWidgetType? _appliedSavedWidget;
 
   @override
   void dispose() {
@@ -119,12 +118,13 @@ class _HomePageWidgetSectionState extends State<HomePageWidgetSection> {
     HomePageWidgetType savedWidget,
   ) {
     final selectionSignature = selected.map((widget) => widget.index).join(',');
-    if (_appliedSelectionSignature == selectionSignature &&
-        _appliedSavedWidget == savedWidget) {
+    // Do not use the last-viewed value as a restore trigger: it changes while
+    // a PageView drag crosses a page boundary. Re-jumping there makes the
+    // carousel snap halfway through a swipe.
+    if (_appliedSelectionSignature == selectionSignature) {
       return;
     }
     _appliedSelectionSignature = selectionSignature;
-    _appliedSavedWidget = savedWidget;
     _currentWidget = savedWidget;
     final targetPage = _initialPage -
         (_initialPage % selected.length) +

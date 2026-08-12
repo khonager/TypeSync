@@ -39,12 +39,11 @@ class HomeNoteWidgetPreview extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, size: 20, color: colorScheme.primary),
-                const SizedBox(width: 9),
+                Icon(icon, size: 18, color: colorScheme.primary),
+                const SizedBox(width: 8),
                 Text(
                   title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontSize: 18,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -57,7 +56,7 @@ class HomeNoteWidgetPreview extends StatelessWidget {
                   child: Text(
                     emptyMessage,
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -104,14 +103,14 @@ class _NoteRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11),
+              padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
                   Icon(
                     note.type == NoteType.pdf
                         ? Icons.picture_as_pdf_outlined
                         : Icons.description_outlined,
-                    size: 19,
+                    size: 18,
                     color: colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 10),
@@ -120,8 +119,7 @@ class _NoteRow extends StatelessWidget {
                       note.title.trim().isEmpty ? 'Untitled note' : note.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontSize: 16,
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -129,8 +127,7 @@ class _NoteRow extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     detail,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 14,
+                    style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurfaceVariant,
                     ),
