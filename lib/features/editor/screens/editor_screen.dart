@@ -381,6 +381,7 @@ class _EditorScreenState extends State<EditorScreen>
       _note = notesProvider.getNoteById(widget.noteId!);
 
       if (_note != null) {
+        unawaited(notesProvider.recordNoteOpened(_note!.id));
         _syncTitleField(_note!.title);
 
         // Parse content as Delta if it's JSON, otherwise treat as plain text

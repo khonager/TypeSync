@@ -56,6 +56,22 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/typesync_upcoming_widget_info" />
         </receiver>
+
+        <receiver android:name="de.khonager.typesync.TypeSyncRecentlyOpenedWidgetProvider" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/typesync_recent_notes_widget_info" />
+        </receiver>
+        <receiver android:name="de.khonager.typesync.TypeSyncFrequentlyOpenedWidgetProvider" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/typesync_frequent_notes_widget_info" />
+        </receiver>
+        <receiver android:name="de.khonager.typesync.TypeSyncLargestNotesWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="de.khonager.typesync.SET_LARGEST_METRIC" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/typesync_largest_notes_widget_info" />
+        </receiver>
         
         <!-- Flutter embedding -->
         <meta-data

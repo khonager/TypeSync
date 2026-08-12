@@ -16,6 +16,14 @@ enum HomeUpcomingVisibilityMode {
   never,
 }
 
+/// The fixed order used by the swipeable home-page widget carousel.
+enum HomePageWidgetType {
+  upcoming,
+  recentlyOpened,
+  frequentlyOpened,
+  largestNotes,
+}
+
 /// Service for managing app theme and appearance
 ///
 /// Supports light mode, dark mode, and system-sync mode.
@@ -26,6 +34,9 @@ class ThemeService extends ChangeNotifier {
   Color _accentColor = const Color(0xFF64D2FF);
   HomeUpcomingVisibilityMode _homeUpcomingVisibilityMode =
       HomeUpcomingVisibilityMode.onlyWithItems;
+  List<HomePageWidgetType> _selectedHomePageWidgets =
+      List<HomePageWidgetType>.from(HomePageWidgetType.values);
+  HomePageWidgetType _lastViewedHomePageWidget = HomePageWidgetType.upcoming;
 
   // Sync service reference (set by parent)
   SyncService? _syncService;
@@ -39,6 +50,10 @@ class ThemeService extends ChangeNotifier {
   static const String _accentColorKey = 'accent_color';
   static const String _homeUpcomingVisibilityModeKey =
       'home_upcoming_visibility_mode';
+  static const String _selectedHomePageWidgetsKey =
+      'selected_home_page_widgets';
+  static const String _lastViewedHomePageWidgetKey =
+      'last_viewed_home_page_widget';
 
   // Predefined accent colors
   static const List<Color> accentColors = [
@@ -62,6 +77,9 @@ class ThemeService extends ChangeNotifier {
   bool get syncWithSystem => false;
   HomeUpcomingVisibilityMode get homeUpcomingVisibilityMode =>
       _homeUpcomingVisibilityMode;
+  List<HomePageWidgetType> get selectedHomePageWidgets =>
+      List<HomePageWidgetType>.unmodifiable(_selectedHomePageWidgets);
+  HomePageWidgetType get lastViewedHomePageWidget => _lastViewedHomePageWidget;
 
   /// Get the actual brightness based on current settings
   Brightness get currentBrightness => Brightness.dark;
@@ -115,6 +133,33 @@ class ThemeService extends ChangeNotifier {
     _homeUpcomingVisibilityMode = mode;
     _savePreferences();
     notifyListeners();
+  }
+
+  void setHomePageWidgetSelected(HomePageWidgetType widget, bool selected) {
+    final updated = _selectedHomePageWidgets.toSet();
+    if (selected) {
+      updated.add(widget);
+    } else {
+      updated.remove(widget);
+    }
+    // A carousel without pages is not useful, and keeping one selected makes
+    // it possible to recover from a mistaken tap without another screen.
+    if (updated.isEmpty) return;
+
+    _selectedHomePageWidgets = HomePageWidgetType.values
+        .where(updated.contains)
+        .toList(growable: false);
+    if (!_selectedHomePageWidgets.contains(_lastViewedHomePageWidget)) {
+      _lastViewedHomePageWidget = _selectedHomePageWidgets.first;
+    }
+    _savePreferences(syncToCloud: false);
+    notifyListeners();
+  }
+
+  void setLastViewedHomePageWidget(HomePageWidgetType widget) {
+    if (_lastViewedHomePageWidget == widget) return;
+    _lastViewedHomePageWidget = widget;
+    _savePreferences(syncToCloud: false);
   }
 
   /// Get contrasting text color (black or white) based on background
@@ -192,6 +237,34 @@ class ThemeService extends ChangeNotifier {
             HomeUpcomingVisibilityMode.values[visibilityIndex];
       }
 
+      final selectedWidgetIndexes = prefs.getStringList(
+        _selectedHomePageWidgetsKey,
+      );
+      if (selectedWidgetIndexes != null) {
+        final selected = selectedWidgetIndexes
+            .map(int.tryParse)
+            .whereType<int>()
+            .where(
+              (index) => index >= 0 && index < HomePageWidgetType.values.length,
+            )
+            .map((index) => HomePageWidgetType.values[index])
+            .toSet();
+        if (selected.isNotEmpty) {
+          _selectedHomePageWidgets = HomePageWidgetType.values
+              .where(selected.contains)
+              .toList(growable: false);
+        }
+      }
+      final lastViewedIndex = prefs.getInt(_lastViewedHomePageWidgetKey);
+      if (lastViewedIndex != null &&
+          lastViewedIndex >= 0 &&
+          lastViewedIndex < HomePageWidgetType.values.length) {
+        _lastViewedHomePageWidget = HomePageWidgetType.values[lastViewedIndex];
+      }
+      if (!_selectedHomePageWidgets.contains(_lastViewedHomePageWidget)) {
+        _lastViewedHomePageWidget = _selectedHomePageWidgets.first;
+      }
+
       _themeMode = ThemeMode.dark;
       notifyListeners();
     } catch (e) {
@@ -213,6 +286,16 @@ class ThemeService extends ChangeNotifier {
       await prefs.setInt(
         _homeUpcomingVisibilityModeKey,
         _homeUpcomingVisibilityMode.index,
+      );
+      await prefs.setStringList(
+        _selectedHomePageWidgetsKey,
+        _selectedHomePageWidgets
+            .map((widget) => widget.index.toString())
+            .toList(),
+      );
+      await prefs.setInt(
+        _lastViewedHomePageWidgetKey,
+        _lastViewedHomePageWidget.index,
       );
 
       if (syncToCloud && _syncService != null) {

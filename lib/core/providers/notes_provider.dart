@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/note.dart';
@@ -51,6 +52,11 @@ class NotesProvider extends ChangeNotifier {
   // Local storage box
   Box<Note>? _notesBox;
   String? _activeUserId;
+  final Map<String, DateTime> _lastOpenedAt = <String, DateTime>{};
+  final Map<String, int> _openCounts = <String, int>{};
+
+  static const String _lastOpenedAtKeyPrefix = 'note_last_opened_at_';
+  static const String _openCountsKeyPrefix = 'note_open_counts_';
 
   // In-memory notes list
   List<Note> _notes = [];
@@ -92,6 +98,40 @@ class NotesProvider extends ChangeNotifier {
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return sorted.take(10).toList();
   }
+
+  /// Notes most recently opened by the active user. Opening activity is kept
+  /// local to the device so it never changes a note's sync state.
+  List<Note> get recentlyOpenedNotes {
+    final sorted =
+        notes.where((note) => _lastOpenedAt.containsKey(note.id)).toList()
+          ..sort(
+            (a, b) => _lastOpenedAt[b.id]!.compareTo(_lastOpenedAt[a.id]!),
+          );
+    return sorted.take(6).toList();
+  }
+
+  /// Notes opened most often by the active user, with recent opens breaking
+  /// ties so the result remains useful when counts match.
+  List<Note> get frequentlyOpenedNotes {
+    final sorted = notes
+        .where((note) => (_openCounts[note.id] ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final countComparison = (_openCounts[b.id] ?? 0).compareTo(
+          _openCounts[a.id] ?? 0,
+        );
+        if (countComparison != 0) return countComparison;
+        return (_lastOpenedAt[b.id] ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(
+          _lastOpenedAt[a.id] ?? DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      });
+    return sorted.take(6).toList();
+  }
+
+  int openCountFor(String noteId) => _openCounts[noteId] ?? 0;
+
+  DateTime? lastOpenedAtFor(String noteId) => _lastOpenedAt[noteId];
 
   /// Get notes with unsynced changes that are eligible for cloud sync.
   List<Note> get dirtyNotes =>
@@ -485,6 +525,7 @@ class NotesProvider extends ChangeNotifier {
       _notesBox = await Hive.openBox<Note>(boxName);
       _activeUserId = userId;
       _notes = _notesBox!.values.toList();
+      await _loadOpenHistory(userId);
       _diagnostics.info(
         'NotesProvider',
         'WORKSPACE_FLOW notes initialized workspace=$userId boxType=${_notesBox.runtimeType} noteCount=${_notes.length}',
@@ -502,6 +543,61 @@ class NotesProvider extends ChangeNotifier {
 
     _isLoading = false;
     Future.microtask(() => notifyListeners());
+  }
+
+  /// Records a note open without marking the note dirty or syncing it.
+  Future<void> recordNoteOpened(String noteId) async {
+    if (_activeUserId == null || getNoteById(noteId) == null) return;
+
+    _lastOpenedAt[noteId] = DateTime.now();
+    _openCounts[noteId] = (_openCounts[noteId] ?? 0) + 1;
+    notifyListeners();
+    await _saveOpenHistory();
+  }
+
+  Future<void> _loadOpenHistory(String userId) async {
+    _lastOpenedAt.clear();
+    _openCounts.clear();
+    final prefs = await SharedPreferences.getInstance();
+    final lastOpenedJson = prefs.getString('$_lastOpenedAtKeyPrefix$userId');
+    final countsJson = prefs.getString('$_openCountsKeyPrefix$userId');
+
+    try {
+      if (lastOpenedJson != null) {
+        final decoded = jsonDecode(lastOpenedJson) as Map<String, dynamic>;
+        decoded.forEach((noteId, value) {
+          final parsed = DateTime.tryParse(value as String? ?? '');
+          if (parsed != null) _lastOpenedAt[noteId] = parsed;
+        });
+      }
+      if (countsJson != null) {
+        final decoded = jsonDecode(countsJson) as Map<String, dynamic>;
+        decoded.forEach((noteId, value) {
+          if (value is num && value > 0) _openCounts[noteId] = value.toInt();
+        });
+      }
+    } on FormatException {
+      // Ignore malformed device-only activity data; note loading must still
+      // succeed and fresh activity will replace it.
+    }
+  }
+
+  Future<void> _saveOpenHistory() async {
+    final userId = _activeUserId;
+    if (userId == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final serializedLastOpenedAt = jsonEncode(
+      _lastOpenedAt.map(
+        (id, date) => MapEntry(id, date.toIso8601String()),
+      ),
+    );
+    await Future.wait([
+      prefs.setString(
+        '$_lastOpenedAtKeyPrefix$userId',
+        serializedLastOpenedAt,
+      ),
+      prefs.setString('$_openCountsKeyPrefix$userId', jsonEncode(_openCounts)),
+    ]);
   }
 
   /// Set sync service reference (null to disable sync)
