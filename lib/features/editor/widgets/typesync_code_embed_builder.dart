@@ -45,23 +45,34 @@ class TypeSyncCodeEmbedBuilder extends EmbedBuilder {
   }
 
   @override
-  Widget build(BuildContext context, QuillController controller, Embed node,
-      bool readOnly, bool inline, TextStyle textStyle) {
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
     final raw = node.value.data;
     final code = raw is String
         ? TypeSyncCodeData.fromEmbedData(raw)
         : TypeSyncCodeData.empty();
     return _CodeBlock(
-        controller: controller, node: node, code: code, readOnly: readOnly);
+      controller: controller,
+      node: node,
+      code: code,
+      readOnly: readOnly,
+    );
   }
 }
 
 class _CodeBlock extends StatelessWidget {
-  const _CodeBlock(
-      {required this.controller,
-      required this.node,
-      required this.code,
-      required this.readOnly});
+  const _CodeBlock({
+    required this.controller,
+    required this.node,
+    required this.code,
+    required this.readOnly,
+  });
   final QuillController controller;
   final Embed node;
   final TypeSyncCodeData code;
@@ -70,7 +81,7 @@ class _CodeBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const background = Color(0xFF1E1E1E);
-    final foreground = const Color(0xFFD4D4D4);
+    const foreground = Color(0xFFD4D4D4);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10),
       clipBehavior: Clip.antiAlias,
@@ -79,48 +90,61 @@ class _CodeBlock extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Container(
-          height: 38,
-          padding: const EdgeInsets.only(left: 12, right: 4),
-          color: const Color(0xFF252526),
-          child: Row(children: [
-            Text(_languageLabel(code.language),
-                style: const TextStyle(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 38,
+            padding: const EdgeInsets.only(left: 12, right: 4),
+            color: const Color(0xFF252526),
+            child: Row(
+              children: [
+                Text(
+                  _languageLabel(code.language),
+                  style: const TextStyle(
                     color: Color(0xFFB9B9B9),
                     fontSize: 13,
-                    fontWeight: FontWeight.w600)),
-            const Spacer(),
-            IconButton(
-              tooltip: 'Copy code',
-              icon: const Icon(Icons.copy_outlined, size: 18),
-              color: const Color(0xFFCECECE),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: code.code));
-                if (context.mounted)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Code copied')));
-              },
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Copy code',
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  color: const Color(0xFFCECECE),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: code.code));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Code copied')),
+                      );
+                    }
+                  },
+                ),
+                if (!readOnly)
+                  IconButton(
+                    tooltip: 'Edit code',
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    color: const Color(0xFFCECECE),
+                    onPressed: () => _edit(context),
+                  ),
+              ],
             ),
-            if (!readOnly)
-              IconButton(
-                tooltip: 'Edit code',
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                color: const Color(0xFFCECECE),
-                onPressed: () => _edit(context),
-              ),
-          ]),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.all(14),
-          child: SelectableText.rich(
-            _highlight(code.code, code.language, foreground),
-            style: const TextStyle(
-                fontFamily: 'monospace', fontSize: 14, height: 1.45),
           ),
-        ),
-      ]),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(14),
+            child: SelectableText.rich(
+              _highlight(code.code, code.language, foreground),
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -135,8 +159,12 @@ class _CodeBlock extends StatelessWidget {
       codeId: code.id,
     );
     if (offset == null) return;
-    controller.replaceText(offset, 1, TypeSyncCodeData.toBlockEmbed(result),
-        TextSelection.collapsed(offset: offset + 1));
+    controller.replaceText(
+      offset,
+      1,
+      TypeSyncCodeData.toBlockEmbed(result),
+      TextSelection.collapsed(offset: offset + 1),
+    );
   }
 }
 
@@ -161,46 +189,62 @@ class _CodeEditorDialogState extends State<TypeSyncCodeEditorDialog> {
   Widget build(BuildContext context) => AlertDialog(
         title: const Text('Code block'),
         content: SizedBox(
-            width: 720,
-            height: 440,
-            child: Column(children: [
+          width: 720,
+          height: 440,
+          child: Column(
+            children: [
               Align(
-                  alignment: Alignment.centerLeft,
-                  child: DropdownButton<String>(
-                      value: codeBlockLanguages.contains(_language)
-                          ? _language
-                          : 'plaintext',
-                      items: codeBlockLanguages
-                          .map((l) => DropdownMenuItem(
-                              value: l, child: Text(_languageLabel(l))))
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _language = value!))),
+                alignment: Alignment.centerLeft,
+                child: DropdownButton<String>(
+                  value: codeBlockLanguages.contains(_language)
+                      ? _language
+                      : 'plaintext',
+                  items: codeBlockLanguages
+                      .map(
+                        (l) => DropdownMenuItem(
+                          value: l,
+                          child: Text(_languageLabel(l)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() => _language = value!),
+                ),
+              ),
               const SizedBox(height: 8),
               Expanded(
-                  child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      expands: true,
-                      maxLines: null,
-                      minLines: null,
-                      style: const TextStyle(
-                          fontFamily: 'monospace', fontSize: 14),
-                      decoration: const InputDecoration(
-                          hintText: 'Paste or write code here',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.all(12)))),
-            ])),
+                child: TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 14,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: 'Paste or write code here',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(
-                  context,
-                  widget.initial
-                      .copyWith(language: _language, code: _controller.text)),
-              child: const Text('Save'))
+            onPressed: () => Navigator.pop(
+              context,
+              widget.initial
+                  .copyWith(language: _language, code: _controller.text),
+            ),
+            child: const Text('Save'),
+          ),
         ],
       );
 }
@@ -231,14 +275,16 @@ TextSpan _highlight(String code, String language, Color base) {
       r'\b(class|public|private|static|void|return|if|else|for|while|SELECT|FROM|WHERE)\b',
   };
   final pattern = RegExp(
-      '(?:$keyword)|(?://[^\\n]*|#[^\\n]*|/\\*[\\s\\S]*?\\*/)|(?:"(?:\\\\.|[^"\\\\])*")|(?:\\b\\d+(?:\\.\\d+)?\\b)',
-      multiLine: true,
-      caseSensitive: language != 'sql');
+    '(?:$keyword)|(?://[^\\n]*|#[^\\n]*|/\\*[\\s\\S]*?\\*/)|(?:"(?:\\\\.|[^"\\\\])*")|(?:\\b\\d+(?:\\.\\d+)?\\b)',
+    multiLine: true,
+    caseSensitive: language != 'sql',
+  );
   final spans = <TextSpan>[];
   var index = 0;
   for (final match in pattern.allMatches(code)) {
-    if (match.start > index)
+    if (match.start > index) {
       spans.add(TextSpan(text: code.substring(index, match.start)));
+    }
     final text = match.group(0)!;
     final color =
         text.startsWith('//') || text.startsWith('#') || text.startsWith('/*')
@@ -251,8 +297,10 @@ TextSpan _highlight(String code, String language, Color base) {
     spans.add(TextSpan(text: text, style: TextStyle(color: color)));
     index = match.end;
   }
-  if (index < code.length)
+  if (index < code.length) {
     spans.add(
-        TextSpan(text: code.substring(index), style: TextStyle(color: base)));
+      TextSpan(text: code.substring(index), style: TextStyle(color: base)),
+    );
+  }
   return TextSpan(style: TextStyle(color: base), children: spans);
 }
