@@ -15,8 +15,6 @@ Home Widgets + Editor Readability
 ## Fixes & Improvements
 - Refined note and folder background colors for calmer, more readable surfaces while preserving compatibility with saved legacy colors.
 - Improved contrast for note text and icons across selectable background colors.
-- Restored strikethrough formatting in the editor toolbar and corrected note-background selection state.
-- Polished widget layout and carousel animation for a more compact, stable Home experience.
 
 ## Notes
 - These notes summarize user-facing changes introduced after `v1.1.19` (2026-08-05).
