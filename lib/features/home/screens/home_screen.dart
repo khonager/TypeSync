@@ -45,7 +45,7 @@ import '../../profile/screens/profile_screen.dart';
 import '../widgets/folder_grid.dart';
 import '../widgets/file_grid.dart';
 import '../widgets/home_bottom_bar.dart';
-import '../widgets/home_upcoming_section.dart';
+import '../widgets/home_page_widget_section.dart';
 import '../widgets/sync_status_indicator.dart';
 import '../models/home_drag_data.dart';
 
@@ -1005,9 +1005,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
 
                 if (_currentFolderId == null && !isSearchActive)
-                  const SliverToBoxAdapter(
-                    child: HomeUpcomingSection(),
-                  ),
+                  const SliverToBoxAdapter(child: HomePageWidgetSection()),
 
                 // Breadcrumb navigation
                 if (!isSearchActive)
@@ -2781,7 +2779,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       colorOption.hex,
                       dialogContext,
                     ),
-                    isSelected: currentColor == colorOption.hex,
+                    isSelected: AppColorPalette.matchesBackgroundColor(
+                      currentColor,
+                      colorOption.hex,
+                    ),
                   ),
                 ),
               ],
@@ -2831,7 +2832,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       colorOption.hex,
                       dialogContext,
                     ),
-                    isSelected: currentColor == colorOption.hex,
+                    isSelected: AppColorPalette.matchesBackgroundColor(
+                      currentColor,
+                      colorOption.hex,
+                    ),
                   ),
                 ),
               ],

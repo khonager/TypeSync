@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../core/providers/calendar_provider.dart';
 import '../core/providers/homework_provider.dart';
+import '../core/providers/notes_provider.dart';
 import '../core/services/home_widget_service.dart';
 import '../core/services/theme_service.dart';
 import '../core/utils/color_value_compat.dart';
@@ -30,6 +31,7 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
   Widget build(BuildContext context) {
     final calendarProvider = context.watch<CalendarProvider>();
     final homeworkProvider = context.watch<HomeworkProvider>();
+    final notesProvider = context.watch<NotesProvider>();
     final themeService = context.watch<ThemeService>();
 
     final items = UpcomingItemViewData.build(
@@ -45,6 +47,7 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
       accentColor: accentColor,
       calendarLoading: calendarProvider.isLoading,
       homeworkLoading: homeworkProvider.isLoading,
+      notesProvider: notesProvider,
     );
 
     if (signature != _lastSignature) {
@@ -55,6 +58,15 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
         }
         HomeWidgetService.instance.syncUpcoming(
           items: items,
+          brightness: brightness,
+          accentColor: accentColor,
+        );
+        HomeWidgetService.instance.syncNoteWidgets(
+          recentlyOpened: notesProvider.recentlyOpenedNotes,
+          frequentlyOpened: notesProvider.frequentlyOpenedNotes,
+          notes: notesProvider.notes,
+          openCountFor: notesProvider.openCountFor,
+          lastOpenedAtFor: notesProvider.lastOpenedAtFor,
           brightness: brightness,
           accentColor: accentColor,
         );
@@ -70,6 +82,7 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
     required Color accentColor,
     required bool calendarLoading,
     required bool homeworkLoading,
+    required NotesProvider notesProvider,
   }) {
     final itemSignature = items
         .map(
@@ -87,9 +100,23 @@ class _HomeWidgetSyncCoordinatorState extends State<HomeWidgetSyncCoordinator> {
     return [
       calendarLoading ? 'calendar-loading' : 'calendar-ready',
       homeworkLoading ? 'homework-loading' : 'homework-ready',
+      notesProvider.isLoading ? 'notes-loading' : 'notes-ready',
       brightness.name,
       colorToArgb32(accentColor).toString(),
       itemSignature,
+      notesProvider.notes
+          .map(
+            (note) => [
+              note.id,
+              note.title,
+              note.size,
+              note.characterCount,
+              note.lineCount,
+              notesProvider.openCountFor(note.id),
+              notesProvider.lastOpenedAtFor(note.id)?.toIso8601String() ?? '',
+            ].join('|'),
+          )
+          .join('||'),
     ].join('::');
   }
 }

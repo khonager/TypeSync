@@ -33,6 +33,7 @@ void main() {
               initialPosition: Offset.zero,
               onPositionChanged: (_) {},
               onSetAlignment: (Attribute<String?> value) {},
+              onInsertCode: () {},
             ),
           ),
         ),

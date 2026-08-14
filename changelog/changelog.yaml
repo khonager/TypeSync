@@ -1,5 +1,20 @@
 schema_version: 2
 releases:
+  - version: 1.1.20
+    date: 2026-08-12
+    title: Home Widgets + Editor Readability
+    important:
+      - TypeSync adds configurable note widgets on the Home page and new Android home-screen widgets for recently opened, frequently opened, and largest notes.
+    new_features:
+      - Added a swipeable Home Page Widgets carousel, with settings to choose the Upcoming, Recently opened, Frequently opened, and Largest notes views.
+      - Added local note-open history, powering recently and frequently opened note lists without changing synced note data.
+      - Added Android home-screen widgets for recently opened, frequently opened, and largest notes; the largest-notes widget can compare size, character count, or line count.
+    fixes_improvements:
+      - Refined note and folder background colors for calmer, more readable surfaces while preserving compatibility with saved legacy colors.
+      - Improved contrast for note text and icons across selectable background colors.
+    notes:
+      - These notes summarize user-facing changes introduced after `v1.1.19` (2026-08-05).
+
   - version: 1.1.19
     date: 2026-08-05
     title: Calendar, Writing + Platform Reliability

@@ -31,11 +31,13 @@ import '../../../core/utils/web_download_stub.dart'
 
 import '../../../core/models/note.dart';
 import '../../../core/models/typesync_kanban_embed.dart';
+import '../../../core/models/typesync_code_embed.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/attachment_preferences_service.dart';
 import '../../../core/services/diagnostics_service.dart';
+import '../../../core/services/editor_color_palette_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -57,6 +59,7 @@ import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
+import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 import '../utils/checklist_reorder.dart';
 import '../utils/shift_click_selection.dart';
@@ -305,11 +308,11 @@ class _EditorScreenState extends State<EditorScreen>
   bool _attachmentsExpanded = false;
   EditorToolbarPlacement _toolbarPlacement = EditorToolbarPlacement.floating;
   Offset _toolbarPosition = const Offset(16, 100);
-  late final AnimationController _matchGlowController;
-  Timer? _matchGlowStopTimer;
+  late final AnimationController _matchHighlightController;
+  Timer? _matchHighlightStopTimer;
   OverlayEntry? _spellcheckHoverOverlay;
-  Rect? _matchGlowRect;
-  bool _showMatchGlow = false;
+  Rect? _matchHighlightRect;
+  bool _showMatchHighlight = false;
   bool _didAttemptInitialSearchJump = false;
   bool _isSearchPanelVisible = false;
   bool _matchCase = false;
@@ -365,9 +368,9 @@ class _EditorScreenState extends State<EditorScreen>
     TypeSyncSpellcheckerService.instance.hoveredIssue.addListener(
       _handleSpellcheckHoverChanged,
     );
-    _matchGlowController = AnimationController(
+    _matchHighlightController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 2400),
     );
     _initializeEditor();
   }
@@ -381,6 +384,7 @@ class _EditorScreenState extends State<EditorScreen>
       _note = notesProvider.getNoteById(widget.noteId!);
 
       if (_note != null) {
+        unawaited(notesProvider.recordNoteOpened(_note!.id));
         _syncTitleField(_note!.title);
 
         // Parse content as Delta if it's JSON, otherwise treat as plain text
@@ -1308,6 +1312,9 @@ class _EditorScreenState extends State<EditorScreen>
       if (rawAttributes is Map) {
         final attributes = Map<String, dynamic>.from(rawAttributes)
           ..remove(_manualSpellcheckAttributeKey);
+        if (_isLegacyDefaultTextColor(attributes[Attribute.color.key])) {
+          attributes.remove(Attribute.color.key);
+        }
         if (attributes.isEmpty) {
           operation.remove('attributes');
         } else {
@@ -1347,6 +1354,12 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     return sanitized;
+  }
+
+  bool _isLegacyDefaultTextColor(Object? color) {
+    if (color is! String) return false;
+    final normalized = color.replaceAll('#', '').toUpperCase();
+    return normalized == 'FFFFFF' || normalized == 'FFFFFFFF';
   }
 
   List<Map<String, dynamic>>? _normalizeStringOperationForQuill(
@@ -1646,10 +1659,10 @@ class _EditorScreenState extends State<EditorScreen>
       unawaited(_persistCaretOffset(force: true));
     }
     unawaited(_persistToolbarPreferences());
-    _matchGlowStopTimer?.cancel();
+    _matchHighlightStopTimer?.cancel();
     _spellcheckHoverOverlay?.remove();
     _spellcheckHoverOverlay = null;
-    _matchGlowController.dispose();
+    _matchHighlightController.dispose();
     TypeSyncSpellcheckerService.instance.hoveredIssue.removeListener(
       _handleSpellcheckHoverChanged,
     );
@@ -1677,6 +1690,8 @@ class _EditorScreenState extends State<EditorScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild an active search highlight when the user changes their palette.
+    context.watch<EditorColorPaletteService>();
     return _buildEditor(context);
   }
 
@@ -1758,7 +1773,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
 
     final bgColor = _note?.backgroundColor != null
-        ? Color(int.parse(_note!.backgroundColor!.replaceFirst('#', '0xFF')))
+        ? AppColorPalette.resolveBackgroundColor(_note!.backgroundColor!)
         : null;
     final requiredVersion = _requiredAppVersionForCurrentNote();
     final currentVersion = VersionCompatibility.normalize(kCurrentAppVersion);
@@ -1792,19 +1807,18 @@ class _EditorScreenState extends State<EditorScreen>
     final content = widget.embedded
         ? DecoratedBox(
             decoration: BoxDecoration(
-              color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+              color: Theme.of(context).scaffoldBackgroundColor,
             ),
             child: Column(
               children: [
-                _buildEmbeddedHeader(bgColor),
+                _buildEmbeddedHeader(),
                 Expanded(child: editorBody),
               ],
             ),
           )
         : Scaffold(
-            backgroundColor:
-                bgColor ?? Theme.of(context).scaffoldBackgroundColor,
-            appBar: _buildAppBar(bgColor),
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            appBar: _buildAppBar(),
             body: editorBody,
           );
 
@@ -1838,25 +1852,48 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar(Color? bgColor) {
+  PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+      backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
       flexibleSpace: desktopWindowDragArea(),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Center(
-        child: _buildTitleField(),
+      // Keep the desktop header usable when the window is narrower than the
+      // default desktop size. The window caption buttons consume a sizeable
+      // part of the AppBar on Linux, so leaving all editor actions visible
+      // would otherwise squeeze the title field until controls overlap.
+      titleSpacing: 0,
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          final showTitle = maxWidth >= 220;
+          final showSideBySide = maxWidth >= 260;
+          final showStats = maxWidth >= 360;
+          final showSync = maxWidth >= 420;
+
+          return Row(
+            children: [
+              if (showTitle) Expanded(child: _buildTitleField()),
+              if (!showTitle) const Spacer(),
+              ..._buildHeaderActions(
+                showSideBySide: showSideBySide,
+                showStats: showStats,
+                showSync: showSync,
+              ),
+            ],
+          );
+        },
       ),
       actions: withDesktopWindowControls(
-        _buildHeaderActions(),
+        const [],
         enabled: !widget.embedded,
       ),
     );
   }
 
-  Widget _buildEmbeddedHeader(Color? bgColor) {
+  Widget _buildEmbeddedHeader() {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1871,7 +1908,7 @@ class _EditorScreenState extends State<EditorScreen>
             height: 56,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              color: bgColor ?? Theme.of(context).appBarTheme.backgroundColor,
+              color: Theme.of(context).appBarTheme.backgroundColor,
               border: Border(
                 bottom: BorderSide(
                   color: colors.outline.withValues(alpha: 0.2),
@@ -2094,12 +2131,33 @@ class _EditorScreenState extends State<EditorScreen>
       onInsertPdf: _insertPdf,
       onInsertTable: _insertTable,
       onInsertKanban: _insertKanban,
+      onInsertCode: _insertCode,
       onToggleChecklist: _toggleChecklistCycle,
       onSetAlignment: _applyAlignment,
       placement: _toolbarPlacement,
       onPlacementChanged: _setToolbarPlacement,
       initialPosition: _toolbarPosition,
       onPositionChanged: _setToolbarPosition,
+      defaultTextColor: _editorCanvasTextColor(),
+      previewSurfaceColor: _editorCanvasColor(),
+    );
+  }
+
+  Color _editorCanvasColor() {
+    final background = _note?.backgroundColor;
+    if (background == null || background.isEmpty) {
+      return Theme.of(context).scaffoldBackgroundColor;
+    }
+    return AppColorPalette.resolveBackgroundColor(background);
+  }
+
+  Color _editorCanvasTextColor() {
+    final background = _note?.backgroundColor;
+    if (background == null || background.isEmpty) {
+      return Theme.of(context).colorScheme.onSurface;
+    }
+    return AppColorPalette.getContrastingTextColor(
+      AppColorPalette.resolveBackgroundColor(background),
     );
   }
 
@@ -2326,7 +2384,7 @@ class _EditorScreenState extends State<EditorScreen>
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: bgColor ?? Theme.of(context).scaffoldBackgroundColor,
+      color: Theme.of(context).scaffoldBackgroundColor,
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
@@ -2606,6 +2664,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _buildEditorSurface(Color? bgColor) {
+    final textColor = _editorCanvasTextColor();
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -2617,82 +2676,93 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       ),
       padding: const EdgeInsets.all(12),
-      child: Stack(
-        key: _editorSurfaceKey,
-        children: [
-          Positioned.fill(
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  shift: true,
-                ): _handleChecklistContinuationShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  control: true,
-                ): _handleChecklistOppositeStateShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.enter,
-                  meta: true,
-                ): _handleChecklistOppositeStateShortcut,
-                const SingleActivator(
-                  LogicalKeyboardKey.arrowUp,
-                  alt: true,
-                ): () => _moveSelectedChecklistItems(-1),
-                const SingleActivator(
-                  LogicalKeyboardKey.arrowDown,
-                  alt: true,
-                ): () => _moveSelectedChecklistItems(1),
-              },
-              child: QuillEditor(
-                controller: _quillController,
-                focusNode: _focusNode,
-                scrollController: _scrollController,
-                configurations: QuillEditorConfigurations(
-                  editorKey: _editorKey,
-                  onTapDown: (details, _) {
-                    _selectionBeforeShiftClick =
-                        _isShiftMouseClick(details.kind)
-                            ? _quillController.selection
-                            : null;
-                    return false;
-                  },
-                  onTapUp: (details, getPositionForOffset) {
-                    final selection = _selectionBeforeShiftClick;
-                    _selectionBeforeShiftClick = null;
-
-                    if (!_isShiftMouseClick(details.kind) ||
-                        selection == null ||
-                        !selection.isValid) {
+      child: DefaultTextStyle.merge(
+        style: TextStyle(color: textColor),
+        child: Stack(
+          key: _editorSurfaceKey,
+          children: [
+            Positioned.fill(
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    shift: true,
+                  ): _handleChecklistContinuationShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    control: true,
+                  ): _handleChecklistOppositeStateShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.enter,
+                    meta: true,
+                  ): _handleChecklistOppositeStateShortcut,
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowUp,
+                    alt: true,
+                  ): () => _moveSelectedChecklistItems(-1),
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowDown,
+                    alt: true,
+                  ): () => _moveSelectedChecklistItems(1),
+                },
+                child: QuillEditor(
+                  controller: _quillController,
+                  focusNode: _focusNode,
+                  scrollController: _scrollController,
+                  configurations: QuillEditorConfigurations(
+                    editorKey: _editorKey,
+                    onTapDown: (details, _) {
+                      _selectionBeforeShiftClick =
+                          _isShiftMouseClick(details.kind)
+                              ? _quillController.selection
+                              : null;
                       return false;
-                    }
+                    },
+                    onTapUp: (details, getPositionForOffset) {
+                      final selection = _selectionBeforeShiftClick;
+                      _selectionBeforeShiftClick = null;
 
-                    final targetOffset = _safeDocumentOffset(
-                      getPositionForOffset(details.globalPosition).offset,
-                    );
-                    _quillController.updateSelection(
-                      extendSelectionFromShiftClick(
-                        selection: selection,
-                        targetOffset: targetOffset,
-                      ),
-                      ChangeSource.local,
-                    );
-                    return true;
-                  },
-                  embedBuilders: const [
-                    TypeSyncKanbanEmbedBuilder(),
-                    TypeSyncTableEmbedBuilder(),
-                    MarkdownTableEmbedBuilder(),
-                  ],
-                  customLeadingBlockBuilder: _buildChecklistHoverLeading,
-                  customStyleBuilder: _buildCustomEditorStyle,
+                      if (!_isShiftMouseClick(details.kind) ||
+                          selection == null ||
+                          !selection.isValid) {
+                        return false;
+                      }
+
+                      final targetOffset = _safeDocumentOffset(
+                        getPositionForOffset(details.globalPosition).offset,
+                      );
+                      _quillController.updateSelection(
+                        extendSelectionFromShiftClick(
+                          selection: selection,
+                          targetOffset: targetOffset,
+                        ),
+                        ChangeSource.local,
+                      );
+                      return true;
+                    },
+                    embedBuilders: const [
+                      TypeSyncKanbanEmbedBuilder(),
+                      TypeSyncCodeEmbedBuilder(),
+                      TypeSyncTableEmbedBuilder(),
+                      MarkdownTableEmbedBuilder(),
+                    ],
+                    customLeadingBlockBuilder: _buildChecklistHoverLeading,
+                    customStyleBuilder: _buildCustomEditorStyle,
+                    textSelectionThemeData: TextSelectionThemeData(
+                      cursorColor: textColor,
+                      selectionColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.28),
+                    ),
+                    customStyles: DefaultStyles(color: textColor),
+                  ),
                 ),
               ),
             ),
-          ),
-          if (_showMatchGlow && _matchGlowRect != null)
-            _buildMatchGlowOverlay(),
-        ],
+            if (_showMatchHighlight && _matchHighlightRect != null)
+              _buildMatchHighlightOverlay(),
+          ],
+        ),
       ),
     );
   }
@@ -2705,8 +2775,18 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   TextStyle _buildCustomEditorStyle(Attribute<dynamic> attribute) {
-    if (attribute.key != Attribute.background.key ||
-        attribute.value is! String) {
+    if (attribute.value is! String) {
+      return const TextStyle();
+    }
+
+    if (attribute.key == Attribute.color.key) {
+      if (_isLegacyDefaultTextColor(attribute.value)) {
+        return TextStyle(color: _editorCanvasTextColor());
+      }
+      return const TextStyle();
+    }
+
+    if (attribute.key != Attribute.background.key) {
       return const TextStyle();
     }
 
@@ -2721,38 +2801,41 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
-  Widget _buildMatchGlowOverlay() {
-    final rect = _matchGlowRect!;
-    final width = (rect.width + 44).clamp(86.0, double.infinity);
-    final height = (rect.height + 26).clamp(36.0, double.infinity);
-    final left = (rect.left - 22).clamp(0.0, double.infinity);
-    final top = (rect.top - 12).clamp(0.0, double.infinity);
+  Widget _buildMatchHighlightOverlay() {
+    final rect = _matchHighlightRect!;
+    final markerColors = context
+        .watch<EditorColorPaletteService>()
+        .markerColors
+        .map((option) => option.colorWithOpacity)
+        .toList(growable: false);
+    final colors = markerColors.isEmpty
+        ? <Color>[Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)]
+        : markerColors;
 
     return Positioned(
-      left: left,
-      top: top,
-      width: width,
-      height: height,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
       child: IgnorePointer(
         child: AnimatedBuilder(
-          animation: _matchGlowController,
+          animation: _matchHighlightController,
           builder: (context, child) {
-            final pulse = _matchGlowController.value;
-            final spread = 6 + (pulse * 8);
-            final opacity = 0.3 + ((1 - pulse) * 0.45);
+            // Travel through every configured marker color twice, then end on
+            // the first color so the transition is seamless before removal.
+            final progress =
+                _matchHighlightController.value * colors.length * 2;
+            final colorIndex = progress.floor() % colors.length;
+            final nextColorIndex = (colorIndex + 1) % colors.length;
+            final color = Color.lerp(
+              colors[colorIndex],
+              colors[nextColorIndex],
+              progress - progress.floor(),
+            )!;
             return DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: opacity),
-                    blurRadius: 16 + spread,
-                    spreadRadius: spread,
-                  ),
-                ],
+                color: color,
+                borderRadius: BorderRadius.circular(2),
               ),
             );
           },
@@ -2969,7 +3052,7 @@ class _EditorScreenState extends State<EditorScreen>
       if (!mounted) return;
       final editorState = _editorKey.currentState;
       if (editorState != null && _scrollController.hasClients) {
-        await _scrollToMatchAndPulse(editorState, safeStart);
+        await _scrollToMatchAndPulse(editorState, safeStart, safeEnd);
         return;
       }
       await Future.delayed(const Duration(milliseconds: 60));
@@ -3090,12 +3173,13 @@ class _EditorScreenState extends State<EditorScreen>
 
   Future<void> _scrollToMatchAndPulse(
     EditorState editorState,
-    int safeOffset,
+    int safeStart,
+    int safeEnd,
   ) async {
     Rect caretRect;
     try {
       caretRect = editorState.renderEditor.getLocalRectForCaret(
-        TextPosition(offset: safeOffset),
+        TextPosition(offset: safeStart),
       );
     } catch (_) {
       return;
@@ -3121,7 +3205,7 @@ class _EditorScreenState extends State<EditorScreen>
     if (refreshedState == null) return;
     try {
       caretRect = refreshedState.renderEditor.getLocalRectForCaret(
-        TextPosition(offset: safeOffset),
+        TextPosition(offset: safeStart),
       );
     } catch (_) {
       return;
@@ -3134,29 +3218,40 @@ class _EditorScreenState extends State<EditorScreen>
       return;
     }
 
+    Rect matchEndRect;
+    try {
+      matchEndRect = refreshedState.renderEditor.getLocalRectForCaret(
+        TextPosition(offset: safeEnd),
+      );
+    } catch (_) {
+      matchEndRect = caretRect;
+    }
+
+    final matchStart = editorRenderBox.localToGlobal(
+      caretRect.topLeft,
+      ancestor: overlayRenderObject,
+    );
+    final matchEnd = editorRenderBox.localToGlobal(
+      matchEndRect.bottomRight,
+      ancestor: overlayRenderObject,
+    );
     final overlayRect = Rect.fromPoints(
-      editorRenderBox.localToGlobal(
-        caretRect.topLeft,
-        ancestor: overlayRenderObject,
-      ),
-      editorRenderBox.localToGlobal(
-        caretRect.bottomRight,
-        ancestor: overlayRenderObject,
-      ),
+      matchStart,
+      matchEnd,
     );
 
     setState(() {
-      _matchGlowRect = overlayRect;
-      _showMatchGlow = true;
+      _matchHighlightRect = overlayRect;
+      _showMatchHighlight = true;
     });
 
-    _matchGlowStopTimer?.cancel();
-    _matchGlowController.repeat(reverse: true);
-    _matchGlowStopTimer = Timer(const Duration(milliseconds: 1650), () {
+    _matchHighlightStopTimer?.cancel();
+    _matchHighlightController.forward(from: 0);
+    _matchHighlightStopTimer = Timer(const Duration(milliseconds: 2400), () {
       if (!mounted) return;
-      _matchGlowController.stop();
+      _matchHighlightController.stop();
       setState(() {
-        _showMatchGlow = false;
+        _showMatchHighlight = false;
       });
     });
   }
@@ -4773,6 +4868,44 @@ class _EditorScreenState extends State<EditorScreen>
     _focusNode.requestFocus();
   }
 
+  void _insertCode() {
+    unawaited(_showCodeBlockCreator());
+  }
+
+  Future<void> _showCodeBlockCreator() async {
+    final code = await showDialog<TypeSyncCodeData>(
+      context: context,
+      builder: (_) => const TypeSyncCodeEditorDialog(
+        initial: TypeSyncCodeData(
+          id: 'new-code-block',
+          language: 'plaintext',
+          code: '',
+        ),
+      ),
+    );
+    if (!mounted || code == null) return;
+
+    final selection = _quillController.selection;
+    final baseOffset = selection.baseOffset < 0 ? 0 : selection.baseOffset;
+    final extentOffset =
+        selection.extentOffset < 0 ? baseOffset : selection.extentOffset;
+    final insertOffset = baseOffset <= extentOffset ? baseOffset : extentOffset;
+    final replaceLength = (baseOffset - extentOffset).abs();
+
+    _quillController.replaceText(
+      insertOffset,
+      selection.isValid ? replaceLength : 0,
+      TypeSyncCodeData.toBlockEmbed(
+        TypeSyncCodeData.empty().copyWith(
+          language: code.language,
+          code: code.code,
+        ),
+      ),
+      TextSelection.collapsed(offset: insertOffset + 1),
+    );
+    _focusNode.requestFocus();
+  }
+
   void _showTagDialog() {
     if (_note == null) return;
 
@@ -4831,7 +4964,10 @@ class _EditorScreenState extends State<EditorScreen>
                         colorOption.hex,
                         dialogContext,
                       ),
-                      isSelected: currentColor == colorOption.hex,
+                      isSelected: AppColorPalette.matchesBackgroundColor(
+                        currentColor,
+                        colorOption.hex,
+                      ),
                     ),
                   ),
                 ],

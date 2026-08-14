@@ -137,9 +137,7 @@ class FolderGridItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // Parse background color if set
     final bgColor = folder.backgroundColor != null
-        ? Color(
-            int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')),
-          )
+        ? Color(int.parse(folder.backgroundColor!.replaceFirst('#', '0xFF')))
         : AppTheme.folderDefault;
 
     final child = DragTarget<String>(

@@ -84,11 +84,10 @@ class SettingsScreen extends StatelessWidget {
 
           _SettingsTile(
             icon: Icons.view_agenda_outlined,
-            title: 'Upcoming Widget Visibility',
-            subtitle: _homeUpcomingVisibilityLabel(
-              themeService.homeUpcomingVisibilityMode,
-            ),
-            onTap: () => _showUpcomingVisibilityPicker(context, themeService),
+            title: 'Home Page Widgets',
+            subtitle:
+                _homePageWidgetsLabel(themeService.selectedHomePageWidgets),
+            onTap: () => _showHomePageWidgetsPicker(context, themeService),
           ),
 
           const Divider(),
@@ -612,74 +611,64 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  String _homeUpcomingVisibilityLabel(HomeUpcomingVisibilityMode mode) {
-    return switch (mode) {
-      HomeUpcomingVisibilityMode.always => 'Always show',
-      HomeUpcomingVisibilityMode.onlyWithItems => 'Only with upcoming items',
-      HomeUpcomingVisibilityMode.never => 'Never show',
-    };
+  String _homePageWidgetsLabel(List<HomePageWidgetType> widgets) {
+    if (widgets.length == HomePageWidgetType.values.length) {
+      return 'All widgets enabled';
+    }
+    return '${widgets.length} widget${widgets.length == 1 ? '' : 's'} enabled';
   }
 
-  void _showUpcomingVisibilityPicker(
+  void _showHomePageWidgetsPicker(
     BuildContext context,
     ThemeService themeService,
   ) {
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) {
-        final currentMode = themeService.homeUpcomingVisibilityMode;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: const Text('Always show'),
-                subtitle: const Text('Keep the upcoming widget visible'),
-                trailing: currentMode == HomeUpcomingVisibilityMode.always
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () {
-                  themeService.setHomeUpcomingVisibilityMode(
-                    HomeUpcomingVisibilityMode.always,
-                  );
-                  Navigator.pop(sheetContext);
-                },
-              ),
-              ListTile(
-                title: const Text('Only with upcoming items'),
-                subtitle: const Text(
-                  'Hide the widget when there is nothing upcoming',
+          child: Consumer<ThemeService>(
+            builder: (context, service, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  title: Text('Home Page Widgets'),
+                  subtitle: Text(
+                    'Swipe through selected widgets in this fixed order',
+                  ),
                 ),
-                trailing:
-                    currentMode == HomeUpcomingVisibilityMode.onlyWithItems
-                        ? const Icon(Icons.check)
-                        : null,
-                onTap: () {
-                  themeService.setHomeUpcomingVisibilityMode(
-                    HomeUpcomingVisibilityMode.onlyWithItems,
-                  );
-                  Navigator.pop(sheetContext);
-                },
-              ),
-              ListTile(
-                title: const Text('Never show'),
-                subtitle: const Text('Always hide the upcoming widget'),
-                trailing: currentMode == HomeUpcomingVisibilityMode.never
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () {
-                  themeService.setHomeUpcomingVisibilityMode(
-                    HomeUpcomingVisibilityMode.never,
-                  );
-                  Navigator.pop(sheetContext);
-                },
-              ),
-            ],
+                for (final widget in HomePageWidgetType.values)
+                  CheckboxListTile(
+                    value: service.selectedHomePageWidgets.contains(widget),
+                    title: Text(_homePageWidgetTitle(widget)),
+                    subtitle: Text(_homePageWidgetSubtitle(widget)),
+                    onChanged: (selected) => service.setHomePageWidgetSelected(
+                      widget,
+                      selected ?? false,
+                    ),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
     );
   }
+
+  String _homePageWidgetTitle(HomePageWidgetType widget) => switch (widget) {
+        HomePageWidgetType.upcoming => 'Upcoming',
+        HomePageWidgetType.recentlyOpened => 'Recently opened notes',
+        HomePageWidgetType.frequentlyOpened => 'Frequently opened notes',
+        HomePageWidgetType.largestNotes => 'Largest notes',
+      };
+
+  String _homePageWidgetSubtitle(HomePageWidgetType widget) => switch (widget) {
+        HomePageWidgetType.upcoming => 'Homework and calendar items',
+        HomePageWidgetType.recentlyOpened => 'Notes you opened most recently',
+        HomePageWidgetType.frequentlyOpened => 'Your most-opened notes',
+        HomePageWidgetType.largestNotes =>
+          'Compare size, character, or line count',
+      };
 
   Future<void> _importFromAnytype(BuildContext context) async {
     if (kIsWeb) {
