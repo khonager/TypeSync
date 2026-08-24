@@ -262,6 +262,7 @@ class _EditorScreenState extends State<EditorScreen>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
   final GlobalKey _editorSurfaceKey = GlobalKey();
+  int _editorFocusChangeGeneration = 0;
 
   // Title controller
   final TextEditingController _titleController = TextEditingController();
@@ -1099,7 +1100,13 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _onEditorFocusChanged() {
+    final focusChangeGeneration = ++_editorFocusChangeGeneration;
     if (_focusNode.hasFocus) {
+      final isReturningToEditor = _didUserFocusEditor;
+      final selectionBeforeFocus = _quillController.selection;
+      final scrollOffsetBeforeFocus =
+          _scrollController.hasClients ? _scrollController.offset : null;
+
       final pendingExternalNote = _pendingExternalNote;
       if (pendingExternalNote != null) {
         _pendingExternalNote = null;
@@ -1107,6 +1114,14 @@ class _EditorScreenState extends State<EditorScreen>
       }
       _didUserFocusEditor = true;
       _scheduleCaretOffsetPersist();
+
+      if (isReturningToEditor && scrollOffsetBeforeFocus != null) {
+        _preserveViewportAfterEditorRefocus(
+          focusChangeGeneration: focusChangeGeneration,
+          selectionBeforeFocus: selectionBeforeFocus,
+          scrollOffsetBeforeFocus: scrollOffsetBeforeFocus,
+        );
+      }
       return;
     }
 
@@ -1114,6 +1129,36 @@ class _EditorScreenState extends State<EditorScreen>
       _caretPersistTimer?.cancel();
       unawaited(_persistCaretOffset(force: true));
     }
+  }
+
+  void _preserveViewportAfterEditorRefocus({
+    required int focusChangeGeneration,
+    required TextSelection selectionBeforeFocus,
+    required double scrollOffsetBeforeFocus,
+  }) {
+    // Quill reveals the caret in a post-frame callback whenever focus returns.
+    // Queue this behind that callback and cancel its animation only when the
+    // selection did not move. Cursor movement should retain Quill's normal
+    // reveal behavior.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scheduleMicrotask(() {
+        if (!mounted ||
+            !_focusNode.hasFocus ||
+            focusChangeGeneration != _editorFocusChangeGeneration ||
+            _quillController.selection != selectionBeforeFocus ||
+            !_scrollController.hasClients) {
+          return;
+        }
+
+        final position = _scrollController.position;
+        _scrollController.jumpTo(
+          scrollOffsetBeforeFocus.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+      });
+    });
   }
 
   void _requestInitialEditorFocus({bool force = false}) {
