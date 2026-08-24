@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firedart/firedart.dart' as fd;
 import 'package:firedart/auth/user_gateway.dart' as fd;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -807,38 +806,33 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-        _setError('Account deletion is not supported on Linux yet.');
-        _setLoading(false);
-        return false;
-      }
-
-      final firebaseUser = _firebaseAuth.currentUser;
-      if (firebaseUser == null) {
+      final uid = userId;
+      final idToken = await _currentIdToken();
+      if (uid == null || idToken == null || idToken.isEmpty) {
         _setError('No signed-in account to delete.');
         _setLoading(false);
         return false;
       }
 
-      final uid = firebaseUser.uid;
+      // Firestore and Storage rules intentionally prevent a client from
+      // deleting arbitrary data. Perform the complete cleanup in a verified
+      // Cloud Function so Storage deletion cannot abort before Auth deletion.
+      await _postAccountDeletionFunction(idToken);
 
-      await _deleteUserCollection('notes', uid);
-      await _deleteUserCollection('folders', uid);
-      await _deleteUserCollection('homework', uid);
-      await _deleteUserCollection('calendar_events', uid);
-      await _deleteUserCollection('timetable_entries', uid);
-      await _firebaseFirestore
-          .collection('settings')
-          .doc(uid)
-          .delete()
-          .catchError((_) {});
-      await _firebaseFirestore
-          .collection('users')
-          .doc(uid)
-          .delete()
-          .catchError((_) {});
-      await _deleteUserStorageFolder(uid);
-      await firebaseUser.delete();
+      try {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+          _firedartAuth.signOut();
+        } else {
+          await _firebaseAuth.signOut();
+        }
+      } catch (error) {
+        // The server has already removed the account. A local sign-out failure
+        // must not report the deletion itself as failed.
+        _diagnostics.warning(
+          'AuthService',
+          'AUTH_FLOW local sign-out after account deletion failed: $error',
+        );
+      }
       await _authPersistenceDiagnostics.markExplicitlySignedOut(
         reason: 'account-deleted',
       );
@@ -849,15 +843,32 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } on firebase.FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        _setError('Please sign in again before deleting your account.');
-      } else {
-        _setError(_mapFirebaseError(e.code));
-      }
+      _setError(_mapFirebaseError(e.code));
       _setLoading(false);
       return false;
-    } catch (e) {
-      _setError('Failed to delete account. Please try again.');
+    } catch (error) {
+      final message = error.toString();
+      final normalized = message.startsWith('Exception: ')
+          ? message.substring('Exception: '.length)
+          : message;
+      if (normalized.contains('Missing bearer token') ||
+          normalized.contains('Invalid auth token')) {
+        _setError('Your session expired. Please sign in again and try again.');
+      } else if (normalized.contains('Unable to reach')) {
+        _setError(
+          'Unable to reach the account service. Check your internet connection and try again.',
+        );
+      } else if (normalized.contains('took too long')) {
+        _setError(
+          'Account deletion took too long. Please check your connection and try again.',
+        );
+      } else {
+        _setError('Failed to delete account. Please try again.');
+      }
+      _diagnostics.error(
+        'AuthService',
+        'AUTH_FLOW account deletion failed: $error',
+      );
       _setLoading(false);
       return false;
     }
@@ -1246,46 +1257,6 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _deleteUserCollection(
-    String collectionName,
-    String userId,
-  ) async {
-    while (true) {
-      final snapshot = await _firebaseFirestore
-          .collection(collectionName)
-          .where('userId', isEqualTo: userId)
-          .limit(100)
-          .get();
-
-      if (snapshot.docs.isEmpty) {
-        break;
-      }
-
-      final batch = _firebaseFirestore.batch();
-      for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
-    }
-  }
-
-  Future<void> _deleteUserStorageFolder(String userId) async {
-    final rootRef = FirebaseStorage.instance.ref().child('users/$userId');
-    await _deleteStorageFolder(rootRef);
-  }
-
-  Future<void> _deleteStorageFolder(Reference ref) async {
-    final result = await ref.listAll();
-
-    for (final item in result.items) {
-      await item.delete();
-    }
-
-    for (final prefix in result.prefixes) {
-      await _deleteStorageFolder(prefix);
-    }
-  }
-
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -1355,6 +1326,41 @@ class AuthService extends ChangeNotifier {
     return Uri.https(
       'us-central1-${DefaultFirebaseOptions.currentPlatform.projectId}.cloudfunctions.net',
       functionName,
+    );
+  }
+
+  Future<void> _postAccountDeletionFunction(String idToken) async {
+    final uri = _functionUri('delete_account');
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW requesting server-side account deletion',
+    );
+
+    late http.Response response;
+    try {
+      response = await _httpClient
+          .post(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $idToken',
+              'Content-Type': 'application/json',
+            },
+            body: '{}',
+          )
+          .timeout(const Duration(seconds: 60));
+    } on TimeoutException {
+      throw Exception('The account service took too long to respond.');
+    } on http.ClientException {
+      throw Exception('Unable to reach the account service.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractFunctionError(response));
+    }
+
+    _diagnostics.info(
+      'AuthService',
+      'AUTH_FLOW server-side account deletion succeeded',
     );
   }
 
