@@ -1796,55 +1796,109 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _continueAsGuest(BuildContext context) async {
-    final authService = context.read<AuthService>();
-    final notesProvider = context.read<NotesProvider>();
-    final foldersProvider = context.read<FoldersProvider>();
-    final calendarProvider = context.read<CalendarProvider>();
-    final homeworkProvider = context.read<HomeworkProvider>();
-    final timetableProvider = context.read<TimetableProvider>();
-    final workspaceId = authService.storageUserId ?? authService.userId;
-    await _detachWorkspaceServices(context);
-    await authService.continueAsGuest(workspaceId: workspaceId);
+    try {
+      final authService = context.read<AuthService>();
+      final notesProvider = context.read<NotesProvider>();
+      final foldersProvider = context.read<FoldersProvider>();
+      final calendarProvider = context.read<CalendarProvider>();
+      final homeworkProvider = context.read<HomeworkProvider>();
+      final timetableProvider = context.read<TimetableProvider>();
+      final workspaceId = authService.storageUserId ?? authService.userId;
+      await _detachWorkspaceServices(context);
+      await authService.continueAsGuest(workspaceId: workspaceId);
 
-    if (!authService.isGuestMode) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              authService.errorMessage ?? 'Failed to continue as guest.',
-            ),
-          ),
+      if (!authService.isGuestMode) {
+        if (!context.mounted) return;
+        _showActionFeedback(
+          context,
+          authService.errorMessage ?? 'Failed to continue as guest.',
+          isError: true,
         );
+        return;
       }
-      return;
-    }
 
-    final guestWorkspaceId = authService.storageUserId;
-    if (guestWorkspaceId != null) {
-      await LocalFileService.instance.initialize(guestWorkspaceId);
-      await notesProvider.initialize(guestWorkspaceId);
-      await foldersProvider.initialize(guestWorkspaceId);
-      await calendarProvider.initialize(guestWorkspaceId);
-      await homeworkProvider.initialize(guestWorkspaceId);
-      await timetableProvider.initialize(guestWorkspaceId);
-    }
+      final guestWorkspaceId = authService.storageUserId;
+      if (guestWorkspaceId != null) {
+        await LocalFileService.instance.initialize(guestWorkspaceId);
+        await notesProvider.initialize(guestWorkspaceId);
+        await foldersProvider.initialize(guestWorkspaceId);
+        await calendarProvider.initialize(guestWorkspaceId);
+        await homeworkProvider.initialize(guestWorkspaceId);
+        await timetableProvider.initialize(guestWorkspaceId);
+      }
 
-    if (!context.mounted) return;
-    AppRouter.navigateAndClearStack(context, AppRouter.home);
+      if (!context.mounted) return;
+      _showActionFeedback(context, 'Files kept. You are now using guest mode.');
+      AppRouter.navigateAndClearStack(context, AppRouter.home);
+    } catch (_) {
+      _showActionFeedback(
+        context,
+        'Failed to keep files and continue as guest.',
+        isError: true,
+      );
+    }
   }
 
   Future<void> _deleteLocalFilesAndSignOut(BuildContext context) async {
-    final authService = context.read<AuthService>();
-    final workspaceId = authService.storageUserId;
+    try {
+      final authService = context.read<AuthService>();
+      final workspaceId = authService.storageUserId;
 
-    await _detachWorkspaceServices(context);
-    if (workspaceId != null) {
-      await _deleteWorkspaceData(workspaceId);
+      await _detachWorkspaceServices(context);
+      if (workspaceId != null) {
+        await _deleteWorkspaceData(workspaceId);
+      }
+      await authService.signOut();
+
+      if (authService.isLoggedIn) {
+        if (!context.mounted) return;
+        _showActionFeedback(
+          context,
+          authService.errorMessage ?? 'Failed to sign out.',
+          isError: true,
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+      _showActionFeedback(
+        context,
+        'Files deleted and signed out successfully.',
+      );
+      AppRouter.navigateAndClearStack(context, AppRouter.login);
+    } catch (_) {
+      _showActionFeedback(
+        context,
+        'Failed to delete local files and sign out.',
+        isError: true,
+      );
     }
-    await authService.signOut();
+  }
 
+  void _showActionFeedback(
+    BuildContext context,
+    String message, {
+    bool isError = false,
+  }) {
     if (!context.mounted) return;
-    AppRouter.navigateAndClearStack(context, AppRouter.login);
+
+    final colorScheme = Theme.of(context).colorScheme;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.check_circle_outline,
+                color: isError ? colorScheme.error : colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      );
   }
 
   Future<void> _detachWorkspaceServices(BuildContext context) async {
