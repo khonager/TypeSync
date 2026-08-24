@@ -18,7 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="TypeSync notes and productivity.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,10 +29,59 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>typesync</title>
+  <title>TypeSync</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    :root { --typesync-accent-rgb: 100, 210, 255; }
+    body {
+      overflow: hidden;
+      background: #121212;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #typesync-loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(var(--typesync-accent-rgb), 0.06);
+    }
+    #typesync-loader img {
+      width: 100px;
+      height: 100px;
+      animation: typesync-bounce 1.4s ease-in-out infinite alternate;
+    }
+    @keyframes typesync-bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-16px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #typesync-loader img { animation: none; }
+    }
+  </style>
 </head>
 <body>
+  <div id="typesync-loader" role="status" aria-label="TypeSync is loading">
+    <img src="assets/assets/icons/icon-transparent.svg" alt="" />
+  </div>
+  <script>
+    // shared_preferences stores the selected Flutter color as an ARGB int.
+    // Reading it here keeps the pre-Flutter loader aligned with the app theme.
+    try {
+      const rawAccent = localStorage.getItem('flutter.accent_color');
+      if (rawAccent !== null) {
+        const argb = Number(JSON.parse(rawAccent)) >>> 0;
+        const red = (argb >>> 16) & 255;
+        const green = (argb >>> 8) & 255;
+        const blue = argb & 255;
+        document.documentElement.style.setProperty(
+          '--typesync-accent-rgb', `${red}, ${green}, ${blue}`
+        );
+      }
+    } catch (_) {}
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

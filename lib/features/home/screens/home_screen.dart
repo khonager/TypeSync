@@ -30,6 +30,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/data_repair_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/migration_service.dart';
+import '../../../core/services/navigation_state_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -54,7 +55,16 @@ import '../models/home_drag_data.dart';
 /// Displays a grid of folders and files matching the design.
 /// Supports navigation into folders and creating new items.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.initialFolderId,
+    this.initialTab = HomeBottomBarTab.files,
+    this.onWorkspaceInitialized,
+  });
+
+  final String? initialFolderId;
+  final HomeBottomBarTab initialTab;
+  final VoidCallback? onWorkspaceInitialized;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -127,6 +137,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _currentFolderId = widget.initialFolderId;
+    _selectedTab = widget.initialTab;
     WidgetsBinding.instance.addObserver(this);
     // Defer initialization until after the first frame to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -206,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'WORKSPACE_FLOW active workspace changed previous=$previousWorkspaceId next=$effectiveUserId cloudUser=$cloudUserId syncEnabled=$syncEnabled',
     );
 
-    if (workspaceChanged && mounted) {
+    if (workspaceChanged && previousWorkspaceId != null && mounted) {
       setState(() {
         _currentFolderId = null;
       });
@@ -242,6 +254,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       await timetableProvider.initialize(effectiveUserId);
       if (!mounted) return;
+
+      if (_currentFolderId != null &&
+          foldersProvider.getFolderById(_currentFolderId!) == null) {
+        setState(() => _currentFolderId = null);
+      }
 
       _diagnostics.info(
         'HomeScreen',
@@ -331,6 +348,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         'HomeScreen',
         'WORKSPACE_FLOW initialize finished workspace=$effectiveUserId activeFolder=$_currentFolderId',
       );
+      if (mounted) {
+        _rememberHomeState();
+        widget.onWorkspaceInitialized?.call();
+      }
     }
   }
 
@@ -749,6 +770,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           setState(() {
             _selectedTab = HomeBottomBarTab.files;
           });
+          _rememberHomeState();
         },
         onProfileTap: () {
           if (_selectedTab == HomeBottomBarTab.profile) {
@@ -757,6 +779,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           setState(() {
             _selectedTab = HomeBottomBarTab.profile;
           });
+          _rememberHomeState();
         },
       ),
     );
@@ -1693,6 +1716,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _currentFolderId = folderId;
     });
+    _rememberHomeState();
   }
 
   void _handleFolderTap(
@@ -1704,6 +1728,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _currentFolderId = folderId;
       });
+      _rememberHomeState();
       return;
     }
 
@@ -1717,7 +1742,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _currentFolderId = currentFolder?.parentId;
       });
+      _rememberHomeState();
     }
+  }
+
+  void _rememberHomeState() {
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    NavigationStateService.instance.recordHomeState(
+      folderId: _currentFolderId,
+      tab: _selectedTab.name,
+    );
   }
 
   void _openNote(
