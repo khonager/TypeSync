@@ -10,8 +10,8 @@ import 'package:flutter_quill_delta_from_html/flutter_quill_delta_from_html.dart
 import 'package:markdown/markdown.dart' as md;
 import 'package:path/path.dart' as path;
 
-import '../models/typesync_kanban_embed.dart';
 import '../models/typesync_table_embed.dart';
+import '../utils/supported_embed_types.dart';
 
 class ConvertedMarkdownNote {
   final String title;
@@ -351,9 +351,7 @@ class MarkdownRichTextService {
   }
 
   static bool _isSupportedEmbedType(String embedType) {
-    return embedType == TypeSyncKanbanEmbed.kanbanType ||
-        embedType == TypeSyncTableEmbed.tableType ||
-        embedType == 'x-embed-table';
+    return isSupportedRichTextEmbedType(embedType);
   }
 
   static String _unsupportedEmbedText(String embedType, Object? embedValue) {

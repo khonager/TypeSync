@@ -47,6 +47,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/typesync_spellchecker_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/supported_embed_types.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
@@ -1502,9 +1503,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   bool _isSupportedEmbedType(String embedType) {
-    return embedType == TypeSyncKanbanEmbed.kanbanType ||
-        embedType == TypeSyncTableEmbed.tableType ||
-        embedType == 'x-embed-table';
+    return isSupportedRichTextEmbedType(embedType);
   }
 
   String _unsupportedEmbedText(String embedType, Object? embedValue) {

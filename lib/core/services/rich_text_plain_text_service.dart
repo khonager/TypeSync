@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import '../models/typesync_kanban_embed.dart';
+import '../models/typesync_code_embed.dart';
 import '../models/typesync_table_embed.dart';
 
 class RichTextPlainTextService {
@@ -101,6 +102,9 @@ class RichTextPlainTextService {
       }
       if (key == TypeSyncKanbanEmbed.kanbanType) {
         return TypeSyncKanbanEmbed.parseData(value).toPlainText();
+      }
+      if (key == TypeSyncCodeEmbed.codeType) {
+        return TypeSyncCodeData.fromEmbedData(value).code;
       }
     } catch (_) {
       return value;
