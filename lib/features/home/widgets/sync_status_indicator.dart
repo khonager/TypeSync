@@ -8,10 +8,56 @@ import 'package:provider/provider.dart';
 
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/providers/notes_provider.dart';
+
+enum SyncIndicatorState {
+  waiting,
+  syncing,
+  verified,
+  conflict,
+  error,
+  offline,
+}
+
+SyncIndicatorState resolveSyncIndicatorState({
+  required SyncStatus globalStatus,
+  bool noteScoped = false,
+  bool noteIsDirty = false,
+  bool noteHasConflict = false,
+  bool noteVersionVerified = false,
+  bool hasUnsavedChanges = false,
+}) {
+  if (globalStatus == SyncStatus.offline) return SyncIndicatorState.offline;
+  if (globalStatus == SyncStatus.error) return SyncIndicatorState.error;
+  if (noteScoped) {
+    if (noteHasConflict) return SyncIndicatorState.conflict;
+    if (noteIsDirty || hasUnsavedChanges) {
+      return globalStatus == SyncStatus.syncing
+          ? SyncIndicatorState.syncing
+          : SyncIndicatorState.waiting;
+    }
+    if (!noteVersionVerified) {
+      return globalStatus == SyncStatus.syncing
+          ? SyncIndicatorState.syncing
+          : SyncIndicatorState.waiting;
+    }
+    return SyncIndicatorState.verified;
+  }
+  if (globalStatus == SyncStatus.syncing) return SyncIndicatorState.syncing;
+  if (globalStatus == SyncStatus.synced) return SyncIndicatorState.verified;
+  return SyncIndicatorState.waiting;
+}
 
 /// Visual indicator for sync status
 class SyncStatusIndicator extends StatelessWidget {
-  const SyncStatusIndicator({super.key});
+  final String? noteId;
+  final bool hasUnsavedChanges;
+
+  const SyncStatusIndicator({
+    super.key,
+    this.noteId,
+    this.hasUnsavedChanges = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,33 +69,54 @@ class SyncStatusIndicator extends StatelessWidget {
     }
 
     final syncService = context.watch<SyncService>();
+    final note = noteId == null
+        ? null
+        : context.watch<NotesProvider>().getNoteById(noteId!);
+    final indicatorState = resolveSyncIndicatorState(
+      globalStatus: syncService.status,
+      noteScoped: noteId != null,
+      noteIsDirty: note?.isDirty ?? false,
+      noteHasConflict: note?.hasConflict ?? false,
+      noteVersionVerified:
+          note != null && syncService.isNoteVersionVerified(note),
+      hasUnsavedChanges: hasUnsavedChanges,
+    );
 
     IconData icon;
     Color color;
     String tooltip;
 
-    switch (syncService.status) {
-      case SyncStatus.idle:
+    switch (indicatorState) {
+      case SyncIndicatorState.waiting:
         icon = Icons.cloud_queue_outlined;
         color = Theme.of(context).colorScheme.outline;
-        tooltip = 'Waiting for sync';
+        tooltip = noteId == null
+            ? 'Waiting for sync'
+            : 'This note is not yet verified with cloud';
         break;
-      case SyncStatus.syncing:
+      case SyncIndicatorState.syncing:
         icon = Icons.sync;
         color = Theme.of(context).colorScheme.primary;
-        tooltip = 'Syncing...';
+        tooltip = noteId == null ? 'Syncing...' : 'Verifying this note...';
         break;
-      case SyncStatus.synced:
+      case SyncIndicatorState.verified:
         icon = Icons.cloud_done;
         color = Colors.green;
-        tooltip = 'All changes saved';
+        tooltip = noteId == null
+            ? 'All changes saved'
+            : 'This exact note version is verified with cloud';
         break;
-      case SyncStatus.error:
+      case SyncIndicatorState.conflict:
+        icon = Icons.cloud_off;
+        color = Colors.red;
+        tooltip = 'This note differs from the cloud version';
+        break;
+      case SyncIndicatorState.error:
         icon = Icons.cloud_off;
         color = Colors.red;
         tooltip = syncService.errorMessage ?? 'Sync error';
         break;
-      case SyncStatus.offline:
+      case SyncIndicatorState.offline:
         icon = Icons.cloud_off_outlined;
         color = Colors.orange;
         tooltip = 'Offline - changes saved locally';
@@ -66,7 +133,7 @@ class SyncStatusIndicator extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(8.0),
-          child: syncService.status == SyncStatus.syncing
+          child: indicatorState == SyncIndicatorState.syncing
               ? _SyncingAnimation(color: color)
               : Icon(icon, color: color, size: 20),
         ),

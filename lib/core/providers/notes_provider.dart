@@ -655,7 +655,7 @@ class NotesProvider extends ChangeNotifier {
       _notes.add(note);
 
       // Trigger sync
-      _syncService?.syncNote(note);
+      _syncNoteAndMarkClean(note);
 
       notifyListeners();
       return note;
@@ -694,7 +694,7 @@ class NotesProvider extends ChangeNotifier {
 
       // Trigger sync
       if (!updatedNote.hasConflict) {
-        _syncService?.syncNote(updatedNote);
+        _syncNoteAndMarkClean(updatedNote);
       }
 
       notifyListeners();
@@ -992,7 +992,7 @@ class NotesProvider extends ChangeNotifier {
     await _notesBox?.put(noteId, updatedNote);
 
     if (!updatedNote.localOnly && !updatedNote.hasConflict) {
-      _syncService?.syncNote(updatedNote);
+      _syncNoteAndMarkClean(updatedNote);
     }
 
     notifyListeners();
@@ -1027,7 +1027,7 @@ class NotesProvider extends ChangeNotifier {
     await _notesBox?.put(noteId, updatedNote);
 
     if (!updatedNote.localOnly) {
-      _syncService?.syncNote(updatedNote);
+      _syncNoteAndMarkClean(updatedNote);
     }
 
     notifyListeners();
@@ -1269,6 +1269,33 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _syncNoteAndMarkClean(Note uploadedNote) {
+    final service = _syncService;
+    if (service == null || uploadedNote.localOnly || uploadedNote.hasConflict) {
+      return;
+    }
+
+    unawaited(() async {
+      final success = await service.syncNote(uploadedNote);
+      if (!success) return;
+
+      final index = _notes.indexWhere((note) => note.id == uploadedNote.id);
+      if (index < 0) return;
+
+      final currentNote = _notes[index];
+      // Never let an acknowledgement for an older upload clear a newer edit.
+      if (currentNote.updatedAt != uploadedNote.updatedAt) return;
+
+      final cleanedNote = currentNote.copyWith(
+        isDirty: false,
+        syncedAt: DateTime.now(),
+      );
+      _notes[index] = cleanedNote;
+      await _notesBox?.put(cleanedNote.id, cleanedNote);
+      notifyListeners();
+    }());
+  }
+
   bool _sameStoredContent(String a, String b) {
     return _normalizeStoredContent(a) == _normalizeStoredContent(b);
   }
@@ -1286,8 +1313,11 @@ class NotesProvider extends ChangeNotifier {
   void _clearDirtyFlags(List<Note> notesToClear) {
     for (final note in notesToClear) {
       final index = _notes.indexWhere((n) => n.id == note.id);
-      if (index >= 0) {
-        final cleanedNote = _notes[index].copyWith(isDirty: false);
+      if (index >= 0 && _notes[index].updatedAt == note.updatedAt) {
+        final cleanedNote = _notes[index].copyWith(
+          isDirty: false,
+          syncedAt: DateTime.now(),
+        );
         _notes[index] = cleanedNote;
         _notesBox?.put(cleanedNote.id, cleanedNote);
       }

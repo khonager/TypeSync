@@ -69,6 +69,7 @@ class SyncService extends ChangeNotifier {
   SyncStatus _status = SyncStatus.idle;
   String? _errorMessage;
   DateTime? _lastSyncTime;
+  final Map<String, DateTime> _verifiedNoteVersions = <String, DateTime>{};
   bool _isOnline = true;
   Timer? _refreshTimeoutTimer;
   Timer? _linuxWorkspaceRefreshTimer;
@@ -127,6 +128,7 @@ class SyncService extends ChangeNotifier {
     }
     if (!enabled) {
       stopListening(reason: 'sync disabled');
+      _verifiedNoteVersions.clear();
     }
     _syncEnabled = enabled;
     _diagnostics.info(
@@ -148,6 +150,34 @@ class SyncService extends ChangeNotifier {
   DateTime? get lastSyncTime => _lastSyncTime;
   bool get isOnline => _isOnline;
   bool get isSyncing => _status == SyncStatus.syncing;
+
+  /// Whether this exact local note revision has been acknowledged by cloud.
+  ///
+  /// The global [status] can be `synced` because an unrelated setting, event,
+  /// or note finished syncing. Editor UI must use this revision check before
+  /// presenting a note as cloud-verified.
+  bool isNoteVersionVerified(Note note) {
+    return !note.isDirty &&
+        !note.hasConflict &&
+        !note.localOnly &&
+        _verifiedNoteVersions[note.id] == note.updatedAt;
+  }
+
+  void _markNoteVersionVerified(Note note) {
+    _verifiedNoteVersions[note.id] = note.updatedAt;
+    notifyListeners();
+  }
+
+  void _markNoteVersionsVerified(Iterable<Note> notes) {
+    var changed = false;
+    for (final note in notes) {
+      if (_verifiedNoteVersions[note.id] != note.updatedAt) {
+        _verifiedNoteVersions[note.id] = note.updatedAt;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
 
   // ===========================================
   // CONSTRUCTOR & INITIALIZATION
@@ -192,6 +222,9 @@ class SyncService extends ChangeNotifier {
       triggerSync();
     } else if (!_isOnline) {
       _status = SyncStatus.offline;
+      // A revision verified before losing connectivity is no longer proof that
+      // it is still the latest cloud revision when the connection returns.
+      _verifiedNoteVersions.clear();
     }
 
     notifyListeners();
@@ -236,6 +269,7 @@ class SyncService extends ChangeNotifier {
 
     if (_currentUserId != userId) {
       stopListening(reason: 'startCoreListening($userId)');
+      _verifiedNoteVersions.clear();
     } else {
       _cancelCoreListeners();
     }
@@ -408,6 +442,7 @@ class SyncService extends ChangeNotifier {
         }
       }
       if (generation != _snapshotGeneration) return false;
+      _markNoteVersionsVerified(notes);
       onNotesUpdated?.call(notes);
 
       final folderDocs = await firestore
@@ -544,6 +579,8 @@ class SyncService extends ChangeNotifier {
 
     stopNoteListening();
     _activeNoteId = noteId;
+    // Require the new listener's first snapshot to confirm this revision.
+    _verifiedNoteVersions.remove(noteId);
     final generation = _listenerGeneration;
     _diagnostics.info(
       'SyncService',
@@ -567,6 +604,7 @@ class SyncService extends ChangeNotifier {
           data['id'] = doc.id;
           final note = Note.fromJson(data);
           if (note.userId == userId) {
+            _markNoteVersionVerified(note);
             onNoteUpdated?.call(note);
             _lastSyncTime = DateTime.now();
           }
@@ -591,6 +629,7 @@ class SyncService extends ChangeNotifier {
         if (!snapshot.exists || data == null) return;
         final note = Note.fromJson(data);
         if (note.userId == userId) {
+          _markNoteVersionVerified(note);
           onNoteUpdated?.call(note);
           _lastSyncTime = DateTime.now();
         }
@@ -703,6 +742,7 @@ class SyncService extends ChangeNotifier {
         );
         return false;
       }
+      _markNoteVersionsVerified(notes);
       onNotesUpdated?.call(notes);
 
       final folderDocs = await firestore
@@ -915,6 +955,7 @@ class SyncService extends ChangeNotifier {
 
       _setStatus(SyncStatus.synced);
       _lastSyncTime = DateTime.now();
+      _markNoteVersionVerified(note);
       return true;
     } catch (e) {
       _setError('Failed to sync note: $e');
@@ -1420,6 +1461,7 @@ class SyncService extends ChangeNotifier {
 
       _setStatus(SyncStatus.synced);
       _lastSyncTime = DateTime.now();
+      _markNoteVersionsVerified(syncableNotes);
       return true;
     } catch (e) {
       debugPrint('SyncService: Sync failed: $e');
@@ -1449,6 +1491,7 @@ class SyncService extends ChangeNotifier {
 
   /// Force a refresh of the sync connection
   void refresh() {
+    _verifiedNoteVersions.clear();
     _setStatus(SyncStatus.syncing);
     _awaitingRefreshResult = true;
     _startRefreshTimeout();

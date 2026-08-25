@@ -2025,7 +2025,11 @@ class _EditorScreenState extends State<EditorScreen>
           lineCount: _lineCount,
           characterCount: _characterCount,
         ),
-      if (showSync) const SyncStatusIndicator(),
+      if (showSync)
+        SyncStatusIndicator(
+          noteId: _note?.id,
+          hasUnsavedChanges: _hasUnsavedLocalEditorChanges(),
+        ),
       IconButton(
         icon: const Icon(Icons.search),
         tooltip: 'Search and replace',
