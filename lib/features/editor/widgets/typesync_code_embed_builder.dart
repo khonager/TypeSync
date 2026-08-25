@@ -3,7 +3,9 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../../../core/models/typesync_code_embed.dart';
 
@@ -131,18 +133,30 @@ class _CodeBlock extends StatelessWidget {
               ],
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(14),
-            child: SelectableText.rich(
-              _highlight(code.code, code.language, foreground),
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 14,
-                height: 1.45,
+          if (code.language == 'markdown')
+            Padding(
+              key: const ValueKey('markdown-preview'),
+              padding: const EdgeInsets.all(14),
+              child: MarkdownBody(
+                data: code.code,
+                selectable: true,
+                extensionSet: md.ExtensionSet.gitHubWeb,
+                styleSheet: _markdownPreviewStyle(context, foreground),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.all(14),
+              child: SelectableText.rich(
+                highlightCode(code.code, code.language, foreground),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 14,
+                  height: 1.45,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -166,6 +180,44 @@ class _CodeBlock extends StatelessWidget {
       TextSelection.collapsed(offset: offset + 1),
     );
   }
+}
+
+MarkdownStyleSheet _markdownPreviewStyle(
+  BuildContext context,
+  Color foreground,
+) {
+  final base = TextStyle(color: foreground, fontSize: 14, height: 1.45);
+  return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+    a: base.copyWith(color: const Color(0xFF4FC1FF)),
+    p: base,
+    code: base.copyWith(
+      color: const Color(0xFFCE9178),
+      fontFamily: 'monospace',
+      backgroundColor: const Color(0xFF2D2D2D),
+    ),
+    h1: base.copyWith(fontSize: 26, fontWeight: FontWeight.w700),
+    h2: base.copyWith(fontSize: 22, fontWeight: FontWeight.w700),
+    h3: base.copyWith(fontSize: 19, fontWeight: FontWeight.w600),
+    h4: base.copyWith(fontSize: 17, fontWeight: FontWeight.w600),
+    h5: base.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+    h6: base.copyWith(fontWeight: FontWeight.w600),
+    blockquote: base.copyWith(color: const Color(0xFFB9B9B9)),
+    listBullet: base,
+    tableHead: base.copyWith(fontWeight: FontWeight.w600),
+    tableBody: base,
+    tableBorder: TableBorder.all(color: const Color(0xFF555555)),
+    blockquoteDecoration: const BoxDecoration(
+      color: Color(0xFF252526),
+      border: Border(left: BorderSide(color: Color(0xFF569CD6), width: 3)),
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: const Color(0xFF171717),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    horizontalRuleDecoration: const BoxDecoration(
+      border: Border(top: BorderSide(color: Color(0xFF555555))),
+    ),
+  );
 }
 
 class TypeSyncCodeEditorDialog extends StatefulWidget {
@@ -259,7 +311,12 @@ String _languageLabel(String language) => switch (language) {
       _ => language[0].toUpperCase() + language.substring(1),
     };
 
-TextSpan _highlight(String code, String language, Color base) {
+/// Builds syntax-highlighted text without changing any of the source text.
+///
+/// This is public so the full list of code-block languages can be covered by
+/// regression tests. A code block must always be lossless, even when its
+/// highlighter does not recognise a token.
+TextSpan highlightCode(String code, String language, Color base) {
   final keyword = switch (language) {
     'dart' =>
       r'\b(class|final|const|var|void|return|if|else|import|async|await|extends|static|new)\b',
@@ -269,7 +326,6 @@ TextSpan _highlight(String code, String language, Color base) {
     'typescript' =>
       r'\b(const|let|var|function|return|if|else|import|export|async|await|class|interface|type|new)\b',
     'nix' => r'\b(let|in|with|rec|inherit|if|then|else|true|false|null)\b',
-    'markdown' => r'(?m)^#{1,6}.*$|`[^`]+`|\*\*[^*]+\*\*',
     'json' => r'"(?:\\.|[^"\\])*"(?=\s*:)|\b(true|false|null)\b',
     _ =>
       r'\b(class|public|private|static|void|return|if|else|for|while|SELECT|FROM|WHERE)\b',
