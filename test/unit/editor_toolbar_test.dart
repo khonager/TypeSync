@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,6 +142,30 @@ void main() {
         expect(codeInsertions, 1);
       },
     );
+
+    testWidgets('hides a tooltip when the pointer leaves its toolbar button', (
+      tester,
+    ) async {
+      final controller = QuillController.basic();
+      addTearDown(controller.dispose);
+
+      await pumpToolbar(tester, controller);
+
+      final button = find.byTooltip('Bold');
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(button));
+      await tester.pump(const Duration(seconds: 1));
+
+      final tooltipLabel = find.text('Bold');
+      expect(tooltipLabel, findsOneWidget);
+
+      await mouse.moveTo(tester.getCenter(tooltipLabel));
+      await tester.pump();
+
+      expect(tooltipLabel, findsNothing);
+    });
 
     testWidgets('toggles bold on and back off at a collapsed cursor', (
       tester,

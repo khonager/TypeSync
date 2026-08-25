@@ -5,6 +5,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:provider/provider.dart';
@@ -1107,7 +1108,7 @@ class _ToolbarButton extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.all(2),
-      child: Tooltip(
+      child: _DismissOnExitTooltip(
         message: tooltip,
         child: Material(
           color: buttonColor,
@@ -1134,6 +1135,51 @@ class _ToolbarButton extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Prevents a toolbar tooltip from staying open when the pointer moves from
+/// its button onto the tooltip overlay.
+class _DismissOnExitTooltip extends StatefulWidget {
+  final String message;
+  final Widget child;
+
+  const _DismissOnExitTooltip({
+    required this.message,
+    required this.child,
+  });
+
+  @override
+  State<_DismissOnExitTooltip> createState() => _DismissOnExitTooltipState();
+}
+
+class _DismissOnExitTooltipState extends State<_DismissOnExitTooltip> {
+  bool _temporarilyHidden = false;
+
+  void _handleExit(PointerExitEvent event) {
+    setState(() => _temporarilyHidden = true);
+
+    // Re-enable the tooltip after its current overlay has been removed. Since
+    // the pointer is no longer over the button, it will remain hidden until
+    // the button is hovered again. Re-enabling also preserves touch tooltips.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _temporarilyHidden = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onExit: _handleExit,
+      child: TooltipVisibility(
+        visible: !_temporarilyHidden,
+        child: Tooltip(
+          message: widget.message,
+          child: widget.child,
         ),
       ),
     );
