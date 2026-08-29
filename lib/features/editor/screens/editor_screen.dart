@@ -47,6 +47,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/typesync_spellchecker_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/note_conflict_diff.dart';
 import '../../../core/utils/supported_embed_types.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
@@ -59,6 +60,7 @@ import '../../../core/models/typesync_table_embed.dart';
 import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
+import '../widgets/note_conflict_resolver_dialog.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
@@ -1582,7 +1584,6 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _scheduleSave() {
-    if (_note?.hasConflict == true) return; // Don't auto-save during a conflict
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveNote);
   }
@@ -1593,7 +1594,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> _saveNote() async {
-    if (_note == null || _note!.hasConflict) return;
+    if (_note == null) return;
 
     final notesProvider = context.read<NotesProvider>();
 
@@ -1601,6 +1602,22 @@ class _EditorScreenState extends State<EditorScreen>
     final content = jsonEncode(
       _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
     );
+
+    if (_note!.hasConflict) {
+      final savedDraft = await notesProvider.saveConflictedNoteDraft(
+        noteId: _note!.id,
+        content: content,
+        characterCount: _characterCount,
+        lineCount: _lineCount,
+      );
+      if (!mounted || savedDraft == null) return;
+      setState(() {
+        _pendingExternalNote = null;
+        _note = savedDraft;
+        _lastSavedContent = content;
+      });
+      return;
+    }
 
     final result = await notesProvider.saveNoteContentFromEditor(
       noteId: _note!.id,
@@ -2360,7 +2377,7 @@ class _EditorScreenState extends State<EditorScreen>
           const SizedBox(width: 12),
           const Expanded(
             child: Text(
-              'Conflicting changes detected!',
+              'Cloud changes conflict with this note. Your typing is saved locally.',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
@@ -4226,44 +4243,60 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  void _showConflictDialog() {
-    showDialog(
+  Future<void> _showConflictDialog() async {
+    final noteId = _note?.id;
+    if (noteId == null) return;
+
+    _saveTimer?.cancel();
+    final notesProvider = context.read<NotesProvider>();
+    await notesProvider.saveConflictedNoteDraft(
+      noteId: noteId,
+      content: _currentEditorContent(),
+      characterCount: _characterCount,
+      lineCount: _lineCount,
+    );
+    if (!mounted) return;
+    _pendingExternalNote = null;
+
+    final conflictedNote = notesProvider.getNoteById(noteId);
+    final cloudContent = conflictedNote?.conflictContent;
+    if (conflictedNote == null ||
+        !conflictedNote.hasConflict ||
+        cloudContent == null) {
+      _showEditorSyncMessage('This conflict is no longer available.');
+      return;
+    }
+
+    final diff = NoteConflictDiff.fromContents(
+      localContent: conflictedNote.content,
+      cloudContent: cloudContent,
+    );
+    final resolvedContent = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Resolve Conflict'),
-        content: const Text(
-          'This note was modified on another device at the same time. '
-          'How would you like to resolve this?\n\n'
-          '• Keep Local: Retain your current changes and overwrite the cloud.\n'
-          '• Keep Cloud: Discard your current changes and load the cloud version.\n'
-          '• Merge: Append the cloud version to the bottom of your local version.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'local');
-            },
-            child: const Text('Keep Local'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'cloud');
-            },
-            child: const Text('Keep Cloud'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'merge');
-            },
-            child: const Text('Merge'),
-          ),
-        ],
-      ),
+      builder: (context) => NoteConflictResolverDialog(diff: diff),
     );
+    if (!mounted || resolvedContent == null) return;
+
+    final resolved = await notesProvider.resolveConflictWithContent(
+      noteId: noteId,
+      resolvedContent: resolvedContent,
+      expectedCloudContent: cloudContent,
+    );
+    if (!mounted) return;
+    if (!resolved) {
+      _showEditorSyncMessage(
+        'The cloud version changed while you were deciding. Review the updated differences before applying.',
+      );
+      return;
+    }
+
+    final resolvedNote = notesProvider.getNoteById(noteId);
+    if (resolvedNote != null) {
+      _pendingExternalNote = null;
+      _updateContentFromProvider(resolvedNote);
+    }
+    _showEditorSyncMessage('Conflict resolved and queued for sync.');
   }
 
   void _showEditorSyncMessage(String message) {
