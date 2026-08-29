@@ -54,6 +54,23 @@ class NoteConflictDiff {
   int get conflictCount =>
       sections.where((section) => section.isConflict).length;
 
+  /// Whether two stored note documents render and format identically.
+  ///
+  /// Quill may split the same text into a different number of adjacent insert
+  /// operations while typing. Comparing the raw JSON would incorrectly treat
+  /// those storage-only differences as a conflict.
+  static bool contentsEquivalent(String first, String second) {
+    final firstLines = _parseLines(first);
+    final secondLines = _parseLines(second);
+    if (firstLines.length != secondLines.length) return false;
+    for (var index = 0; index < firstLines.length; index++) {
+      if (firstLines[index].signature != secondLines[index].signature) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   String resolve(List<NoteConflictChoice> choices) {
     if (choices.length != conflictCount) {
       throw ArgumentError.value(
@@ -284,7 +301,7 @@ List<NoteConflictLine> _parseLines(String content) {
       NoteConflictLine(
         operations: copiedOperations,
         text: currentText.toString(),
-        signature: jsonEncode(copiedOperations),
+        signature: _canonicalOperationsSignature(copiedOperations),
       ),
     );
     currentOperations = <Map<String, dynamic>>[];
@@ -324,7 +341,65 @@ List<NoteConflictLine> _parseLines(String content) {
   if (currentOperations.isNotEmpty) {
     finishLine();
   }
+  if (lines.isEmpty) {
+    const emptyOperation = <String, dynamic>{'insert': '\n'};
+    lines.add(
+      NoteConflictLine(
+        operations: const <Map<String, dynamic>>[emptyOperation],
+        text: '',
+        signature: _canonicalOperationsSignature(
+          const <Map<String, dynamic>>[emptyOperation],
+        ),
+      ),
+    );
+  }
   return lines;
+}
+
+String _canonicalOperationsSignature(
+  List<Map<String, dynamic>> operations,
+) {
+  final canonicalOperations = <Map<String, dynamic>>[];
+  String? previousMetadata;
+
+  for (final operation in operations) {
+    final canonical = _canonicalMap(operation);
+    final insert = canonical['insert'];
+    if (insert is String && insert.isEmpty) continue;
+    final attributes = canonical['attributes'];
+    if (attributes == null ||
+        (attributes is Map<Object?, Object?> && attributes.isEmpty)) {
+      canonical.remove('attributes');
+    }
+    final metadata = Map<String, dynamic>.from(canonical)..remove('insert');
+    final metadataSignature = jsonEncode(metadata);
+
+    if (insert is String &&
+        canonicalOperations.isNotEmpty &&
+        canonicalOperations.last['insert'] is String &&
+        previousMetadata == metadataSignature) {
+      canonicalOperations.last['insert'] =
+          '${canonicalOperations.last['insert']}$insert';
+    } else {
+      canonicalOperations.add(Map<String, dynamic>.from(canonical));
+    }
+    previousMetadata = metadataSignature;
+  }
+
+  return jsonEncode(canonicalOperations);
+}
+
+Map<String, dynamic> _canonicalMap(Map<Object?, Object?> value) {
+  final keys = value.keys.map((key) => '$key').toList()..sort();
+  return <String, dynamic>{
+    for (final key in keys) key: _canonicalValue(value[key]),
+  };
+}
+
+Object? _canonicalValue(Object? value) {
+  if (value is Map<Object?, Object?>) return _canonicalMap(value);
+  if (value is List<Object?>) return value.map(_canonicalValue).toList();
+  return value;
 }
 
 List<Map<String, dynamic>> _decodeOperations(String content) {

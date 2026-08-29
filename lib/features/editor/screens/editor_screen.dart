@@ -1797,8 +1797,14 @@ class _EditorScreenState extends State<EditorScreen>
 
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
-        if (providerContent != localContent &&
-            providerContent != _lastSavedContent) {
+        final providerDiffersFromEditor =
+            !NoteConflictDiff.contentsEquivalent(providerContent, localContent);
+        final providerDiffersFromLastSave = _lastSavedContent == null ||
+            !NoteConflictDiff.contentsEquivalent(
+              providerContent,
+              _lastSavedContent!,
+            );
+        if (providerDiffersFromEditor && providerDiffersFromLastSave) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             if (!localHasUnsavedEdits) {
@@ -4271,6 +4277,26 @@ class _EditorScreenState extends State<EditorScreen>
       localContent: conflictedNote.content,
       cloudContent: cloudContent,
     );
+    if (diff.conflictCount == 0) {
+      final cleared = await notesProvider.resolveConflictWithContent(
+        noteId: noteId,
+        resolvedContent: conflictedNote.content,
+        expectedCloudContent: cloudContent,
+      );
+      if (!mounted) return;
+      if (cleared) {
+        final resolvedNote = notesProvider.getNoteById(noteId);
+        if (resolvedNote != null) _updateContentFromProvider(resolvedNote);
+        _showEditorSyncMessage(
+          'The local and cloud note are identical. The conflict was cleared.',
+        );
+      } else {
+        _showEditorSyncMessage(
+          'The cloud version changed again. Open the resolver to review it.',
+        );
+      }
+      return;
+    }
     final resolvedContent = await showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -4316,7 +4342,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (_note == null) {
       return false;
     }
-    return _currentEditorContent() != _normalizedStoredContent(_note!.content);
+    return !NoteConflictDiff.contentsEquivalent(
+      _currentEditorContent(),
+      _normalizedStoredContent(_note!.content),
+    );
   }
 
   Future<void> _setSpellcheckEnabled(bool enabled) async {

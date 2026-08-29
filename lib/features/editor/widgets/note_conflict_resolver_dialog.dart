@@ -73,9 +73,9 @@ class _NoteConflictResolverDialogState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Review each changed block. Your current device is Local; the '
-              'incoming synced copy is Cloud. Nothing is discarded until you '
-              'apply the resolution.',
+              'Choose which version to keep for each change. Your current '
+              'device is Local; the incoming synced copy is Cloud. Only '
+              'highlighted text differs.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -88,13 +88,13 @@ class _NoteConflictResolverDialogState
                   key: const Key('use-all-local'),
                   onPressed: () => _chooseAll(NoteConflictChoice.local),
                   icon: const Icon(Icons.computer_rounded),
-                  label: const Text('Use all local'),
+                  label: const Text('Keep all local'),
                 ),
                 OutlinedButton.icon(
                   key: const Key('use-all-cloud'),
                   onPressed: () => _chooseAll(NoteConflictChoice.cloud),
                   icon: const Icon(Icons.cloud_outlined),
-                  label: const Text('Use all cloud'),
+                  label: const Text('Keep all cloud'),
                 ),
                 FilterChip(
                   selected: _showUnchanged,
@@ -105,7 +105,7 @@ class _NoteConflictResolverDialogState
                 ),
                 Text(
                   '${_choices.where((choice) => choice != null).length} of '
-                  '${_choices.length} changes decided',
+                  '${_choices.length} choices made',
                   key: const Key('conflict-choice-progress'),
                   style: theme.textTheme.labelLarge,
                 ),
@@ -151,6 +151,7 @@ class _NoteConflictResolverDialogState
         widgets.add(
           _ConflictHunk(
             key: Key('conflict-hunk-$currentConflictIndex'),
+            number: currentConflictIndex + 1,
             section: section,
             choice: _choices[currentConflictIndex],
             onChoiceChanged: (choice) {
@@ -175,12 +176,14 @@ class _NoteConflictResolverDialogState
 
 class _ConflictHunk extends StatelessWidget {
   const _ConflictHunk({
+    required this.number,
     required this.section,
     required this.choice,
     required this.onChoiceChanged,
     super.key,
   });
 
+  final int number;
   final NoteConflictSection section;
   final NoteConflictChoice? choice;
   final ValueChanged<NoteConflictChoice> onChoiceChanged;
@@ -203,21 +206,28 @@ class _ConflictHunk extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '@@ local line ${section.localStartLine} / '
-              'cloud line ${section.cloudStartLine} @@',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
-              ),
+            Row(
+              children: [
+                Text(
+                  'Change $number',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Around line ${section.localStartLine}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             LayoutBuilder(
               builder: (context, constraints) {
                 final local = _VersionPanel(
-                  title: 'LOCAL',
-                  prefix: '-',
-                  startLine: section.localStartLine,
+                  title: 'KEEP LOCAL',
                   lines: section.localLines,
                   counterpart: section.cloudLines,
                   selected: choice == NoteConflictChoice.local,
@@ -226,9 +236,7 @@ class _ConflictHunk extends StatelessWidget {
                   onTap: () => onChoiceChanged(NoteConflictChoice.local),
                 );
                 final cloud = _VersionPanel(
-                  title: 'CLOUD',
-                  prefix: '+',
-                  startLine: section.cloudStartLine,
+                  title: 'KEEP CLOUD',
                   lines: section.cloudLines,
                   counterpart: section.localLines,
                   selected: choice == NoteConflictChoice.cloud,
@@ -266,8 +274,6 @@ class _ConflictHunk extends StatelessWidget {
 class _VersionPanel extends StatelessWidget {
   const _VersionPanel({
     required this.title,
-    required this.prefix,
-    required this.startLine,
     required this.lines,
     required this.counterpart,
     required this.selected,
@@ -277,8 +283,6 @@ class _VersionPanel extends StatelessWidget {
   });
 
   final String title;
-  final String prefix;
-  final int startLine;
   final List<NoteConflictLine> lines;
   final List<NoteConflictLine> counterpart;
   final bool selected;
@@ -318,7 +322,7 @@ class _VersionPanel extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'USE $title',
+                    title,
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: foreground,
                       fontWeight: FontWeight.w700,
@@ -329,18 +333,15 @@ class _VersionPanel extends StatelessWidget {
               const SizedBox(height: 4),
               if (lines.isEmpty)
                 Text(
-                  '$prefix (remove this block)',
-                  style: TextStyle(
+                  'This version removes this text.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: foreground.withValues(alpha: 0.75),
-                    fontFamily: 'monospace',
                     fontStyle: FontStyle.italic,
                   ),
                 )
               else
                 ...List.generate(lines.length, (index) {
                   return _DiffLine(
-                    lineNumber: startLine + index,
-                    prefix: prefix,
                     line: lines[index],
                     counterpart:
                         index < counterpart.length ? counterpart[index] : null,
@@ -357,62 +358,52 @@ class _VersionPanel extends StatelessWidget {
 
 class _DiffLine extends StatelessWidget {
   const _DiffLine({
-    required this.lineNumber,
-    required this.prefix,
     required this.line,
     required this.counterpart,
     required this.foreground,
   });
 
-  final int lineNumber;
-  final String prefix;
   final NoteConflictLine line;
   final NoteConflictLine? counterpart;
   final Color foreground;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final changedRange = _changedRange(line.text, counterpart?.text ?? '');
     final metadataOnlyDifference = counterpart != null &&
         line.text == counterpart!.text &&
         line.signature != counterpart!.signature;
-    final baseStyle = TextStyle(
-      color: foreground,
-      fontFamily: 'monospace',
-      height: 1.45,
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 42,
-          child: Text(
-            '$prefix$lineNumber',
-            style: baseStyle.copyWith(
-              color: foreground.withValues(alpha: 0.65),
+    final baseStyle = theme.textTheme.bodyLarge?.copyWith(
+          color: foreground,
+          height: 1.45,
+        ) ??
+        TextStyle(color: foreground, height: 1.45);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: RichText(
+        text: TextSpan(
+          style: baseStyle,
+          children: [
+            ..._highlightedSpans(
+              line.text,
+              changedRange,
+              baseStyle,
+              highlightColor: foreground.withValues(alpha: 0.18),
             ),
-          ),
+            if (metadataOnlyDifference)
+              TextSpan(
+                text: '  Formatting: ${_lineMetadata(line)}',
+                style: baseStyle.copyWith(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w700,
+                  backgroundColor: foreground.withValues(alpha: 0.18),
+                ),
+              ),
+          ],
         ),
-        Expanded(
-          child: RichText(
-            text: TextSpan(
-              style: baseStyle,
-              children: [
-                ..._highlightedSpans(line.text, changedRange, baseStyle),
-                if (metadataOnlyDifference)
-                  TextSpan(
-                    text: '  [${_lineMetadata(line)}]',
-                    style: baseStyle.copyWith(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -466,11 +457,9 @@ class _UnchangedLines extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: List.generate(section.localLines.length, (index) {
             return Text(
-              ' ${section.localStartLine + index}  '
-              '${section.localLines[index].text}',
+              section.localLines[index].text,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
               ),
             );
           }),
@@ -503,8 +492,9 @@ class _UnchangedLines extends StatelessWidget {
 List<InlineSpan> _highlightedSpans(
   String value,
   ({int start, int end}) range,
-  TextStyle baseStyle,
-) {
+  TextStyle baseStyle, {
+  required Color highlightColor,
+}) {
   if (value.isEmpty) {
     return <InlineSpan>[
       TextSpan(
@@ -517,12 +507,19 @@ List<InlineSpan> _highlightedSpans(
     if (range.start > 0) TextSpan(text: value.substring(0, range.start)),
     if (range.end > range.start)
       TextSpan(
-        text: value.substring(range.start, range.end),
+        text: _visibleChangedText(value.substring(range.start, range.end)),
         style: baseStyle.copyWith(
           fontWeight: FontWeight.w800,
+          backgroundColor: highlightColor,
           decoration: TextDecoration.underline,
+          decorationThickness: 2,
         ),
       ),
     if (range.end < value.length) TextSpan(text: value.substring(range.end)),
   ];
+}
+
+String _visibleChangedText(String value) {
+  if (value.isEmpty || value.trim().isNotEmpty) return value;
+  return value.replaceAll(' ', '␠').replaceAll('\t', '⇥').replaceAll('\r', '↵');
 }

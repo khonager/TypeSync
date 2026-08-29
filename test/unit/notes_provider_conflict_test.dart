@@ -101,4 +101,30 @@ void main() {
     expect(provider.getNoteById(original.id)?.hasConflict, isFalse);
     expect(provider.getNoteById(original.id)?.content, latestLocalContent);
   });
+
+  test('does not create a conflict for equivalent split Delta operations',
+      () async {
+    final fragmented = jsonEncode(<Map<String, dynamic>>[
+      <String, dynamic>{'insert': 'same '},
+      <String, dynamic>{'insert': 'visible text'},
+      <String, dynamic>{'insert': '\n'},
+    ]);
+    final combined = jsonEncode(<Map<String, dynamic>>[
+      <String, dynamic>{'insert': 'same visible text\n'},
+    ]);
+    final original = await provider.createNote(
+      userId: userId,
+      content: fragmented,
+    );
+
+    provider.handleSingleCloudNoteUpdate(
+      original!.copyWith(
+        content: combined,
+        updatedAt: original.updatedAt.add(const Duration(minutes: 1)),
+        isDirty: false,
+      ),
+    );
+
+    expect(provider.getNoteById(original.id)?.hasConflict, isFalse);
+  });
 }

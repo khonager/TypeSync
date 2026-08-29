@@ -10,6 +10,27 @@ String _delta(String text) => jsonEncode(<Map<String, dynamic>>[
 
 void main() {
   group('NoteConflictDiff', () {
+    test('ignores equivalent Quill operation fragmentation', () {
+      final fragmented = jsonEncode(<Map<String, dynamic>>[
+        <String, dynamic>{'insert': 'same '},
+        <String, dynamic>{
+          'insert': 'visible text',
+          'attributes': <String, dynamic>{},
+        },
+        <String, dynamic>{'insert': ''},
+        <String, dynamic>{'insert': '\n'},
+      ]);
+      final combined = _delta('same visible text\n');
+
+      final diff = NoteConflictDiff.fromContents(
+        localContent: fragmented,
+        cloudContent: combined,
+      );
+
+      expect(NoteConflictDiff.contentsEquivalent(fragmented, combined), isTrue);
+      expect(diff.conflictCount, 0);
+    });
+
     test('lets separate changed blocks choose local or cloud independently',
         () {
       final diff = NoteConflictDiff.fromContents(

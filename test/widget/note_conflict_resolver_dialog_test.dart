@@ -41,9 +41,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('note-conflict-resolver')), findsOneWidget);
-    expect(find.text('USE LOCAL'), findsOneWidget);
-    expect(find.text('USE CLOUD'), findsOneWidget);
-    expect(find.text('0 of 1 changes decided'), findsOneWidget);
+    expect(find.text('KEEP LOCAL'), findsOneWidget);
+    expect(find.text('KEEP CLOUD'), findsOneWidget);
+    expect(find.text('Change 1'), findsOneWidget);
+    expect(find.textContaining('@@'), findsNothing);
+    expect(find.text('0 of 1 choices made'), findsOneWidget);
     expect(
       tester
           .widget<FilledButton>(
@@ -53,9 +55,22 @@ void main() {
       isNull,
     );
 
-    await tester.tap(find.text('USE CLOUD'));
+    final notePreview =
+        tester.widgetList<RichText>(find.byType(RichText)).firstWhere(
+              (widget) => widget.text.toPlainText().contains('Local wording'),
+            );
+    expect(notePreview.text.style?.fontFamily, isNot('monospace'));
+    expect(
+      (notePreview.text as TextSpan)
+          .children
+          ?.whereType<TextSpan>()
+          .any((span) => span.style?.backgroundColor != null),
+      isTrue,
+    );
+
+    await tester.tap(find.text('KEEP CLOUD'));
     await tester.pump();
-    expect(find.text('1 of 1 changes decided'), findsOneWidget);
+    expect(find.text('1 of 1 choices made'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('apply-conflict-resolution')));
     await tester.pumpAndSettle();

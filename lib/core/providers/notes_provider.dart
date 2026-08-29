@@ -19,6 +19,7 @@ import '../models/typesync_table_embed.dart';
 import '../services/diagnostics_service.dart';
 import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
+import '../utils/note_conflict_diff.dart';
 import '../utils/version_compatibility.dart';
 import '../utils/search_query.dart';
 
@@ -1098,7 +1099,11 @@ class NotesProvider extends ChangeNotifier {
         // cloud snapshot changes. A resolution opened against the old copy is
         // rejected by resolveConflictWithContent.
         if (localNote.hasConflict) {
-          if (localNote.conflictContent != cloudNote.content) {
+          if (localNote.conflictContent == null ||
+              !_sameStoredContent(
+                localNote.conflictContent!,
+                cloudNote.content,
+              )) {
             final refreshedConflict = localNote.copyWith(
               conflictContent: cloudNote.content,
             );
@@ -1110,7 +1115,7 @@ class NotesProvider extends ChangeNotifier {
 
         if (localNote.isDirty &&
             cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
-            localNote.content != cloudNote.content) {
+            !_sameStoredContent(localNote.content, cloudNote.content)) {
           // Conflict detected!
           // We keep our local changes as the main content but flag it and save cloud content
           final conflictedNote = localNote.copyWith(
@@ -1203,7 +1208,8 @@ class NotesProvider extends ChangeNotifier {
     }
 
     if (localNote.hasConflict && !cloudNote.isDeleted) {
-      if (localNote.conflictContent != cloudNote.content) {
+      if (localNote.conflictContent == null ||
+          !_sameStoredContent(localNote.conflictContent!, cloudNote.content)) {
         final refreshedConflict = localNote.copyWith(
           conflictContent: cloudNote.content,
         );
@@ -1225,7 +1231,7 @@ class NotesProvider extends ChangeNotifier {
 
     if (localNote.isDirty &&
         cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
-        localNote.content != cloudNote.content) {
+        !_sameStoredContent(localNote.content, cloudNote.content)) {
       final conflictedNote = localNote.copyWith(
         hasConflict: true,
         conflictContent: cloudNote.content,
@@ -1350,16 +1356,7 @@ class NotesProvider extends ChangeNotifier {
   }
 
   bool _sameStoredContent(String a, String b) {
-    return _normalizeStoredContent(a) == _normalizeStoredContent(b);
-  }
-
-  String _normalizeStoredContent(String content) {
-    try {
-      final decoded = jsonDecode(content);
-      return jsonEncode(decoded);
-    } catch (_) {
-      return content;
-    }
+    return NoteConflictDiff.contentsEquivalent(a, b);
   }
 
   /// Clear dirty flags for a list of notes
