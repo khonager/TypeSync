@@ -1157,21 +1157,13 @@ class _DismissOnExitTooltip extends StatefulWidget {
 }
 
 class _DismissOnExitTooltipState extends State<_DismissOnExitTooltip> {
-  bool _temporarilyHidden = false;
-
   void _handleExit(PointerExitEvent event) {
-    // TooltipVisibility only stops a tooltip from opening; it does not retract
-    // one that is already on screen, so dismiss the open overlay explicitly.
-    Tooltip.dismissAllToolTips();
-
-    setState(() => _temporarilyHidden = true);
-
-    // Re-enable the tooltip after its current overlay has been removed. Since
-    // the pointer is no longer over the button, it will remain hidden until
-    // the button is hovered again. Re-enabling also preserves touch tooltips.
+    // Moving onto the tooltip overlay counts as hovering the tooltip, so the
+    // framework re-shows it right after this exit is dispatched. Dismiss on the
+    // next frame instead, once that re-show has been processed.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() => _temporarilyHidden = false);
+      Tooltip.dismissAllToolTips();
     });
   }
 
@@ -1179,12 +1171,9 @@ class _DismissOnExitTooltipState extends State<_DismissOnExitTooltip> {
   Widget build(BuildContext context) {
     return MouseRegion(
       onExit: _handleExit,
-      child: TooltipVisibility(
-        visible: !_temporarilyHidden,
-        child: Tooltip(
-          message: widget.message,
-          child: widget.child,
-        ),
+      child: Tooltip(
+        message: widget.message,
+        child: widget.child,
       ),
     );
   }
