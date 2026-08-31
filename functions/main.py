@@ -50,6 +50,15 @@ REVENUECAT_WEBHOOK_AUTH_TOKEN = SecretParam("REVENUECAT_WEBHOOK_AUTH_TOKEN")
 # credential that can grant access.
 ADMIN_EMAILS = SecretParam("ADMIN_EMAILS")
 
+ACCOUNT_DATA_COLLECTIONS = (
+    "notes",
+    "folders",
+    "homework",
+    "calendar_events",
+    "timetable_entries",
+    "tags",
+)
+
 REVENUECAT_PLAN_BY_ENTITLEMENT = {
     "TypeSync Lite": {"tier": 1, "limit": 1 * 1024 * 1024 * 1024},
     "light": {"tier": 1, "limit": 1 * 1024 * 1024 * 1024},
@@ -734,6 +743,92 @@ def _verified_uid(req: https_fn.Request) -> str:
             message="Authenticated user missing uid."
         )
     return uid
+
+
+def _delete_query_documents(db, query) -> int:
+    """Delete a query in bounded batches and return the number removed."""
+    deleted = 0
+    while True:
+        documents = list(query.limit(400).stream())
+        if not documents:
+            return deleted
+
+        batch = db.batch()
+        for document in documents:
+            batch.delete(document.reference)
+        batch.commit()
+        deleted += len(documents)
+
+
+def _delete_account_resources(uid: str) -> dict:
+    """Remove all server-owned data for a user, then remove the Auth user."""
+    db = _firestore().client()
+    deleted_documents = 0
+
+    for collection_name in ACCOUNT_DATA_COLLECTIONS:
+        query = db.collection(collection_name).where("userId", "==", uid)
+        deleted_documents += _delete_query_documents(db, query)
+
+    user_ref = db.collection("users").document(uid)
+    deleted_documents += _delete_query_documents(
+        db,
+        user_ref.collection("settings"),
+    )
+
+    # Remove the legacy top-level settings document as well as the current
+    # nested settings location.
+    legacy_settings_ref = db.collection("settings").document(uid)
+    if legacy_settings_ref.get().exists:
+        legacy_settings_ref.delete()
+        deleted_documents += 1
+
+    deleted_storage_objects = 0
+    bucket = _storage().bucket()
+    for blob in bucket.list_blobs(prefix=f"users/{uid}/"):
+        blob.delete()
+        deleted_storage_objects += 1
+
+    if user_ref.get().exists:
+        user_ref.delete()
+        deleted_documents += 1
+
+    try:
+        _auth().delete_user(uid)
+    except _auth().UserNotFoundError:
+        # This makes a retry safe if the first response was lost after Auth
+        # deletion completed.
+        pass
+
+    return {
+        "deletedDocuments": deleted_documents,
+        "deletedStorageObjects": deleted_storage_objects,
+    }
+
+
+@https_fn.on_request()
+def delete_account(req: https_fn.Request) -> https_fn.Response:
+    preflight = _handle_cors_preflight(req)
+    if preflight is not None:
+        return preflight
+
+    if req.method != "POST":
+        return _json_response({"error": "Method not allowed"}, status=405, cors=True)
+
+    try:
+        uid = _verified_uid(req)
+    except https_fn.HttpsError as exc:
+        return _json_response({"error": exc.message}, status=401, cors=True)
+
+    try:
+        result = _delete_account_resources(uid)
+        return _json_response({"success": True, **result}, cors=True)
+    except Exception as exc:
+        print(f"Account deletion failed for uid={uid}: {exc}")
+        return _json_response(
+            {"error": "Failed to delete account data."},
+            status=500,
+            cors=True,
+        )
 
 
 @https_fn.on_request()

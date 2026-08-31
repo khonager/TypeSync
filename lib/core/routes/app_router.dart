@@ -120,6 +120,14 @@ class AppRouter {
     return Navigator.push(
       context,
       MaterialPageRoute(
+        settings: RouteSettings(
+          name: editor,
+          arguments: <String, dynamic>{
+            'noteId': noteId,
+            'folderId': folderId,
+            'searchQuery': searchQuery,
+          },
+        ),
         builder: (_) => EditorScreen(
           noteId: noteId,
           folderId: folderId,
@@ -138,6 +146,14 @@ class AppRouter {
     bool replaceCurrent = false,
   }) {
     final route = MaterialPageRoute(
+      settings: RouteSettings(
+        name: splitEditor,
+        arguments: <String, dynamic>{
+          'primaryNoteId': primaryNoteId,
+          'secondaryNoteId': secondaryNoteId,
+          'secondaryFolderId': initialSecondaryFolderId,
+        },
+      ),
       builder: (_) => SplitEditorScreen(
         primaryNoteId: primaryNoteId,
         secondaryNoteId: secondaryNoteId,

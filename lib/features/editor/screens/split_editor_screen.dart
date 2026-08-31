@@ -9,6 +9,7 @@ import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/tags_provider.dart';
 import '../../../core/routes/app_router.dart';
+import '../../../core/services/navigation_state_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/utils/search_query.dart';
@@ -98,6 +99,7 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
               setState(() {
                 _secondaryNoteId = noteId;
               });
+              _rememberSplitState();
             },
           )
         : EditorScreen(
@@ -213,6 +215,7 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
       _primaryNoteId = _secondaryNoteId!;
       _secondaryNoteId = currentPrimary;
     });
+    _rememberSplitState();
   }
 
   void _showSecondaryBrowser() {
@@ -220,6 +223,7 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
     setState(() {
       _secondaryNoteId = null;
     });
+    _rememberSplitState();
   }
 
   void _closeSplitClosing({required bool closingPrimary}) {
@@ -260,6 +264,13 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
       _collapseAnimation?.removeListener(_handleCollapseTick);
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
+          settings: RouteSettings(
+            name: AppRouter.editor,
+            arguments: <String, dynamic>{
+              'noteId': resolvedNote.id,
+              'folderId': resolvedNote.folderId,
+            },
+          ),
           transitionDuration: Duration.zero,
           reverseTransitionDuration: Duration.zero,
           pageBuilder: (_, __, ___) => EditorScreen(
@@ -269,6 +280,19 @@ class _SplitEditorScreenState extends State<SplitEditorScreen>
         ),
       );
     });
+  }
+
+  void _rememberSplitState() {
+    NavigationStateService.instance.recordRoute(
+      RouteSettings(
+        name: AppRouter.splitEditor,
+        arguments: <String, dynamic>{
+          'primaryNoteId': _primaryNoteId,
+          'secondaryNoteId': _secondaryNoteId,
+          'secondaryFolderId': widget.initialSecondaryFolderId,
+        },
+      ),
+    );
   }
 
   void _handleCollapseTick() {

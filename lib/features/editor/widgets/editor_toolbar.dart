@@ -5,6 +5,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:provider/provider.dart';
@@ -25,7 +26,7 @@ enum _EditorColorPaletteType { text, marker }
 /// - Text formatting (bold, italic, underline, strikethrough)
 /// - Text color and marker
 /// - Alignment
-/// - Lists (checklist, numbered with auto-detection)
+/// - Lists (checklist, numbered, and bulleted)
 /// - Code blocks
 class EditorToolbar extends StatefulWidget {
   final QuillController controller;
@@ -71,8 +72,8 @@ class _EditorToolbarState extends State<EditorToolbar> {
   static const double _horizontalPanelHeight = 56;
   static const double _horizontalPanelWidth = 340;
   static const double _verticalPanelWidth = 56;
-  static const double _floatingPanelWidth = 260;
-  static const double _floatingPanelMaxHeight = 260;
+  static const double _floatingPanelWidth = 320;
+  static const double _floatingPanelMaxHeight = 160;
 
   Offset _position = const Offset(16, 100);
   _ToolbarAnchorEdge _anchor = _ToolbarAnchorEdge.floating;
@@ -464,41 +465,11 @@ class _EditorToolbarState extends State<EditorToolbar> {
           decoration: _panelDecoration(context),
           child: Padding(
             padding: const EdgeInsets.all(_panelPadding),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Format',
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                    ),
-                    _ToolbarButton(
-                      icon: Icons.format_clear,
-                      tooltip: 'Reset text style',
-                      onTap: _resetTextStyle,
-                    ),
-                    _ToolbarButton(
-                      icon: Icons.close,
-                      tooltip: 'Collapse',
-                      onTap: _toggleExpanded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: _buildFloatingToolbarItems(),
-                    ),
-                  ),
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: _buildFloatingToolbarRows(),
+              ),
             ),
           ),
         ),
@@ -623,6 +594,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
         isActive: _hasFormat(Attribute.ol),
         onTap: () => _toggleAttribute(Attribute.ol),
       ),
+      _ToolbarButton(
+        icon: Icons.format_list_bulleted,
+        tooltip: 'Bullet list',
+        isActive: _hasFormat(Attribute.ul),
+        onTap: () => _toggleAttribute(Attribute.ul),
+      ),
       divider,
       _ToolbarButton(
         icon: Icons.format_align_left,
@@ -666,97 +643,153 @@ class _EditorToolbarState extends State<EditorToolbar> {
     ];
   }
 
-  List<Widget> _buildFloatingToolbarItems() {
+  List<Widget> _buildFloatingToolbarRows() {
     final activeTextColor = _currentPaletteColor(_EditorColorPaletteType.text);
     final activeMarkerColor =
         _currentPaletteColor(_EditorColorPaletteType.marker);
 
-    return [
-      _ToolbarButton(
-        icon: Icons.format_bold,
-        tooltip: 'Bold',
-        isActive: _hasFormat(Attribute.bold),
-        onTap: () => _toggleAttribute(Attribute.bold),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_italic,
-        tooltip: 'Italic',
-        isActive: _hasFormat(Attribute.italic),
-        onTap: () => _toggleAttribute(Attribute.italic),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_underlined,
-        tooltip: 'Underline',
-        isActive: _hasFormat(Attribute.underline),
-        onTap: () => _toggleAttribute(Attribute.underline),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_strikethrough,
-        tooltip: 'Strikethrough',
-        isActive: _hasFormat(Attribute.strikeThrough),
-        onTap: () => _toggleAttribute(Attribute.strikeThrough),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_color_text,
-        tooltip: 'Text color',
-        activeIconColor: activeTextColor,
-        onTap: _showColorPicker,
-      ),
-      _ToolbarButton(
-        icon: Icons.border_color,
-        tooltip: 'Highlight',
-        activeFillColor: activeMarkerColor,
-        activeIconColor: activeMarkerColor == null
-            ? null
-            : AppColorPalette.getContrastingTextColor(activeMarkerColor),
-        onTap: _showMarkerColorPicker,
-      ),
-      _ToolbarButton(
-        icon: Icons.check_box,
-        tooltip: 'Checklist',
-        isActive: _hasFormat(Attribute.checked),
-        onTap: widget.onToggleChecklist,
-      ),
-      _ToolbarButton(
-        icon: Icons.format_list_numbered,
-        tooltip: 'Numbered list',
-        isActive: _hasFormat(Attribute.ol),
-        onTap: () => _toggleAttribute(Attribute.ol),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_align_left,
-        tooltip: 'Align left',
-        isActive: _isAlignmentActive(Attribute.leftAlignment),
-        onTap: () => _setAlignment(Attribute.leftAlignment),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_align_center,
-        tooltip: 'Align center',
-        isActive: _isAlignmentActive(Attribute.centerAlignment),
-        onTap: () => _setAlignment(Attribute.centerAlignment),
-      ),
-      _ToolbarButton(
-        icon: Icons.format_align_right,
-        tooltip: 'Align right',
-        isActive: _isAlignmentActive(Attribute.rightAlignment),
-        onTap: () => _setAlignment(Attribute.rightAlignment),
-      ),
-      _ToolbarButton(
-        icon: Icons.picture_as_pdf_outlined,
-        tooltip: 'Insert PDF',
-        onTap: widget.onInsertPdf,
-      ),
-      _ToolbarButton(
-        icon: Icons.table_chart_outlined,
-        tooltip: 'Insert table',
-        onTap: widget.onInsertTable,
-      ),
-      _ToolbarButton(
-        icon: Icons.view_kanban_outlined,
-        tooltip: 'Insert kanban',
-        onTap: widget.onInsertKanban,
-      ),
+    final rows = <List<Widget>>[
+      [
+        _ToolbarButton(
+          icon: Icons.close,
+          tooltip: 'Collapse',
+          onTap: _toggleExpanded,
+        ),
+        _ToolbarButton(
+          icon: Icons.format_clear,
+          tooltip: 'Reset text style',
+          onTap: _resetTextStyle,
+        ),
+        _ToolbarButton(
+          icon: Icons.picture_as_pdf_outlined,
+          tooltip: 'Insert PDF',
+          onTap: widget.onInsertPdf,
+        ),
+        _ToolbarButton(
+          icon: Icons.table_chart_outlined,
+          tooltip: 'Insert table',
+          onTap: widget.onInsertTable,
+        ),
+        _ToolbarButton(
+          icon: Icons.view_kanban_outlined,
+          tooltip: 'Insert kanban',
+          onTap: widget.onInsertKanban,
+        ),
+        _ToolbarButton(
+          icon: Icons.code,
+          tooltip: 'Insert code block',
+          onTap: widget.onInsertCode,
+        ),
+      ],
+      [
+        _ToolbarButton(
+          icon: Icons.check_box,
+          tooltip: 'Checklist',
+          isActive: _hasFormat(Attribute.checked),
+          onTap: widget.onToggleChecklist,
+        ),
+        _ToolbarButton(
+          icon: Icons.format_list_numbered,
+          tooltip: 'Numbered list',
+          isActive: _hasFormat(Attribute.ol),
+          onTap: () => _toggleAttribute(Attribute.ol),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_list_bulleted,
+          tooltip: 'Bullet list',
+          isActive: _hasFormat(Attribute.ul),
+          onTap: () => _toggleAttribute(Attribute.ul),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_align_left,
+          tooltip: 'Align left',
+          isActive: _isAlignmentActive(Attribute.leftAlignment),
+          onTap: () => _setAlignment(Attribute.leftAlignment),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_align_center,
+          tooltip: 'Align center',
+          isActive: _isAlignmentActive(Attribute.centerAlignment),
+          onTap: () => _setAlignment(Attribute.centerAlignment),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_align_right,
+          tooltip: 'Align right',
+          isActive: _isAlignmentActive(Attribute.rightAlignment),
+          onTap: () => _setAlignment(Attribute.rightAlignment),
+        ),
+      ],
+      [
+        _ToolbarButton(
+          icon: Icons.format_bold,
+          tooltip: 'Bold',
+          isActive: _hasFormat(Attribute.bold),
+          onTap: () => _toggleAttribute(Attribute.bold),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_italic,
+          tooltip: 'Italic',
+          isActive: _hasFormat(Attribute.italic),
+          onTap: () => _toggleAttribute(Attribute.italic),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_underlined,
+          tooltip: 'Underline',
+          isActive: _hasFormat(Attribute.underline),
+          onTap: () => _toggleAttribute(Attribute.underline),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_strikethrough,
+          tooltip: 'Strikethrough',
+          isActive: _hasFormat(Attribute.strikeThrough),
+          onTap: () => _toggleAttribute(Attribute.strikeThrough),
+        ),
+        _ToolbarButton(
+          icon: Icons.format_color_text,
+          tooltip: 'Text color',
+          activeIconColor: activeTextColor,
+          onTap: _showColorPicker,
+        ),
+        _ToolbarButton(
+          icon: Icons.border_color,
+          tooltip: 'Highlight',
+          activeFillColor: activeMarkerColor,
+          activeIconColor: activeMarkerColor == null
+              ? null
+              : AppColorPalette.getContrastingTextColor(activeMarkerColor),
+          onTap: _showMarkerColorPicker,
+        ),
+      ],
     ];
+
+    const dividerAfterByRow = <int?>[2, 3, null];
+    return [
+      for (var index = 0; index < rows.length; index++)
+        _buildFloatingToolbarRow(
+          rows[index],
+          dividerIndex: index,
+          dividerAfter: dividerAfterByRow[index],
+        ),
+    ];
+  }
+
+  Widget _buildFloatingToolbarRow(
+    List<Widget> items, {
+    required int dividerIndex,
+    required int? dividerAfter,
+  }) {
+    assert(items.length == 6);
+    return Row(
+      children: [
+        for (var itemIndex = 0; itemIndex < items.length; itemIndex++) ...[
+          if (itemIndex == dividerAfter)
+            _FloatingToolbarDivider(index: dividerIndex),
+          Expanded(
+            child: Center(child: items[itemIndex]),
+          ),
+        ],
+      ],
+    );
   }
 
   bool _hasFormat(Attribute<dynamic> attribute) {
@@ -1075,7 +1108,7 @@ class _ToolbarButton extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.all(2),
-      child: Tooltip(
+      child: _DismissOnExitTooltip(
         message: tooltip,
         child: Material(
           color: buttonColor,
@@ -1108,6 +1141,51 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
+/// Prevents a toolbar tooltip from staying open when the pointer moves from
+/// its button onto the tooltip overlay.
+class _DismissOnExitTooltip extends StatefulWidget {
+  final String message;
+  final Widget child;
+
+  const _DismissOnExitTooltip({
+    required this.message,
+    required this.child,
+  });
+
+  @override
+  State<_DismissOnExitTooltip> createState() => _DismissOnExitTooltipState();
+}
+
+class _DismissOnExitTooltipState extends State<_DismissOnExitTooltip> {
+  bool _temporarilyHidden = false;
+
+  void _handleExit(PointerExitEvent event) {
+    setState(() => _temporarilyHidden = true);
+
+    // Re-enable the tooltip after its current overlay has been removed. Since
+    // the pointer is no longer over the button, it will remain hidden until
+    // the button is hovered again. Re-enabling also preserves touch tooltips.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _temporarilyHidden = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onExit: _handleExit,
+      child: TooltipVisibility(
+        visible: !_temporarilyHidden,
+        child: Tooltip(
+          message: widget.message,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class _ToolbarDivider extends StatelessWidget {
   final Axis axis;
 
@@ -1131,6 +1209,25 @@ class _ToolbarDivider extends StatelessWidget {
       height: 28,
       margin: const EdgeInsets.symmetric(horizontal: 6),
       color: color,
+    );
+  }
+}
+
+class _FloatingToolbarDivider extends StatelessWidget {
+  final int index;
+
+  const _FloatingToolbarDivider({required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: ValueKey('floating-toolbar-divider-$index'),
+      width: 1,
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: Theme.of(
+        context,
+      ).colorScheme.outlineVariant.withValues(alpha: 0.65),
     );
   }
 }

@@ -19,6 +19,7 @@ import '../models/typesync_table_embed.dart';
 import '../services/diagnostics_service.dart';
 import '../services/rich_text_plain_text_service.dart';
 import '../services/sync_service.dart';
+import '../utils/note_conflict_diff.dart';
 import '../utils/version_compatibility.dart';
 import '../utils/search_query.dart';
 
@@ -655,7 +656,7 @@ class NotesProvider extends ChangeNotifier {
       _notes.add(note);
 
       // Trigger sync
-      _syncService?.syncNote(note);
+      _syncNoteAndMarkClean(note);
 
       notifyListeners();
       return note;
@@ -694,7 +695,7 @@ class NotesProvider extends ChangeNotifier {
 
       // Trigger sync
       if (!updatedNote.hasConflict) {
-        _syncService?.syncNote(updatedNote);
+        _syncNoteAndMarkClean(updatedNote);
       }
 
       notifyListeners();
@@ -788,6 +789,38 @@ class NotesProvider extends ChangeNotifier {
       status: NoteWriteStatus.saved,
       note: updatedNote,
     );
+  }
+
+  /// Saves the editor's latest local draft without clearing or uploading an
+  /// existing conflict. This keeps typing that happens after the conflict
+  /// banner appears recoverable on this device.
+  Future<Note?> saveConflictedNoteDraft({
+    required String noteId,
+    required String content,
+    required int characterCount,
+    required int lineCount,
+  }) async {
+    final index = _notes.indexWhere((note) => note.id == noteId);
+    if (index < 0 || !_notes[index].hasConflict) return null;
+
+    final currentNote = _notes[index];
+    if (_sameStoredContent(currentNote.content, content) &&
+        currentNote.characterCount == characterCount &&
+        currentNote.lineCount == lineCount) {
+      return currentNote;
+    }
+
+    final updatedNote = currentNote.copyWith(
+      content: content,
+      characterCount: characterCount,
+      lineCount: lineCount,
+      size: content.length,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+      hasConflict: true,
+    );
+    await _persistEditorResolvedNote(index, updatedNote);
+    return updatedNote;
   }
 
   Future<NoteWriteResult> saveNoteTitleFromEditor({
@@ -992,7 +1025,7 @@ class NotesProvider extends ChangeNotifier {
     await _notesBox?.put(noteId, updatedNote);
 
     if (!updatedNote.localOnly && !updatedNote.hasConflict) {
-      _syncService?.syncNote(updatedNote);
+      _syncNoteAndMarkClean(updatedNote);
     }
 
     notifyListeners();
@@ -1027,7 +1060,7 @@ class NotesProvider extends ChangeNotifier {
     await _notesBox?.put(noteId, updatedNote);
 
     if (!updatedNote.localOnly) {
-      _syncService?.syncNote(updatedNote);
+      _syncNoteAndMarkClean(updatedNote);
     }
 
     notifyListeners();
@@ -1061,9 +1094,28 @@ class NotesProvider extends ChangeNotifier {
           continue;
         }
 
+        // Keep the actively edited local draft as the main document while a
+        // conflict is open, but refresh the comparison copy whenever the live
+        // cloud snapshot changes. A resolution opened against the old copy is
+        // rejected by resolveConflictWithContent.
+        if (localNote.hasConflict) {
+          if (localNote.conflictContent == null ||
+              !_sameStoredContent(
+                localNote.conflictContent!,
+                cloudNote.content,
+              )) {
+            final refreshedConflict = localNote.copyWith(
+              conflictContent: cloudNote.content,
+            );
+            _notes[localIndex] = refreshedConflict;
+            _notesBox?.put(cloudNote.id, refreshedConflict);
+          }
+          continue;
+        }
+
         if (localNote.isDirty &&
             cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
-            localNote.content != cloudNote.content) {
+            !_sameStoredContent(localNote.content, cloudNote.content)) {
           // Conflict detected!
           // We keep our local changes as the main content but flag it and save cloud content
           final conflictedNote = localNote.copyWith(
@@ -1155,6 +1207,19 @@ class NotesProvider extends ChangeNotifier {
       return;
     }
 
+    if (localNote.hasConflict && !cloudNote.isDeleted) {
+      if (localNote.conflictContent == null ||
+          !_sameStoredContent(localNote.conflictContent!, cloudNote.content)) {
+        final refreshedConflict = localNote.copyWith(
+          conflictContent: cloudNote.content,
+        );
+        _notes[localIndex] = refreshedConflict;
+        _notesBox?.put(cloudNote.id, refreshedConflict);
+        notifyListeners();
+      }
+      return;
+    }
+
     if (cloudNote.isDeleted) {
       if (!localNote.isDirty) {
         _notes.removeAt(localIndex);
@@ -1166,7 +1231,7 @@ class NotesProvider extends ChangeNotifier {
 
     if (localNote.isDirty &&
         cloudNote.updatedAt.isAfter(localNote.updatedAt) &&
-        localNote.content != cloudNote.content) {
+        !_sameStoredContent(localNote.content, cloudNote.content)) {
       final conflictedNote = localNote.copyWith(
         hasConflict: true,
         conflictContent: cloudNote.content,
@@ -1193,67 +1258,61 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
-  /// Resolves a merge conflict for a given note
-  /// [strategy] can be 'local', 'cloud', or 'merge'
+  /// Resolves a conflict using an explicit document assembled by the conflict
+  /// editor. Returns false if a newer cloud conflict arrived while the dialog
+  /// was open, so stale choices can never overwrite it.
+  Future<bool> resolveConflictWithContent({
+    required String noteId,
+    required String resolvedContent,
+    required String expectedCloudContent,
+  }) async {
+    final index = _notes.indexWhere((note) => note.id == noteId);
+    if (index < 0) return false;
+
+    final note = _notes[index];
+    if (!note.hasConflict || note.conflictContent != expectedCloudContent) {
+      return false;
+    }
+
+    final plainText =
+        RichTextPlainTextService.extractPlainText(resolvedContent);
+    final resolvedNote = note.copyWith(
+      content: resolvedContent,
+      characterCount: plainText.length,
+      lineCount: '\n'.allMatches(plainText).length + 1,
+      size: resolvedContent.length,
+      hasConflict: false,
+      clearConflictContent: true,
+      updatedAt: DateTime.now(),
+      isDirty: true,
+    );
+
+    _notes[index] = resolvedNote;
+    await _notesBox?.put(noteId, resolvedNote);
+    _syncService?.triggerSync();
+    notifyListeners();
+    return true;
+  }
+
+  /// Resolves a whole-document conflict. Kept for callers that intentionally
+  /// choose one complete version; interactive merging uses
+  /// [resolveConflictWithContent].
+  /// [strategy] can be 'local' or 'cloud'.
   Future<void> resolveConflict(String noteId, String strategy) async {
     final index = _notes.indexWhere((n) => n.id == noteId);
     if (index < 0) return;
 
     final note = _notes[index];
     if (!note.hasConflict) return;
-
-    String resolvedContent = note.content;
-
-    switch (strategy) {
-      case 'local':
-        resolvedContent = note.content;
-        break;
-      case 'cloud':
-        resolvedContent = note.conflictContent ?? note.content;
-        break;
-      case 'merge':
-        // For text or markdown, we append them.
-        // For Delta JSON (Flutter Quill), simple string append breaks the JSON format.
-        // For now, we will try to parse Delta, append a divider, and append the cloud Delta.
-        try {
-          final localDelta =
-              List<dynamic>.from(jsonDecode(note.content) as Iterable<dynamic>);
-          final cloudDelta = note.conflictContent != null
-              ? List<dynamic>.from(
-                  jsonDecode(note.conflictContent!) as Iterable<dynamic>,
-                )
-              : [];
-
-          final mergedDelta = [
-            ...localDelta,
-            {'insert': '\n\n=== CLOUD VERSION ===\n\n'},
-            ...cloudDelta,
-          ];
-          resolvedContent = jsonEncode(mergedDelta);
-        } catch (e) {
-          // Fallback if not valid JSON (e.g. plain text or older format)
-          resolvedContent =
-              '${note.content}\n\n=== CLOUD VERSION ===\n\n${note.conflictContent ?? ""}';
-        }
-        break;
+    final cloudContent = note.conflictContent;
+    if (cloudContent == null || (strategy != 'local' && strategy != 'cloud')) {
+      return;
     }
-
-    // Update the note with the resolved content and clear conflict flags
-    final resolvedNote = note.copyWith(
-      content: resolvedContent,
-      hasConflict: false,
-      clearConflictContent: true,
-      updatedAt: DateTime.now(),
-      isDirty: true, // Needs to be synced back to cloud
+    await resolveConflictWithContent(
+      noteId: noteId,
+      resolvedContent: strategy == 'cloud' ? cloudContent : note.content,
+      expectedCloudContent: cloudContent,
     );
-
-    _notes[index] = resolvedNote;
-    await _notesBox?.put(noteId, resolvedNote);
-
-    // Trigger sync
-    _syncService?.triggerSync();
-
-    notifyListeners();
   }
 
   Future<void> _persistEditorResolvedNote(
@@ -1269,25 +1328,46 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _sameStoredContent(String a, String b) {
-    return _normalizeStoredContent(a) == _normalizeStoredContent(b);
+  void _syncNoteAndMarkClean(Note uploadedNote) {
+    final service = _syncService;
+    if (service == null || uploadedNote.localOnly || uploadedNote.hasConflict) {
+      return;
+    }
+
+    unawaited(() async {
+      final success = await service.syncNote(uploadedNote);
+      if (!success) return;
+
+      final index = _notes.indexWhere((note) => note.id == uploadedNote.id);
+      if (index < 0) return;
+
+      final currentNote = _notes[index];
+      // Never let an acknowledgement for an older upload clear a newer edit.
+      if (currentNote.updatedAt != uploadedNote.updatedAt) return;
+
+      final cleanedNote = currentNote.copyWith(
+        isDirty: false,
+        syncedAt: DateTime.now(),
+      );
+      _notes[index] = cleanedNote;
+      await _notesBox?.put(cleanedNote.id, cleanedNote);
+      notifyListeners();
+    }());
   }
 
-  String _normalizeStoredContent(String content) {
-    try {
-      final decoded = jsonDecode(content);
-      return jsonEncode(decoded);
-    } catch (_) {
-      return content;
-    }
+  bool _sameStoredContent(String a, String b) {
+    return NoteConflictDiff.contentsEquivalent(a, b);
   }
 
   /// Clear dirty flags for a list of notes
   void _clearDirtyFlags(List<Note> notesToClear) {
     for (final note in notesToClear) {
       final index = _notes.indexWhere((n) => n.id == note.id);
-      if (index >= 0) {
-        final cleanedNote = _notes[index].copyWith(isDirty: false);
+      if (index >= 0 && _notes[index].updatedAt == note.updatedAt) {
+        final cleanedNote = _notes[index].copyWith(
+          isDirty: false,
+          syncedAt: DateTime.now(),
+        );
         _notes[index] = cleanedNote;
         _notesBox?.put(cleanedNote.id, cleanedNote);
       }

@@ -1,7 +1,7 @@
 name: typesync
 description: A cross-platform note-taking app with cloud sync, markdown support, and productivity features.
 publish_to: "none"
-version: 1.1.20+28
+version: 1.1.21+31
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -96,6 +96,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/icons/icon-transparent.svg
     - assets/adi-registration.properties
     - assets/billing_config.json
     - assets/data/changelog.json

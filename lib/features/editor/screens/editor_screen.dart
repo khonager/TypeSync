@@ -47,6 +47,8 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/typesync_spellchecker_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../../core/utils/file_picker_helper.dart';
+import '../../../core/utils/note_conflict_diff.dart';
+import '../../../core/utils/supported_embed_types.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/inline_pdf_preview.dart';
 import '../../../core/widgets/pdf_viewer_widget.dart';
@@ -58,6 +60,7 @@ import '../../../core/models/typesync_table_embed.dart';
 import '../widgets/markdown_table_embed_builder.dart';
 import '../widgets/editor_toolbar.dart';
 import '../widgets/editor_stats.dart';
+import '../widgets/note_conflict_resolver_dialog.dart';
 import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
@@ -262,6 +265,7 @@ class _EditorScreenState extends State<EditorScreen>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
   final GlobalKey _editorSurfaceKey = GlobalKey();
+  int _editorFocusChangeGeneration = 0;
 
   // Title controller
   final TextEditingController _titleController = TextEditingController();
@@ -1099,7 +1103,13 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _onEditorFocusChanged() {
+    final focusChangeGeneration = ++_editorFocusChangeGeneration;
     if (_focusNode.hasFocus) {
+      final isReturningToEditor = _didUserFocusEditor;
+      final selectionBeforeFocus = _quillController.selection;
+      final scrollOffsetBeforeFocus =
+          _scrollController.hasClients ? _scrollController.offset : null;
+
       final pendingExternalNote = _pendingExternalNote;
       if (pendingExternalNote != null) {
         _pendingExternalNote = null;
@@ -1107,6 +1117,14 @@ class _EditorScreenState extends State<EditorScreen>
       }
       _didUserFocusEditor = true;
       _scheduleCaretOffsetPersist();
+
+      if (isReturningToEditor && scrollOffsetBeforeFocus != null) {
+        _preserveViewportAfterEditorRefocus(
+          focusChangeGeneration: focusChangeGeneration,
+          selectionBeforeFocus: selectionBeforeFocus,
+          scrollOffsetBeforeFocus: scrollOffsetBeforeFocus,
+        );
+      }
       return;
     }
 
@@ -1114,6 +1132,36 @@ class _EditorScreenState extends State<EditorScreen>
       _caretPersistTimer?.cancel();
       unawaited(_persistCaretOffset(force: true));
     }
+  }
+
+  void _preserveViewportAfterEditorRefocus({
+    required int focusChangeGeneration,
+    required TextSelection selectionBeforeFocus,
+    required double scrollOffsetBeforeFocus,
+  }) {
+    // Quill reveals the caret in a post-frame callback whenever focus returns.
+    // Queue this behind that callback and cancel its animation only when the
+    // selection did not move. Cursor movement should retain Quill's normal
+    // reveal behavior.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scheduleMicrotask(() {
+        if (!mounted ||
+            !_focusNode.hasFocus ||
+            focusChangeGeneration != _editorFocusChangeGeneration ||
+            _quillController.selection != selectionBeforeFocus ||
+            !_scrollController.hasClients) {
+          return;
+        }
+
+        final position = _scrollController.position;
+        _scrollController.jumpTo(
+          scrollOffsetBeforeFocus.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+      });
+    });
   }
 
   void _requestInitialEditorFocus({bool force = false}) {
@@ -1457,9 +1505,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   bool _isSupportedEmbedType(String embedType) {
-    return embedType == TypeSyncKanbanEmbed.kanbanType ||
-        embedType == TypeSyncTableEmbed.tableType ||
-        embedType == 'x-embed-table';
+    return isSupportedRichTextEmbedType(embedType);
   }
 
   String _unsupportedEmbedText(String embedType, Object? embedValue) {
@@ -1538,7 +1584,6 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   void _scheduleSave() {
-    if (_note?.hasConflict == true) return; // Don't auto-save during a conflict
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveNote);
   }
@@ -1549,7 +1594,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Future<void> _saveNote() async {
-    if (_note == null || _note!.hasConflict) return;
+    if (_note == null) return;
 
     final notesProvider = context.read<NotesProvider>();
 
@@ -1557,6 +1602,22 @@ class _EditorScreenState extends State<EditorScreen>
     final content = jsonEncode(
       _sanitizeDeltaOperations(_quillController.document.toDelta().toJson()),
     );
+
+    if (_note!.hasConflict) {
+      final savedDraft = await notesProvider.saveConflictedNoteDraft(
+        noteId: _note!.id,
+        content: content,
+        characterCount: _characterCount,
+        lineCount: _lineCount,
+      );
+      if (!mounted || savedDraft == null) return;
+      setState(() {
+        _pendingExternalNote = null;
+        _note = savedDraft;
+        _lastSavedContent = content;
+      });
+      return;
+    }
 
     final result = await notesProvider.saveNoteContentFromEditor(
       noteId: _note!.id,
@@ -1736,8 +1797,14 @@ class _EditorScreenState extends State<EditorScreen>
 
         // We only reload Quill if the content actually differs from what we currently have
         // AND it wasn't a change we just pushed ourselves.
-        if (providerContent != localContent &&
-            providerContent != _lastSavedContent) {
+        final providerDiffersFromEditor =
+            !NoteConflictDiff.contentsEquivalent(providerContent, localContent);
+        final providerDiffersFromLastSave = _lastSavedContent == null ||
+            !NoteConflictDiff.contentsEquivalent(
+              providerContent,
+              _lastSavedContent!,
+            );
+        if (providerDiffersFromEditor && providerDiffersFromLastSave) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             if (!localHasUnsavedEdits) {
@@ -1981,7 +2048,11 @@ class _EditorScreenState extends State<EditorScreen>
           lineCount: _lineCount,
           characterCount: _characterCount,
         ),
-      if (showSync) const SyncStatusIndicator(),
+      if (showSync)
+        SyncStatusIndicator(
+          noteId: _note?.id,
+          hasUnsavedChanges: _hasUnsavedLocalEditorChanges(),
+        ),
       IconButton(
         icon: const Icon(Icons.search),
         tooltip: 'Search and replace',
@@ -2312,7 +2383,7 @@ class _EditorScreenState extends State<EditorScreen>
           const SizedBox(width: 12),
           const Expanded(
             child: Text(
-              'Conflicting changes detected!',
+              'Cloud changes conflict with this note. Your typing is saved locally.',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
@@ -4178,44 +4249,80 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
-  void _showConflictDialog() {
-    showDialog(
+  Future<void> _showConflictDialog() async {
+    final noteId = _note?.id;
+    if (noteId == null) return;
+
+    _saveTimer?.cancel();
+    final notesProvider = context.read<NotesProvider>();
+    await notesProvider.saveConflictedNoteDraft(
+      noteId: noteId,
+      content: _currentEditorContent(),
+      characterCount: _characterCount,
+      lineCount: _lineCount,
+    );
+    if (!mounted) return;
+    _pendingExternalNote = null;
+
+    final conflictedNote = notesProvider.getNoteById(noteId);
+    final cloudContent = conflictedNote?.conflictContent;
+    if (conflictedNote == null ||
+        !conflictedNote.hasConflict ||
+        cloudContent == null) {
+      _showEditorSyncMessage('This conflict is no longer available.');
+      return;
+    }
+
+    final diff = NoteConflictDiff.fromContents(
+      localContent: conflictedNote.content,
+      cloudContent: cloudContent,
+    );
+    if (diff.conflictCount == 0) {
+      final cleared = await notesProvider.resolveConflictWithContent(
+        noteId: noteId,
+        resolvedContent: conflictedNote.content,
+        expectedCloudContent: cloudContent,
+      );
+      if (!mounted) return;
+      if (cleared) {
+        final resolvedNote = notesProvider.getNoteById(noteId);
+        if (resolvedNote != null) _updateContentFromProvider(resolvedNote);
+        _showEditorSyncMessage(
+          'The local and cloud note are identical. The conflict was cleared.',
+        );
+      } else {
+        _showEditorSyncMessage(
+          'The cloud version changed again. Open the resolver to review it.',
+        );
+      }
+      return;
+    }
+    final resolvedContent = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Resolve Conflict'),
-        content: const Text(
-          'This note was modified on another device at the same time. '
-          'How would you like to resolve this?\n\n'
-          '• Keep Local: Retain your current changes and overwrite the cloud.\n'
-          '• Keep Cloud: Discard your current changes and load the cloud version.\n'
-          '• Merge: Append the cloud version to the bottom of your local version.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'local');
-            },
-            child: const Text('Keep Local'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'cloud');
-            },
-            child: const Text('Keep Cloud'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<NotesProvider>().resolveConflict(_note!.id, 'merge');
-            },
-            child: const Text('Merge'),
-          ),
-        ],
-      ),
+      builder: (context) => NoteConflictResolverDialog(diff: diff),
     );
+    if (!mounted || resolvedContent == null) return;
+
+    final resolved = await notesProvider.resolveConflictWithContent(
+      noteId: noteId,
+      resolvedContent: resolvedContent,
+      expectedCloudContent: cloudContent,
+    );
+    if (!mounted) return;
+    if (!resolved) {
+      _showEditorSyncMessage(
+        'The cloud version changed while you were deciding. Review the updated differences before applying.',
+      );
+      return;
+    }
+
+    final resolvedNote = notesProvider.getNoteById(noteId);
+    if (resolvedNote != null) {
+      _pendingExternalNote = null;
+      _updateContentFromProvider(resolvedNote);
+    }
+    _showEditorSyncMessage('Conflict resolved and queued for sync.');
   }
 
   void _showEditorSyncMessage(String message) {
@@ -4235,7 +4342,10 @@ class _EditorScreenState extends State<EditorScreen>
     if (_note == null) {
       return false;
     }
-    return _currentEditorContent() != _normalizedStoredContent(_note!.content);
+    return !NoteConflictDiff.contentsEquivalent(
+      _currentEditorContent(),
+      _normalizedStoredContent(_note!.content),
+    );
   }
 
   Future<void> _setSpellcheckEnabled(bool enabled) async {

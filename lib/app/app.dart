@@ -11,7 +11,12 @@ import '../core/services/theme_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/routes/app_router.dart';
 import '../core/services/auth_service.dart';
+import '../core/services/navigation_state_service.dart';
 import '../core/widgets/desktop_window_frame.dart';
+import '../core/widgets/startup_loading_screen.dart';
+import '../core/providers/notes_provider.dart';
+import '../features/home/screens/home_screen.dart';
+import '../features/home/widgets/home_bottom_bar.dart';
 import 'home_widget_sync_coordinator.dart';
 import 'service_orchestrator.dart';
 
@@ -36,6 +41,8 @@ class TypeSyncAppContent extends StatelessWidget {
 
           // Set AuthWrapper as the home
           home: const AuthWrapper(),
+
+          navigatorObservers: [NavigationStateObserver()],
 
           // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
           routes: {
@@ -146,18 +153,125 @@ class AuthWrapper extends StatelessWidget {
     final authService = context.watch<AuthService>();
 
     if (!authService.isInitialized) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const StartupLoadingScreen();
     }
 
     if (authService.isAuthenticated) {
-      // Defer to the same widget builder defined in AppRouter for consistency
-      return AppRouter.routes[AppRouter.home]!(context);
+      final workspaceId = authService.storageUserId;
+      if (workspaceId == null) return const StartupLoadingScreen();
+      return _AuthenticatedAppShell(
+        key: ValueKey(workspaceId),
+        workspaceId: workspaceId,
+      );
     } else {
       return AppRouter.routes[AppRouter.login]!(context);
     }
+  }
+}
+
+class _AuthenticatedAppShell extends StatefulWidget {
+  const _AuthenticatedAppShell({
+    required this.workspaceId,
+    super.key,
+  });
+
+  final String workspaceId;
+
+  @override
+  State<_AuthenticatedAppShell> createState() => _AuthenticatedAppShellState();
+}
+
+class _AuthenticatedAppShellState extends State<_AuthenticatedAppShell> {
+  late final Future<NavigationSnapshot> _snapshotFuture;
+  NavigationSnapshot? _snapshot;
+  bool _restorationFinished = false;
+  bool _restorationStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapshotFuture =
+        NavigationStateService.instance.activate(widget.workspaceId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<NavigationSnapshot>(
+      future: _snapshotFuture,
+      builder: (context, state) {
+        if (!state.hasData) return const StartupLoadingScreen();
+        _snapshot ??= state.data!;
+        final snapshot = _snapshot!;
+        final initialTab = snapshot.homeTab == 'profile'
+            ? HomeBottomBarTab.profile
+            : HomeBottomBarTab.files;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            HomeScreen(
+              initialFolderId: snapshot.homeFolderId,
+              initialTab: initialTab,
+              onWorkspaceInitialized: _restoreDestination,
+            ),
+            if (!_restorationFinished) const StartupLoadingScreen(),
+          ],
+        );
+      },
+    );
+  }
+
+  void _restoreDestination() {
+    if (_restorationStarted || !mounted) return;
+    _restorationStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final snapshot = _snapshot ?? const NavigationSnapshot();
+      final notes = context.read<NotesProvider>();
+
+      setState(() => _restorationFinished = true);
+
+      if (snapshot.routeName == AppRouter.editor &&
+          snapshot.noteId != null &&
+          notes.getNoteById(snapshot.noteId!) != null) {
+        AppRouter.openEditor(
+          context,
+          noteId: snapshot.noteId,
+          folderId: snapshot.folderId,
+        );
+        return;
+      }
+
+      if (snapshot.routeName == AppRouter.splitEditor &&
+          snapshot.primaryNoteId != null &&
+          notes.getNoteById(snapshot.primaryNoteId!) != null) {
+        AppRouter.openSplitEditor(
+          context,
+          primaryNoteId: snapshot.primaryNoteId!,
+          secondaryNoteId: snapshot.secondaryNoteId,
+          initialSecondaryFolderId: snapshot.secondaryFolderId,
+        );
+        return;
+      }
+
+      const restorableNamedRoutes = <String>{
+        AppRouter.settings,
+        AppRouter.calendar,
+        AppRouter.timetable,
+        AppRouter.homework,
+        AppRouter.profile,
+        AppRouter.subscription,
+      };
+      if (restorableNamedRoutes.contains(snapshot.routeName)) {
+        AppRouter.navigateTo(context, snapshot.routeName);
+        return;
+      }
+
+      // Missing/deleted note IDs and auth-only routes safely fall back home.
+      NavigationStateService.instance.recordHomeState(
+        folderId: snapshot.homeFolderId,
+        tab: snapshot.homeTab,
+      );
+    });
   }
 }

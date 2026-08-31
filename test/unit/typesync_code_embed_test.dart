@@ -1,5 +1,10 @@
+import 'dart:convert';
+
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:typesync/core/models/typesync_code_embed.dart';
+import 'package:typesync/core/services/rich_text_plain_text_service.dart';
+import 'package:typesync/core/utils/supported_embed_types.dart';
 
 void main() {
   test('preserves a code block language and multiline source', () {
@@ -40,6 +45,40 @@ void main() {
         codeId: 'target',
       ),
       16,
+    );
+  });
+
+  test('Markdown code blocks remain supported after save and reload', () {
+    const markdown = TypeSyncCodeData(
+      id: 'markdown-note',
+      language: 'markdown',
+      code: '# Heading\n\n- Rendered item\n',
+    );
+    final savedOperations = [
+      {'insert': TypeSyncCodeData.toBlockEmbed(markdown).toJson()},
+      {'insert': '\n'},
+    ];
+
+    final reloaded = Document.fromJson(
+      jsonDecode(jsonEncode(savedOperations)) as List<dynamic>,
+    );
+
+    expect(
+      isSupportedRichTextEmbedType(TypeSyncCodeEmbed.codeType),
+      isTrue,
+    );
+    expect(
+      TypeSyncCodeData.findCodeOffset(
+        reloaded.toDelta().toJson(),
+        codeId: markdown.id,
+      ),
+      0,
+    );
+    expect(
+      RichTextPlainTextService.extractPlainTextFromDelta(
+        reloaded.toDelta().toJson(),
+      ),
+      contains('# Heading'),
     );
   });
 }
