@@ -1160,6 +1160,10 @@ class _DismissOnExitTooltipState extends State<_DismissOnExitTooltip> {
   bool _temporarilyHidden = false;
 
   void _handleExit(PointerExitEvent event) {
+    // TooltipVisibility only stops a tooltip from opening; it does not retract
+    // one that is already on screen, so dismiss the open overlay explicitly.
+    Tooltip.dismissAllToolTips();
+
     setState(() => _temporarilyHidden = true);
 
     // Re-enable the tooltip after its current overlay has been removed. Since
