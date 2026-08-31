@@ -1,7 +1,32 @@
 {
   "schemaVersion": 2,
-  "latestVersion": "1.1.20",
+  "latestVersion": "1.1.21",
   "releases": [
+    {
+      "version": "1.1.21",
+      "date": "2026-08-31",
+      "title": "Conflict Resolution + Editor Polish",
+      "important": [
+        "TypeSync now resolves note conflicts change by change, so you can keep the local or cloud text for each individual difference instead of discarding a whole version."
+      ],
+      "newFeatures": [
+        "Added a per-change note conflict resolver that lists each conflicting section with its approximate line number, offers keep-all-local and keep-all-cloud shortcuts, and can reveal the surrounding unchanged lines.",
+        "Added a startup loading screen with saved navigation state, so the app restores the note and route you had open instead of showing a blank screen while it loads.",
+        "Added a bullet-list control to the editor toolbar, and reworked the floating toolbar so it can be undocked, collapsed, and repositioned.",
+        "Added a confirmation toast when signing out from Settings."
+      ],
+      "fixesImprovements": [
+        "The cloud sync indicator now reports per-note status, distinguishing a note verified with the cloud from one that is still syncing, differs from the cloud copy, or was saved offline.",
+        "Editor toolbar tooltips now dismiss when the pointer leaves the button instead of remaining open over the toolbar.",
+        "Fixed code blocks and other custom embeds being lost when notes were converted between markdown and rich text, and improved code-block rendering.",
+        "Fixed account deletion so server-side data is removed in bounded batches and retrying an interrupted deletion is safe.",
+        "Fixed the editor scrolling away from your position when it regained focus.",
+        "Raised the minimum supported iOS version from 13.0 to 15.0."
+      ],
+      "notes": [
+        "These notes summarize user-facing changes introduced after `v1.1.20` (2026-08-12)."
+      ]
+    },
     {
       "version": "1.1.20",
       "date": "2026-08-12",
