@@ -162,7 +162,7 @@ void main() {
       expect(tooltipLabel, findsOneWidget);
 
       await mouse.moveTo(tester.getCenter(tooltipLabel));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(tooltipLabel, findsNothing);
     });
