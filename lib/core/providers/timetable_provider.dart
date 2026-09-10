@@ -22,10 +22,15 @@ class TimetableProvider extends ChangeNotifier {
 
   // Local storage box
   Box<TimetableEntry>? _entriesBox;
+  Box<dynamic>? _settingsBox;
   String? _activeUserId;
 
   // In-memory entries list
   List<TimetableEntry> _entries = [];
+  List<TimetableDefinition> _timetables = const [
+    TimetableDefinition(id: 'default', name: 'My timetable'),
+  ];
+  String _activeTimetableId = 'default';
 
   // Loading state
   bool _isLoading = false;
@@ -44,14 +49,29 @@ class TimetableProvider extends ChangeNotifier {
   // GETTERS
   // ===========================================
 
-  List<TimetableEntry> get entries =>
-      _entries.where((e) => !e.isDeleted).toList();
+  List<TimetableEntry> get entries => _entries
+      .where((e) => !e.isDeleted && e.timetableId == _activeTimetableId)
+      .toList();
+  List<TimetableDefinition> get timetables => List.unmodifiable(_timetables);
+  String get activeTimetableId => _activeTimetableId;
+  TimetableDefinition get activeTimetable => _timetables.firstWhere(
+        (timetable) => timetable.id == _activeTimetableId,
+        orElse: () => _timetables.first,
+      );
+  List<String> get teacherSuggestions => _uniqueValues(
+        _entries
+            .where((entry) => !entry.isDeleted)
+            .map((entry) => entry.teacher),
+      );
+  List<String> get roomSuggestions => _uniqueValues(
+        _entries.where((entry) => !entry.isDeleted).map((entry) => entry.room),
+      );
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
   /// Get entries for a specific weekday
   List<TimetableEntry> getEntriesForDay(Weekday weekday) {
-    return _entries.where((e) => !e.isDeleted && e.weekday == weekday).toList()
+    return entries.where((e) => e.weekday == weekday).toList()
       ..sort((a, b) {
         final aTime = a.startHour * 60 + a.startMinute;
         final bTime = b.startHour * 60 + b.startMinute;
@@ -90,8 +110,10 @@ class TimetableProvider extends ChangeNotifier {
       }
 
       _entriesBox = await Hive.openBox<TimetableEntry>('timetable_$userId');
+      _settingsBox = await Hive.openBox<dynamic>('timetable_settings_$userId');
       _activeUserId = userId;
       _entries = _entriesBox!.values.toList();
+      await _loadTimetables();
       final visibleCount = _entries.where((entry) => !entry.isDeleted).length;
       final deletedCount = _entries.length - visibleCount;
       _diagnostics.info(
@@ -166,6 +188,8 @@ class TimetableProvider extends ChangeNotifier {
     String? teacher,
     String? room,
     String? color,
+    String? timetableId,
+    String? timetableName,
   }) async {
     try {
       final entry = TimetableEntry(
@@ -180,6 +204,8 @@ class TimetableProvider extends ChangeNotifier {
         endHour: endHour,
         endMinute: endMinute,
         color: color ?? '#64D2FF',
+        timetableId: timetableId ?? _activeTimetableId,
+        timetableName: timetableName ?? activeTimetable.name,
       );
 
       await _entriesBox?.put(entry.id, entry);
@@ -257,12 +283,73 @@ class TimetableProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> selectTimetable(String timetableId) async {
+    if (!_timetables.any((timetable) => timetable.id == timetableId)) return;
+    _activeTimetableId = timetableId;
+    await _settingsBox?.put('activeTimetableId', timetableId);
+    notifyListeners();
+  }
+
+  Future<TimetableDefinition?> createTimetable(String name) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) return null;
+    final timetable = TimetableDefinition(id: _uuid.v4(), name: trimmedName);
+    _timetables = [..._timetables, timetable];
+    _activeTimetableId = timetable.id;
+    await _saveTimetableSettings();
+    notifyListeners();
+    return timetable;
+  }
+
+  Future<bool> renameActiveTimetable(String name) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) return false;
+    final index = _timetables.indexWhere(
+      (timetable) => timetable.id == _activeTimetableId,
+    );
+    if (index < 0) return false;
+    _timetables = [..._timetables]..[index] = TimetableDefinition(
+        id: _activeTimetableId,
+        name: trimmedName,
+      );
+    final affectedEntries = _entries
+        .where((entry) => entry.timetableId == _activeTimetableId)
+        .toList();
+    for (final entry in affectedEntries) {
+      await updateEntry(entry.copyWith(timetableName: trimmedName));
+    }
+    await _saveTimetableSettings();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> deleteActiveTimetable() async {
+    if (_timetables.length == 1) return false;
+    final deletedId = _activeTimetableId;
+    final affectedEntries = _entries
+        .where((entry) => entry.timetableId == deletedId && !entry.isDeleted)
+        .toList();
+    for (final entry in affectedEntries) {
+      await deleteEntry(entry.id);
+    }
+    _timetables =
+        _timetables.where((timetable) => timetable.id != deletedId).toList();
+    _activeTimetableId = _timetables.first.id;
+    await _saveTimetableSettings();
+    notifyListeners();
+    return true;
+  }
+
   Future<void> closeWorkspace() async {
     _entries = [];
     if (_entriesBox != null && _entriesBox!.isOpen) {
       await _entriesBox!.close();
     }
+    if (_settingsBox != null && _settingsBox!.isOpen) {
+      await _settingsBox!.close();
+    }
     _entriesBox = null;
+    _settingsBox = null;
     _activeUserId = null;
   }
 
@@ -307,7 +394,31 @@ class TimetableProvider extends ChangeNotifier {
       );
     }
 
+    var timetableSettingsChanged = false;
     for (final cloudEntry in cloudEntries) {
+      if (!cloudEntry.isDeleted) {
+        final timetableIndex = _timetables.indexWhere(
+          (timetable) => timetable.id == cloudEntry.timetableId,
+        );
+        if (timetableIndex < 0) {
+          _timetables = [
+            ..._timetables,
+            TimetableDefinition(
+              id: cloudEntry.timetableId,
+              name: cloudEntry.timetableName,
+            ),
+          ];
+          timetableSettingsChanged = true;
+        } else if (_timetables[timetableIndex].name !=
+            cloudEntry.timetableName) {
+          _timetables = [..._timetables]
+            ..[timetableIndex] = TimetableDefinition(
+              id: cloudEntry.timetableId,
+              name: cloudEntry.timetableName,
+            );
+          timetableSettingsChanged = true;
+        }
+      }
       final localIndex = _entries.indexWhere((e) => e.id == cloudEntry.id);
 
       if (localIndex >= 0) {
@@ -324,12 +435,70 @@ class TimetableProvider extends ChangeNotifier {
       }
     }
 
+    if (timetableSettingsChanged) unawaited(_saveTimetableSettings());
+
     final visibleAfter = entries.length;
     _diagnostics.info(
       'TimetableProvider',
       'SYNC_LIFECYCLE cloud timetable applied workspace=$_activeUserId visibleAfter=$visibleAfter unresolvedMissingClean=${staleVisibleCleanIds.length} unresolvedMissingDirty=${staleVisibleDirtyIds.length}',
     );
     notifyListeners();
+  }
+
+  Future<void> _loadTimetables() async {
+    final stored = _settingsBox?.get('timetables');
+    final loaded = <TimetableDefinition>[];
+    if (stored is List) {
+      for (final value in stored) {
+        if (value is Map) {
+          try {
+            loaded.add(TimetableDefinition.fromJson(value));
+          } catch (_) {
+            // Ignore an individual malformed saved timetable.
+          }
+        }
+      }
+    }
+
+    for (final entry in _entries.where((entry) => !entry.isDeleted)) {
+      if (!loaded.any((timetable) => timetable.id == entry.timetableId)) {
+        loaded.add(
+          TimetableDefinition(
+            id: entry.timetableId,
+            name: entry.timetableName,
+          ),
+        );
+      }
+    }
+    _timetables = loaded.isEmpty
+        ? const [TimetableDefinition(id: 'default', name: 'My timetable')]
+        : loaded;
+    final savedActive = _settingsBox?.get('activeTimetableId') as String?;
+    _activeTimetableId = _timetables.any((item) => item.id == savedActive)
+        ? savedActive!
+        : _timetables.first.id;
+    await _saveTimetableSettings();
+  }
+
+  Future<void> _saveTimetableSettings() async {
+    await _settingsBox?.put(
+      'timetables',
+      _timetables.map((timetable) => timetable.toJson()).toList(),
+    );
+    await _settingsBox?.put('activeTimetableId', _activeTimetableId);
+  }
+
+  List<String> _uniqueValues(Iterable<String?> values) {
+    final byLowercase = <String, String>{};
+    for (final value in values) {
+      final trimmed = value?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) {
+        byLowercase.putIfAbsent(trimmed.toLowerCase(), () => trimmed);
+      }
+    }
+    final result = byLowercase.values.toList();
+    result.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
   }
 
   String _sampleIds(List<String> ids) {
@@ -349,20 +518,43 @@ class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
 
   @override
   TimetableEntry read(BinaryReader reader) {
+    final id = reader.readString();
+    final subject = reader.readString();
+    final teacher = reader.readBool() ? reader.readString() : null;
+    final room = reader.readBool() ? reader.readString() : null;
+    final weekday = Weekday.values[reader.readInt()];
+    final startHour = reader.readInt();
+    final startMinute = reader.readInt();
+    final endHour = reader.readInt();
+    final endMinute = reader.readInt();
+    final color = reader.readString();
+    final userId = reader.readString();
+    final isDirty = reader.readBool();
+    final isDeleted = reader.readBool();
+    var timetableId = 'default';
+    var timetableName = 'My timetable';
+    if (reader.availableBytes > 0) {
+      timetableId = reader.readString();
+    }
+    if (reader.availableBytes > 0) {
+      timetableName = reader.readString();
+    }
     return TimetableEntry(
-      id: reader.readString(),
-      subject: reader.readString(),
-      teacher: reader.readBool() ? reader.readString() : null,
-      room: reader.readBool() ? reader.readString() : null,
-      weekday: Weekday.values[reader.readInt()],
-      startHour: reader.readInt(),
-      startMinute: reader.readInt(),
-      endHour: reader.readInt(),
-      endMinute: reader.readInt(),
-      color: reader.readString(),
-      userId: reader.readString(),
-      isDirty: reader.readBool(),
-      isDeleted: reader.readBool(),
+      id: id,
+      subject: subject,
+      teacher: teacher,
+      room: room,
+      weekday: weekday,
+      startHour: startHour,
+      startMinute: startMinute,
+      endHour: endHour,
+      endMinute: endMinute,
+      color: color,
+      userId: userId,
+      isDirty: isDirty,
+      isDeleted: isDeleted,
+      timetableId: timetableId,
+      timetableName: timetableName,
     );
   }
 
@@ -387,5 +579,7 @@ class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
     writer.writeString(obj.userId);
     writer.writeBool(obj.isDirty);
     writer.writeBool(obj.isDeleted);
+    writer.writeString(obj.timetableId);
+    writer.writeString(obj.timetableName);
   }
 }

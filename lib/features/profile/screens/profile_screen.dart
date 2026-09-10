@@ -940,6 +940,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       'calendar_events_$workspaceId',
       'homework_$workspaceId',
       'timetable_$workspaceId',
+      'timetable_settings_$workspaceId',
     ];
 
     for (final boxName in boxNames) {

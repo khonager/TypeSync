@@ -125,6 +125,7 @@ class MigrationService {
       'calendar_events_$workspaceId',
       'homework_$workspaceId',
       'timetable_$workspaceId',
+      'timetable_settings_$workspaceId',
     ];
 
     for (final boxName in boxNames) {

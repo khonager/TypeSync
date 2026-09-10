@@ -6,6 +6,25 @@ library;
 
 import 'package:equatable/equatable.dart';
 
+/// A saved, named timetable that entries can belong to.
+class TimetableDefinition extends Equatable {
+  final String id;
+  final String name;
+
+  const TimetableDefinition({required this.id, required this.name});
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+
+  factory TimetableDefinition.fromJson(Map<dynamic, dynamic> json) =>
+      TimetableDefinition(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
+
+  @override
+  List<Object> get props => [id, name];
+}
+
 /// Day of the week
 enum Weekday {
   monday,
@@ -73,6 +92,8 @@ class TimetableEntry extends Equatable {
   final String userId;
   final bool isDirty;
   final bool isDeleted;
+  final String timetableId;
+  final String timetableName;
 
   const TimetableEntry({
     required this.id,
@@ -88,6 +109,8 @@ class TimetableEntry extends Equatable {
     this.color = '#64D2FF',
     this.isDirty = true,
     this.isDeleted = false,
+    this.timetableId = 'default',
+    this.timetableName = 'My timetable',
   });
 
   String get startTimeFormatted =>
@@ -99,8 +122,8 @@ class TimetableEntry extends Equatable {
   TimetableEntry copyWith({
     String? id,
     String? subject,
-    String? teacher,
-    String? room,
+    Object? teacher = _notProvided,
+    Object? room = _notProvided,
     Weekday? weekday,
     int? startHour,
     int? startMinute,
@@ -110,12 +133,15 @@ class TimetableEntry extends Equatable {
     String? userId,
     bool? isDirty,
     bool? isDeleted,
+    String? timetableId,
+    String? timetableName,
   }) {
     return TimetableEntry(
       id: id ?? this.id,
       subject: subject ?? this.subject,
-      teacher: teacher ?? this.teacher,
-      room: room ?? this.room,
+      teacher:
+          identical(teacher, _notProvided) ? this.teacher : teacher as String?,
+      room: identical(room, _notProvided) ? this.room : room as String?,
       weekday: weekday ?? this.weekday,
       startHour: startHour ?? this.startHour,
       startMinute: startMinute ?? this.startMinute,
@@ -125,6 +151,8 @@ class TimetableEntry extends Equatable {
       userId: userId ?? this.userId,
       isDirty: isDirty ?? this.isDirty,
       isDeleted: isDeleted ?? this.isDeleted,
+      timetableId: timetableId ?? this.timetableId,
+      timetableName: timetableName ?? this.timetableName,
     );
   }
 
@@ -141,6 +169,8 @@ class TimetableEntry extends Equatable {
         'color': color,
         'userId': userId,
         'isDeleted': isDeleted,
+        'timetableId': timetableId,
+        'timetableName': timetableName,
       };
 
   factory TimetableEntry.fromJson(Map<String, dynamic> json) => TimetableEntry(
@@ -157,6 +187,8 @@ class TimetableEntry extends Equatable {
         userId: json['userId'] as String,
         isDirty: false,
         isDeleted: json['isDeleted'] as bool? ?? false,
+        timetableId: json['timetableId'] as String? ?? 'default',
+        timetableName: json['timetableName'] as String? ?? 'My timetable',
       );
 
   @override
@@ -174,5 +206,9 @@ class TimetableEntry extends Equatable {
         userId,
         isDirty,
         isDeleted,
+        timetableId,
+        timetableName,
       ];
 }
+
+const Object _notProvided = Object();
