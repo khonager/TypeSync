@@ -20,6 +20,10 @@ void main() {
       userId: 'user-1',
       timetableId: '2026',
       timetableName: '2026',
+      classSlot: 7,
+      endClassSlot: 8,
+      classSlots: [7, 8],
+      usesCustomTime: true,
     );
 
     test('round-trips named timetable fields through JSON', () {
@@ -44,6 +48,31 @@ void main() {
 
       expect(restored.timetableId, 'default');
       expect(restored.timetableName, 'My timetable');
+    });
+
+    test('calculates default class slots around the configured breaks', () {
+      const schedule = TimetableDefinition(id: 'default', name: 'School');
+
+      expect(schedule.startMinutesForSlot(1), 8 * 60);
+      expect(schedule.endMinutesForSlot(1), 8 * 60 + 45);
+      expect(schedule.startMinutesForSlot(3), 9 * 60 + 45);
+      expect(schedule.startMinutesForSlot(7), 13 * 60 + 30);
+      expect(schedule.endMinutesForSlot(7), 14 * 60 + 15);
+      expect(schedule.slotForTimes(13 * 60 + 30, 14 * 60 + 15), 7);
+    });
+
+    test('round-trips customized class timing settings', () {
+      const schedule = TimetableDefinition(
+        id: 'custom',
+        name: 'Custom',
+        dayStartMinutes: 7 * 60 + 30,
+        classDurationMinutes: 50,
+        breakAfter2Minutes: 10,
+        breakAfter4Minutes: 20,
+        breakAfter6Minutes: 25,
+      );
+
+      expect(TimetableDefinition.fromJson(schedule.toJson()), schedule);
     });
   });
 
@@ -99,6 +128,54 @@ void main() {
       expect(provider.activeTimetableId, second!.id);
       expect(provider.activeTimetable.name, '2027');
       expect(provider.entries.map((entry) => entry.subject), ['Physics']);
+    });
+
+    test('updates slot times while preserving manual overrides', () async {
+      final provider = TimetableProvider();
+      await provider.initialize('user-2');
+      final scheduled = await provider.createEntry(
+        userId: 'user-2',
+        subject: 'Scheduled',
+        weekday: Weekday.monday,
+        startHour: 8,
+        startMinute: 0,
+        endHour: 9,
+        endMinute: 30,
+        classSlot: 1,
+        endClassSlot: 2,
+        classSlots: [1, 2],
+      );
+      final custom = await provider.createEntry(
+        userId: 'user-2',
+        subject: 'Custom',
+        weekday: Weekday.monday,
+        startHour: 8,
+        startMinute: 5,
+        endHour: 8,
+        endMinute: 50,
+        classSlot: 1,
+        usesCustomTime: true,
+      );
+
+      final updated = await provider.updateActiveTimetableSchedule(
+        dayStartMinutes: 7 * 60 + 30,
+        classDurationMinutes: 50,
+        breakAfter2Minutes: 10,
+        breakAfter4Minutes: 20,
+        breakAfter6Minutes: 25,
+      );
+
+      expect(updated, isTrue);
+      expect(provider.getEntryById(scheduled!.id)!.startTimeFormatted, '07:30');
+      expect(provider.getEntryById(scheduled.id)!.endTimeFormatted, '09:10');
+      expect(provider.getEntryById(custom!.id)!.startTimeFormatted, '08:05');
+
+      await provider.closeWorkspace();
+      await provider.initialize('user-2');
+      expect(provider.activeTimetable.classDurationMinutes, 50);
+      expect(provider.activeTimetable.breakAfter6Minutes, 25);
+      expect(provider.getEntryById(scheduled.id)!.endClassSlot, 2);
+      expect(provider.getEntryById(scheduled.id)!.classSlots, [1, 2]);
     });
   });
 }

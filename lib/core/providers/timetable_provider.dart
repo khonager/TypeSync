@@ -190,6 +190,10 @@ class TimetableProvider extends ChangeNotifier {
     String? color,
     String? timetableId,
     String? timetableName,
+    int? classSlot,
+    int? endClassSlot,
+    List<int> classSlots = const [],
+    bool usesCustomTime = false,
   }) async {
     try {
       final entry = TimetableEntry(
@@ -206,6 +210,10 @@ class TimetableProvider extends ChangeNotifier {
         color: color ?? '#64D2FF',
         timetableId: timetableId ?? _activeTimetableId,
         timetableName: timetableName ?? activeTimetable.name,
+        classSlot: classSlot,
+        endClassSlot: endClassSlot,
+        classSlots: List<int>.unmodifiable(classSlots),
+        usesCustomTime: usesCustomTime,
       );
 
       await _entriesBox?.put(entry.id, entry);
@@ -308,15 +316,73 @@ class TimetableProvider extends ChangeNotifier {
       (timetable) => timetable.id == _activeTimetableId,
     );
     if (index < 0) return false;
-    _timetables = [..._timetables]..[index] = TimetableDefinition(
-        id: _activeTimetableId,
-        name: trimmedName,
-      );
+    _timetables = [..._timetables]..[index] =
+        _timetables[index].copyWith(name: trimmedName);
     final affectedEntries = _entries
         .where((entry) => entry.timetableId == _activeTimetableId)
         .toList();
     for (final entry in affectedEntries) {
       await updateEntry(entry.copyWith(timetableName: trimmedName));
+    }
+    await _saveTimetableSettings();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> updateActiveTimetableSchedule({
+    required int dayStartMinutes,
+    required int classDurationMinutes,
+    required int breakAfter2Minutes,
+    required int breakAfter4Minutes,
+    required int breakAfter6Minutes,
+  }) async {
+    if (dayStartMinutes < 0 ||
+        dayStartMinutes >= 24 * 60 ||
+        classDurationMinutes < 1 ||
+        classDurationMinutes > 180 ||
+        breakAfter2Minutes < 0 ||
+        breakAfter2Minutes > 120 ||
+        breakAfter4Minutes < 0 ||
+        breakAfter4Minutes > 120 ||
+        breakAfter6Minutes < 0 ||
+        breakAfter6Minutes > 120) {
+      return false;
+    }
+    final index = _timetables.indexWhere(
+      (timetable) => timetable.id == _activeTimetableId,
+    );
+    if (index < 0) return false;
+    final updatedSchedule = _timetables[index].copyWith(
+      dayStartMinutes: dayStartMinutes,
+      classDurationMinutes: classDurationMinutes,
+      breakAfter2Minutes: breakAfter2Minutes,
+      breakAfter4Minutes: breakAfter4Minutes,
+      breakAfter6Minutes: breakAfter6Minutes,
+    );
+    if (updatedSchedule.endMinutesForSlot(12) > 24 * 60) return false;
+    _timetables = [..._timetables]..[index] = updatedSchedule;
+
+    final scheduledEntries = _entries.where(
+      (entry) =>
+          !entry.isDeleted &&
+          entry.timetableId == _activeTimetableId &&
+          entry.selectedClassSlots.isNotEmpty &&
+          !entry.usesCustomTime,
+    );
+    for (final entry in scheduledEntries.toList()) {
+      final slots = entry.selectedClassSlots;
+      final start = updatedSchedule.startMinutesForSlot(slots.first);
+      final end = updatedSchedule.endMinutesForSlot(
+        slots.last,
+      );
+      await updateEntry(
+        entry.copyWith(
+          startHour: start ~/ 60,
+          startMinute: start % 60,
+          endHour: end ~/ 60,
+          endMinute: end % 60,
+        ),
+      );
     }
     await _saveTimetableSettings();
     notifyListeners();
@@ -411,9 +477,8 @@ class TimetableProvider extends ChangeNotifier {
           timetableSettingsChanged = true;
         } else if (_timetables[timetableIndex].name !=
             cloudEntry.timetableName) {
-          _timetables = [..._timetables]
-            ..[timetableIndex] = TimetableDefinition(
-              id: cloudEntry.timetableId,
+          _timetables = [..._timetables]..[timetableIndex] =
+                _timetables[timetableIndex].copyWith(
               name: cloudEntry.timetableName,
             );
           timetableSettingsChanged = true;
@@ -533,11 +598,29 @@ class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
     final isDeleted = reader.readBool();
     var timetableId = 'default';
     var timetableName = 'My timetable';
+    int? classSlot;
+    var usesCustomTime = false;
+    int? endClassSlot;
+    var classSlots = <int>[];
     if (reader.availableBytes > 0) {
       timetableId = reader.readString();
     }
     if (reader.availableBytes > 0) {
       timetableName = reader.readString();
+    }
+    if (reader.availableBytes > 0) {
+      final hasClassSlot = reader.readBool();
+      if (hasClassSlot) classSlot = reader.readInt();
+    }
+    if (reader.availableBytes > 0) {
+      usesCustomTime = reader.readBool();
+    }
+    if (reader.availableBytes > 0) {
+      endClassSlot = reader.readBool() ? reader.readInt() : null;
+    }
+    if (reader.availableBytes > 0) {
+      final slotCount = reader.readInt();
+      classSlots = List.generate(slotCount, (_) => reader.readInt());
     }
     return TimetableEntry(
       id: id,
@@ -555,6 +638,10 @@ class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
       isDeleted: isDeleted,
       timetableId: timetableId,
       timetableName: timetableName,
+      classSlot: classSlot,
+      usesCustomTime: usesCustomTime,
+      endClassSlot: endClassSlot,
+      classSlots: classSlots,
     );
   }
 
@@ -581,5 +668,14 @@ class TimetableEntryAdapter extends TypeAdapter<TimetableEntry> {
     writer.writeBool(obj.isDeleted);
     writer.writeString(obj.timetableId);
     writer.writeString(obj.timetableName);
+    writer.writeBool(obj.classSlot != null);
+    if (obj.classSlot != null) writer.writeInt(obj.classSlot!);
+    writer.writeBool(obj.usesCustomTime);
+    writer.writeBool(obj.endClassSlot != null);
+    if (obj.endClassSlot != null) writer.writeInt(obj.endClassSlot!);
+    writer.writeInt(obj.classSlots.length);
+    for (final slot in obj.classSlots) {
+      writer.writeInt(slot);
+    }
   }
 }
