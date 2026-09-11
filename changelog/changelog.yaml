@@ -1,5 +1,22 @@
 schema_version: 2
 releases:
+  - version: 1.1.22
+    date: 2026-09-11
+    title: Flexible Timetables + Class Scheduling
+    important:
+      - TypeSync's timetable now supports separate named schedules and class-based timing, making it easier to manage different school weeks or terms.
+    new_features:
+      - Added multiple named timetables: create, switch, rename, and delete schedules independently.
+      - Added class-slot scheduling, so a lesson can span one or more selected class periods and automatically uses the timetable's configured times.
+      - Added per-timetable schedule settings for the first class time, lesson duration, and breaks after classes 2, 4, and 6.
+      - Added teacher and room suggestions based on classes already in your timetables.
+    fixes_improvements:
+      - Existing timetable entries remain compatible and are automatically assigned to the default timetable when needed.
+      - Updating a timetable's schedule recalculates the times of its class-slot lessons while preserving lessons with custom times.
+      - Improved timetable persistence, cloud synchronization, and workspace cleanup for timetable settings.
+    notes:
+      - These notes summarize user-facing changes introduced after `v1.1.21` (2026-08-31).
+
   - version: 1.1.21
     date: 2026-08-31
     title: Conflict Resolution + Editor Polish
