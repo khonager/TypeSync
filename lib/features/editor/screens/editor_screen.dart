@@ -65,6 +65,7 @@ import '../widgets/typesync_kanban_embed_builder.dart';
 import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 import '../utils/checklist_reorder.dart';
+import '../utils/editor_format_retention.dart';
 import '../utils/shift_click_selection.dart';
 
 /// Note editor with markdown-like rich text editing
@@ -561,6 +562,25 @@ class _EditorScreenState extends State<EditorScreen>
         (_currentChecklistLineState()?.isChecked ?? false)) {
       _handleChecklistContinuationShortcut();
       return false;
+    }
+
+    final controller = _quillController;
+    final inlineFormatsToClear = inlineFormatKeysToClearAfterDeletion(
+      document: controller.document,
+      selectionStyle: controller.getSelectionStyle(),
+      index: index,
+      length: length,
+      data: data,
+    );
+    if (inlineFormatsToClear.isNotEmpty) {
+      // Quill restores the erased character's style after its replacement
+      // callback returns. Run immediately after that restoration and replace
+      // the carried inline values with explicit nulls so the next character is
+      // plain. Keep block formats such as lists and checklists unchanged.
+      scheduleMicrotask(() {
+        if (!mounted || !identical(controller, _quillController)) return;
+        clearCarriedInlineFormats(controller, inlineFormatsToClear);
+      });
     }
     return true;
   }
