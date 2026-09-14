@@ -38,6 +38,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/attachment_preferences_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/services/editor_color_palette_service.dart';
+import '../../../core/services/editor_command_service.dart';
 import '../../../core/services/local_file_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -66,6 +67,7 @@ import '../widgets/typesync_code_embed_builder.dart';
 import '../widgets/typesync_table_embed_builder.dart';
 import '../utils/checklist_reorder.dart';
 import '../utils/editor_format_retention.dart';
+import '../utils/editor_command_expansion.dart';
 import '../utils/shift_click_selection.dart';
 
 /// Note editor with markdown-like rich text editing
@@ -306,6 +308,7 @@ class _EditorScreenState extends State<EditorScreen>
   bool _isUpdatingFromExternal = false;
   bool _isApplyingChecklistMetadata = false;
   bool _isHandlingChecklistContinuation = false;
+  bool _isExpandingEditorCommand = false;
   String? _activeAttachmentId;
   bool _sideBySideAttachments = false;
   bool _hasStartedCloudMigration = false;
@@ -557,6 +560,10 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   bool _handleEditorReplaceText(int index, int length, Object? data) {
+    if (data == '\n' && _tryExpandEditorCommand(index)) {
+      return false;
+    }
+
     if (!_isHandlingChecklistContinuation &&
         data == '\n' &&
         (_currentChecklistLineState()?.isChecked ?? false)) {
@@ -582,6 +589,42 @@ class _EditorScreenState extends State<EditorScreen>
         clearCarriedInlineFormats(controller, inlineFormatsToClear);
       });
     }
+    return true;
+  }
+
+  bool _tryExpandEditorCommand(int insertionOffset) {
+    if (_isExpandingEditorCommand) return false;
+
+    final commandService = context.read<EditorCommandService>();
+    final expansion = commandExpansionAt(
+      documentText: _quillController.document.toPlainText(),
+      insertionOffset: insertionOffset,
+      resolveTemplate: (trigger) =>
+          commandService.commandForTrigger(trigger)?.template,
+    );
+    if (expansion == null) return false;
+
+    _isExpandingEditorCommand = true;
+    try {
+      _quillController.replaceText(
+        expansion.start,
+        expansion.length,
+        expansion.replacement,
+        null,
+      );
+      _quillController.updateSelection(
+        TextSelection.collapsed(
+          offset: expansion.start + expansion.replacement.length,
+        ),
+        ChangeSource.local,
+      );
+    } finally {
+      _isExpandingEditorCommand = false;
+    }
+
+    _scheduleContentMaintenance();
+    _scheduleSave();
+    _scheduleCaretOffsetPersist();
     return true;
   }
 

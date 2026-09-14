@@ -27,6 +27,7 @@ import '../../../core/services/local_file_service.dart';
 import '../../../core/services/diagnostics_service.dart';
 import '../../../core/services/anytype_import_service.dart';
 import '../../../core/services/rich_text_plain_text_service.dart';
+import '../../../core/services/editor_command_service.dart';
 import '../../../core/providers/notes_provider.dart';
 import '../../../core/providers/folders_provider.dart';
 import '../../../core/providers/tags_provider.dart';
@@ -37,6 +38,7 @@ import '../../../core/routes/app_router.dart';
 import '../../../core/utils/file_picker_helper.dart';
 import '../../../core/utils/version_compatibility.dart';
 import '../../../core/widgets/desktop_window_frame.dart';
+import '../widgets/editor_commands_sheet.dart';
 
 /// Settings screen with app preferences
 class SettingsScreen extends StatelessWidget {
@@ -235,6 +237,15 @@ class SettingsScreen extends StatelessWidget {
             title: 'Keyboard Shortcuts',
             subtitle: 'View editor shortcuts and markdown triggers',
             onTap: () => _showKeyboardShortcuts(context),
+          ),
+
+          _SettingsTile(
+            icon: Icons.data_object,
+            title: 'Slash Commands',
+            subtitle: _slashCommandsSubtitle(
+              context.watch<EditorCommandService>(),
+            ),
+            onTap: () => _showEditorCommands(context),
           ),
 
           const Divider(),
@@ -998,6 +1009,25 @@ class SettingsScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  String _slashCommandsSubtitle(EditorCommandService service) {
+    if (!service.isLoaded) return 'Loading custom templates…';
+    final count = service.commands.length;
+    return count == 0
+        ? 'Create reusable text templates'
+        : '$count custom ${count == 1 ? 'command' : 'commands'}';
+  }
+
+  void _showEditorCommands(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ChangeNotifierProvider.value(
+        value: context.read<EditorCommandService>(),
+        child: const EditorCommandsSheet(),
+      ),
     );
   }
 

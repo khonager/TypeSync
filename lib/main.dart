@@ -24,6 +24,7 @@ import 'core/services/auth_service.dart';
 import 'core/services/billing_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/editor_color_palette_service.dart';
+import 'core/services/editor_command_service.dart';
 import 'core/services/theme_service.dart';
 import 'core/services/attachment_preferences_service.dart';
 import 'core/services/local_folder_sync_service.dart';
@@ -198,6 +199,9 @@ class TypeSyncApp extends StatelessWidget {
 
         // Editor color palettes for text and highlighter semantics
         ChangeNotifierProvider(create: (_) => EditorColorPaletteService()),
+
+        // User-defined slash commands and their text templates
+        ChangeNotifierProvider(create: (_) => EditorCommandService()),
 
         // Billing service for RevenueCat entitlement checks and purchases
         ChangeNotifierProvider(create: (_) => BillingService()),
