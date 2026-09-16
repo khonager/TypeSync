@@ -42,6 +42,12 @@ class TypeSyncAppContent extends StatelessWidget {
           // Set AuthWrapper as the home
           home: const AuthWrapper(),
 
+          // Content routes are restored from NavigationStateService after the
+          // workspace data is ready. On web, using the browser path as an
+          // additional initial route would otherwise put an argument-less
+          // editor underneath the restored editor after a refresh.
+          onGenerateInitialRoutes: generateTypeSyncInitialRoutes,
+
           navigatorObservers: [NavigationStateObserver()],
 
           // Provide routes, but exclude the root, login and home to let AuthWrapper handle them
@@ -82,6 +88,31 @@ class TypeSyncAppContent extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Builds a single startup route instead of letting Flutter expand a browser
+/// path such as `/editor` into an extra route below the restored destination.
+///
+/// Email sign-in links are the exception because they are genuine external
+/// entry points and must keep opening their completion screen directly.
+@visibleForTesting
+List<Route<dynamic>> generateTypeSyncInitialRoutes(String initialRouteName) {
+  final initialPath = Uri.tryParse(initialRouteName)?.path;
+  if (initialPath == AppRouter.finishSignUp) {
+    return <Route<dynamic>>[
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: AppRouter.finishSignUp),
+        builder: AppRouter.routes[AppRouter.finishSignUp]!,
+      ),
+    ];
+  }
+
+  return <Route<dynamic>>[
+    MaterialPageRoute<void>(
+      settings: const RouteSettings(name: AppRouter.home),
+      builder: (_) => const AuthWrapper(),
+    ),
+  ];
 }
 
 class _BackGestureFocusDismissScope extends StatefulWidget {
