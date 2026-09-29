@@ -957,7 +957,9 @@ class _TimetableEntryEditorSheetState
     required ValueChanged<T> onChanged,
   }) {
     return DropdownButtonFormField<T>(
-      initialValue: value,
+      // Flutter 3.27 uses value; initialValue was added in a later release.
+      // ignore: deprecated_member_use
+      value: value,
       decoration: InputDecoration(labelText: label),
       items: values
           .map(
