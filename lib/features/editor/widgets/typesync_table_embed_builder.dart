@@ -6,9 +6,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../utils/editable_embed_builder.dart';
+
 import '../../../core/models/typesync_table_embed.dart';
 
-class TypeSyncTableEmbedBuilder extends EmbedBuilder {
+class TypeSyncTableEmbedBuilder extends EditableEmbedBuilder {
   const TypeSyncTableEmbedBuilder();
 
   @override
@@ -24,10 +26,11 @@ class TypeSyncTableEmbedBuilder extends EmbedBuilder {
   }
 
   @override
-  Widget build(
+  Widget buildEditable(
     BuildContext context,
     QuillController controller,
     Embed node,
+    EmbedEditTarget? target,
     bool readOnly,
     bool inline,
     TextStyle textStyle,
@@ -38,8 +41,7 @@ class TypeSyncTableEmbedBuilder extends EmbedBuilder {
         : TypeSyncTableData.empty();
 
     return _TypeSyncTableEmbedWidget(
-      controller: controller,
-      node: node,
+      target: target,
       readOnly: readOnly,
       table: table,
     );
@@ -47,14 +49,12 @@ class TypeSyncTableEmbedBuilder extends EmbedBuilder {
 }
 
 class _TypeSyncTableEmbedWidget extends StatelessWidget {
-  final QuillController controller;
-  final Embed node;
+  final EmbedEditTarget? target;
   final bool readOnly;
   final TypeSyncTableData table;
 
   const _TypeSyncTableEmbedWidget({
-    required this.controller,
-    required this.node,
+    required this.target,
     required this.readOnly,
     required this.table,
   });
@@ -107,13 +107,7 @@ class _TypeSyncTableEmbedWidget extends StatelessWidget {
   }
 
   void _persistTable(TypeSyncTableData nextTable) {
-    final offset = node.documentOffset;
-    controller.replaceText(
-      offset,
-      1,
-      TypeSyncTableEmbed.toBlockEmbed(nextTable),
-      TextSelection.collapsed(offset: offset + 1),
-    );
+    target?.replace(TypeSyncTableEmbed.toBlockEmbed(nextTable));
   }
 }
 

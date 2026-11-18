@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+
+import '../utils/editable_embed_builder.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../../../core/models/typesync_code_embed.dart';
@@ -33,7 +35,7 @@ const codeBlockLanguages = <String>[
   'markdown',
 ];
 
-class TypeSyncCodeEmbedBuilder extends EmbedBuilder {
+class TypeSyncCodeEmbedBuilder extends EditableEmbedBuilder {
   const TypeSyncCodeEmbedBuilder();
 
   @override
@@ -47,10 +49,11 @@ class TypeSyncCodeEmbedBuilder extends EmbedBuilder {
   }
 
   @override
-  Widget build(
+  Widget buildEditable(
     BuildContext context,
     QuillController controller,
     Embed node,
+    EmbedEditTarget? target,
     bool readOnly,
     bool inline,
     TextStyle textStyle,
@@ -60,8 +63,7 @@ class TypeSyncCodeEmbedBuilder extends EmbedBuilder {
         ? TypeSyncCodeData.fromEmbedData(raw)
         : TypeSyncCodeData.empty();
     return _CodeBlock(
-      controller: controller,
-      node: node,
+      target: target,
       code: code,
       readOnly: readOnly,
     );
@@ -70,13 +72,11 @@ class TypeSyncCodeEmbedBuilder extends EmbedBuilder {
 
 class _CodeBlock extends StatelessWidget {
   const _CodeBlock({
-    required this.controller,
-    required this.node,
+    required this.target,
     required this.code,
     required this.readOnly,
   });
-  final QuillController controller;
-  final Embed node;
+  final EmbedEditTarget? target;
   final TypeSyncCodeData code;
   final bool readOnly;
 
@@ -168,17 +168,7 @@ class _CodeBlock extends StatelessWidget {
       builder: (_) => TypeSyncCodeEditorDialog(initial: code),
     );
     if (result == null) return;
-    final offset = TypeSyncCodeData.findCodeOffset(
-      controller.document.toDelta().toJson(),
-      codeId: code.id,
-    );
-    if (offset == null) return;
-    controller.replaceText(
-      offset,
-      1,
-      TypeSyncCodeData.toBlockEmbed(result),
-      TextSelection.collapsed(offset: offset + 1),
-    );
+    target?.replace(TypeSyncCodeData.toBlockEmbed(result));
   }
 }
 

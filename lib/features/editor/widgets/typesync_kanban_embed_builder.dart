@@ -6,9 +6,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../utils/editable_embed_builder.dart';
+
 import '../../../core/models/typesync_kanban_embed.dart';
 
-class TypeSyncKanbanEmbedBuilder extends EmbedBuilder {
+class TypeSyncKanbanEmbedBuilder extends EditableEmbedBuilder {
   const TypeSyncKanbanEmbedBuilder();
 
   @override
@@ -24,10 +26,11 @@ class TypeSyncKanbanEmbedBuilder extends EmbedBuilder {
   }
 
   @override
-  Widget build(
+  Widget buildEditable(
     BuildContext context,
     QuillController controller,
     Embed node,
+    EmbedEditTarget? target,
     bool readOnly,
     bool inline,
     TextStyle textStyle,
@@ -38,8 +41,7 @@ class TypeSyncKanbanEmbedBuilder extends EmbedBuilder {
         : TypeSyncKanbanData.empty();
 
     return _TypeSyncKanbanEmbedWidget(
-      controller: controller,
-      node: node,
+      target: target,
       readOnly: readOnly,
       board: board,
     );
@@ -47,14 +49,12 @@ class TypeSyncKanbanEmbedBuilder extends EmbedBuilder {
 }
 
 class _TypeSyncKanbanEmbedWidget extends StatelessWidget {
-  final QuillController controller;
-  final Embed node;
+  final EmbedEditTarget? target;
   final bool readOnly;
   final TypeSyncKanbanData board;
 
   const _TypeSyncKanbanEmbedWidget({
-    required this.controller,
-    required this.node,
+    required this.target,
     required this.readOnly,
     required this.board,
   });
@@ -127,18 +127,7 @@ class _TypeSyncKanbanEmbedWidget extends StatelessWidget {
   }
 
   void _persistBoard(TypeSyncKanbanData nextBoard) {
-    final offset = TypeSyncKanbanEmbed.findBoardOffset(
-      controller.document.toDelta().toJson(),
-      boardId: board.id,
-    );
-    if (offset == null) return;
-
-    controller.replaceText(
-      offset,
-      1,
-      TypeSyncKanbanEmbed.toBlockEmbed(nextBoard),
-      TextSelection.collapsed(offset: offset + 1),
-    );
+    target?.replace(TypeSyncKanbanEmbed.toBlockEmbed(nextBoard));
   }
 }
 
