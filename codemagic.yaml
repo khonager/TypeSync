@@ -15,7 +15,7 @@ workflows:
       # flutter_quill 10.x is used by the custom editor and is incompatible
       # with the newer TextInputClient API in current Flutter stable.
       flutter: 3.27.3
-      xcode: "26.2"
+      xcode: "27.1"
       cocoapods: default
 
     scripts:
@@ -86,7 +86,7 @@ workflows:
 
       # Keep development artifacts on the same Flutter version as TestFlight.
       flutter: 3.27.3
-      xcode: "26.2"
+      xcode: "27.1"
       cocoapods: default
 
     scripts:
