@@ -21,12 +21,24 @@ bundle ID is `de.khonager.typesync`, and the App Store app record ID is
 `6762024261`. The RevenueCat SDK key is embedded in a compiled client app, so
 it is an app-specific public key—not a RevenueCat secret API key.
 
-The TestFlight workflow now constructs the Flutter arguments as a Bash array.
-This prevents an incorrectly expanded build flag from being interpreted as a
-Flutter target file. If a build still reports `Target file
-"--dart-define=..." not found`, open the Codemagic variable and replace its
-value with the raw `appl_...` key; it means a build argument, quotation mark,
-or line break was saved as part of the value.
+In Codemagic team settings, make the Apple Distribution certificate (with its
+private key) and an App Store provisioning profile available for this bundle ID.
+The profile must include the Associated Domains capability used by Runner.
+
+Start **iOS TestFlight Release** manually on the desired branch. Each run
+adds the Codemagic project build counter to the pubspec build number. After
+Apple processes the upload, open [TypeSync in TestFlight](https://appstoreconnect.apple.com/apps/6762024261/testflight).
+Complete Test Information with the beta description, feedback email, review
+contact and sign-in instructions. Create an internal group if none exists, then
+create an external group, select the uploaded build, enter What to Test and
+submit it for TestFlight App Review. Once Apple approves it, the group can
+invite testers. [Apple’s external testing instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
+
+Suggested What to Test text:
+
+> Create and edit a note on iPhone or iPad, add a checklist and an attachment,
+> then reopen the note. If you use a second device, confirm that signed-in edits
+> sync. Please include your device model and iOS version when reporting issues.
 
 The workflow is pinned to Flutter `3.27.3`. TypeSync currently relies on
 Flutter Quill `10.x`, whose editor API is not compatible with the newer

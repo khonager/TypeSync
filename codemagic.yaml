@@ -2,7 +2,7 @@ workflows:
   ios-testflight:
     name: iOS TestFlight Release
     max_build_duration: 120
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
 
     environment:
       ios_signing:
@@ -12,14 +12,10 @@ workflows:
       groups:
         - app_store_credentials
 
-      vars:
-        BUNDLE_ID: "de.khonager.typesync"
-        APP_STORE_APP_ID: "6762024261"
-
       # flutter_quill 10.x is used by the custom editor and is incompatible
       # with the newer TextInputClient API in current Flutter stable.
       flutter: 3.27.3
-      xcode: latest
+      xcode: "26.2"
       cocoapods: default
 
     scripts:
@@ -29,33 +25,18 @@ workflows:
 
       - name: Install pods
         script: |
-          find . -name "Podfile" -execdir pod install \;
+          cd ios && pod install
 
       - name: Set up code signing
         script: |
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
           xcode-project use-profiles
 
       - name: Validate RevenueCat Apple key
         script: |
-          if [ -z "${REVENUECAT_APPLE_API_KEY:-}" ]; then
-            echo "REVENUECAT_APPLE_API_KEY is required for TestFlight releases"
+          if [[ ! "${REVENUECAT_APPLE_API_KEY:-}" =~ ^appl_[[:alnum:]]+$ ]]; then
+            echo "Set REVENUECAT_APPLE_API_KEY to the public Apple SDK key in app_store_credentials."
             exit 1
           fi
-          if [[ "$REVENUECAT_APPLE_API_KEY" == *$'\n'* || "$REVENUECAT_APPLE_API_KEY" == *$'\r'* ]]; then
-            echo "REVENUECAT_APPLE_API_KEY must contain only the public Apple key, without a command prefix or line break"
-            exit 1
-          fi
-          case "$REVENUECAT_APPLE_API_KEY" in
-            test_*)
-              echo "A RevenueCat test key cannot be used in a TestFlight release"
-              exit 1
-              ;;
-          esac
 
       - name: Flutter build ipa
         script: |
@@ -65,6 +46,9 @@ workflows:
             echo "pubspec.yaml must contain a version in the form x.y.z+buildNumber"
             exit 1
           fi
+
+          # Offset the project-wide counter above the original pubspec build.
+          build_number=$((build_number + PROJECT_BUILD_NUMBER))
 
           # Keep each Flutter flag as one shell argument. In particular, do not
           # store a whole `--dart-define=...` command in the Codemagic variable.
@@ -94,7 +78,7 @@ workflows:
   ios-development:
     name: iOS Development Build
     max_build_duration: 120
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
 
     environment:
       groups:
@@ -102,7 +86,7 @@ workflows:
 
       # Keep development artifacts on the same Flutter version as TestFlight.
       flutter: 3.27.3
-      xcode: latest
+      xcode: "26.2"
       cocoapods: default
 
     scripts:
@@ -112,7 +96,7 @@ workflows:
 
       - name: Install pods
         script: |
-          find . -name "Podfile" -execdir pod install \;
+          cd ios && pod install
 
       - name: Build iOS without signing
         script: |
