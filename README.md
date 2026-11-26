@@ -191,7 +191,7 @@ A cross-platform note-taking app with cloud sync, markdown support, and producti
    flutter build ios --dart-define=REVENUECAT_APPLE_API_KEY=public_apple_key
    ```
    - Add `REVENUECAT_ANDROID_API_KEY` as a GitHub Actions secret and
-     `REVENUECAT_APPLE_API_KEY` as a Codemagic environment variable. Mobile
+     `REVENUECAT_APPLE_API_KEY` as a GitHub Actions secret. Mobile
      release jobs fail before building if either key is missing or starts with
      `test_`, preventing another store build that RevenueCat will close.
    - Store the RevenueCat webhook token before deploying Functions:

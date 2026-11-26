@@ -3,47 +3,26 @@
 This checklist reflects the current TypeSync source tree. Update the privacy
 answers whenever an SDK or a data flow changes.
 
-## iOS / Codemagic
+## iOS / TestFlight
 
-The `ios-testflight` workflow imports the Codemagic variable group named
-`app_store_credentials`. That name is arbitrary: it is correct as long as the
-group contains these exact variables:
+GitHub Actions builds TypeSync on relevant pushes to `unstable`. For a manual
+build, open **Actions → TypeSync TestFlight → Run workflow** and select the branch.
+The workflow reads the marketing version from pubspec.yaml and checks Apple’s
+existing build numbers before signing. It uploads to TestFlight only.
 
-| Variable | Value |
-| --- | --- |
-| `REVENUECAT_APPLE_API_KEY` | The **Apple app-specific public SDK key** from RevenueCat (normally starts `appl_`). Enter only the key; do not include `--dart-define=`, quotes, or a newline. |
-| `APP_STORE_CONNECT_PRIVATE_KEY` | App Store Connect API private key used for publishing. |
-| `APP_STORE_CONNECT_KEY_IDENTIFIER` | App Store Connect API key ID. |
-| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect issuer ID. |
+Configure the repository secrets `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY`,
+`IOS_CERTIFICATE_PASSWORD`, `IOS_DISTRIBUTION_P12_BASE64`, and `IOS_PROFILE_BASE64`.
+Use the App Store profile for `de.khonager.typesync` with Associated Domains.
+Set `REVENUECAT_APPLE_API_KEY` to TypeSync’s Apple public SDK key. The Firebase
+plist and other Flutter assets are versioned in Git.
 
-Also confirm that the App Store Connect API key has the required access, the
-bundle ID is `de.khonager.typesync`, and the App Store app record ID is
-`6762024261`. The RevenueCat SDK key is embedded in a compiled client app, so
-it is an app-specific public key—not a RevenueCat secret API key.
+Flutter 3.27.3 supports the existing Quill editor. Its iOS runner uses the
+application-delegate lifecycle. Use Xcode 26.6 until the runner and Flutter
+plugins support UIScene. Apple requires SDK 27 for uploads starting April 2027.
 
-In Codemagic team settings, make the Apple Distribution certificate (with its
-private key) and an App Store provisioning profile available for this bundle ID.
-The profile must include the Associated Domains capability used by Runner.
-
-Start **iOS TestFlight Release** manually on the desired branch. Each run
-adds the Codemagic project build counter to the pubspec build number. After
-Apple processes the upload, open [TypeSync in TestFlight](https://appstoreconnect.apple.com/apps/6762024261/testflight).
-Complete Test Information with the beta description, feedback email, review
-contact and sign-in instructions. Create an internal group if none exists, then
-create an external group, select the uploaded build, enter What to Test and
-submit it for TestFlight App Review. Once Apple approves it, the group can
-invite testers. [Apple’s external testing instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
-
-Suggested What to Test text:
-
-> Create and edit a note on iPhone or iPad, add a checklist and an attachment,
-> then reopen the note. If you use a second device, confirm that signed-in edits
-> sync. Please include your device model and iOS version when reporting issues.
-
-The workflow is pinned to Flutter `3.27.3`. TypeSync currently relies on
-Flutter Quill `10.x`, whose editor API is not compatible with the newer
-`TextInputClient` contract in current Flutter stable. Keep the Flutter pin
-until the custom editor is deliberately migrated to Flutter Quill 11 or later.
+Verify processing and internal testing availability for the uploaded version and
+build in [TypeSync TestFlight](https://appstoreconnect.apple.com/apps/6762024261/testflight).
+External beta review and public release are separate decisions.
 
 Before uploading, configure the same products and entitlement IDs in App Store
 Connect, RevenueCat, and the app: `monthly`, `typesync_plus_monthly`, and

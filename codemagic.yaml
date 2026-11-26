@@ -1,80 +1,4 @@
 workflows:
-  ios-testflight:
-    name: iOS TestFlight Release
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-
-    environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: de.khonager.typesync
-
-      groups:
-        - app_store_credentials
-
-      # flutter_quill 10.x is used by the custom editor and is incompatible
-      # with the newer TextInputClient API in current Flutter stable.
-      flutter: 3.27.3
-      xcode: "27.1"
-      cocoapods: default
-
-    scripts:
-      - name: Get Flutter packages
-        script: |
-          flutter pub get
-
-      - name: Install pods
-        script: |
-          cd ios && pod install
-
-      - name: Set up code signing
-        script: |
-          xcode-project use-profiles
-
-      - name: Validate RevenueCat Apple key
-        script: |
-          if [[ ! "${REVENUECAT_APPLE_API_KEY:-}" =~ ^appl_[[:alnum:]]+$ ]]; then
-            echo "Set REVENUECAT_APPLE_API_KEY to the public Apple SDK key in app_store_credentials."
-            exit 1
-          fi
-
-      - name: Flutter build ipa
-        script: |
-          build_name=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
-          build_number=$(sed -n 's/^version: .*+\([0-9][0-9]*\).*/\1/p' pubspec.yaml)
-          if [ -z "$build_name" ] || [ -z "$build_number" ]; then
-            echo "pubspec.yaml must contain a version in the form x.y.z+buildNumber"
-            exit 1
-          fi
-
-          # Offset the project-wide counter above the original pubspec build.
-          build_number=$((build_number + PROJECT_BUILD_NUMBER))
-
-          # Keep each Flutter flag as one shell argument. In particular, do not
-          # store a whole `--dart-define=...` command in the Codemagic variable.
-          build_args=(
-            --release
-            --no-tree-shake-icons
-            "--build-name=$build_name"
-            "--build-number=$build_number"
-            "--dart-define=REVENUECAT_APPLE_API_KEY=$REVENUECAT_APPLE_API_KEY"
-            --export-options-plist=/Users/builder/export_options.plist
-          )
-          flutter build ipa "${build_args[@]}"
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-      - flutter_drive.log
-
-    publishing:
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: false
-        submit_to_app_store: false
-
   ios-development:
     name: iOS Development Build
     max_build_duration: 120
@@ -86,7 +10,7 @@ workflows:
 
       # Keep development artifacts on the same Flutter version as TestFlight.
       flutter: 3.27.3
-      xcode: "27.1"
+      xcode: "26.6"
       cocoapods: default
 
     scripts:
