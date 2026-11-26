@@ -1,0 +1,123 @@
+name: TypeSync TestFlight
+
+on:
+  push:
+    branches: [unstable]
+    paths:
+      - 'ios/**'
+      - 'lib/**'
+      - 'assets/**'
+      - 'overrides/**'
+      - 'pubspec.*'
+      - 'firebase.json'
+      - '.metadata'
+      - '.github/workflows/testflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: typesync-testflight
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 100
+    env:
+      # Flutter 3.27 uses UIApplicationDelegate. Linking SDK 27 requires UIScene.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify Xcode and iPhoneOS SDK
+        run: |
+          xcodebuild -version
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iPhoneOS SDK $sdk"
+          [[ "$sdk" == 26.* ]]
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.3'
+          channel: stable
+      - name: Install dependencies and check bundled Firebase config
+        run: |
+          test "$(/usr/libexec/PlistBuddy -c 'Print BUNDLE_ID' ios/Runner/GoogleService-Info.plist)" = de.khonager.typesync
+          flutter pub get
+          flutter precache --ios
+          (cd ios && pod install)
+      - name: Test first Flutter frame on iPad
+        run: |
+          device=$(xcrun simctl list devices available -j | jq -er '[.devices | to_entries[] | select(.key | endswith("iOS-26-5")) | .value[] | select(.name | startswith("iPad"))][0].udid')
+          xcodebuild test -quiet -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Debug -destination "id=$device" -parallel-testing-enabled NO \
+            -only-testing:RunnerTests/RunnerTests/testFirstFlutterFrame
+      - name: Restore Apple billing config
+        env:
+          REVENUECAT_APPLE_API_KEY: ${{ secrets.REVENUECAT_APPLE_API_KEY }}
+        run: |
+          umask 077
+          if [[ ! "$REVENUECAT_APPLE_API_KEY" =~ ^appl_[[:alnum:]]+$ ]]; then
+            echo "::error::Set the TypeSync REVENUECAT_APPLE_API_KEY repository secret."
+            exit 1
+          fi
+          python3 -c 'import json, os, sys; json.dump({"REVENUECAT_APPLE_API_KEY": os.environ["REVENUECAT_APPLE_API_KEY"]}, sys.stdout)' > "$RUNNER_TEMP/billing.json"
+      - name: Install signing tools
+        run: pipx install codemagic-cli-tools==0.73.0
+      - name: Allocate build number
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          version=$(ruby -ryaml -e 'puts YAML.load_file("pubspec.yaml").fetch("version").split("+").first')
+          latest=$(app-store-connect get-latest-testflight-build-number 6762024261 --platform IOS --pre-release-version "$version")
+          [[ -z "$latest" || "$latest" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]
+          major=${latest%%.*}
+          next=$((${major:-0} + 1))
+          floor=$((1000 + GITHUB_RUN_NUMBER))
+          (( next >= floor )) || next=$floor
+          echo "BUILD_NUMBER=$next.$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - name: Configure temporary signing keychain and Runner profile
+        env:
+          CERT: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          umask 077
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles"
+          printf '%s' "$PROFILE" | base64 -D > "$profiles/TypeSync.mobileprovision"
+          printf '%s' "$CERT" | base64 -D > "$RUNNER_TEMP/distribution.p12"
+          keychain initialize
+          keychain add-certificates --certificate "$RUNNER_TEMP/distribution.p12" --certificate-password @env:CERTIFICATE_PASSWORD
+          xcode-project use-profiles --project ios/Runner.xcodeproj
+      - name: Build and verify signed Flutter IPA
+        run: |
+          flutter build ipa --release --no-tree-shake-icons --build-number="$BUILD_NUMBER" \
+            --dart-define-from-file="$RUNNER_TEMP/billing.json" \
+            --export-options-plist="$HOME/export_options.plist"
+          shopt -s nullglob
+          ipas=(build/ios/ipa/*.ipa)
+          [[ ${#ipas[@]} -eq 1 ]]
+          unzip -p "${ipas[0]}" 'Payload/Runner.app/Info.plist' > "$RUNNER_TEMP/app.plist"
+          plist="$RUNNER_TEMP/app.plist"
+          version=$(ruby -ryaml -e 'puts YAML.load_file("pubspec.yaml").fetch("version").split("+").first')
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$plist")" = de.khonager.typesync
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")" = "$version"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$plist")" = "$BUILD_NUMBER"
+          echo "IPA_PATH=${ipas[0]}" >> "$GITHUB_ENV"
+          echo "TypeSync $version ($BUILD_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to TestFlight
+        env:
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          umask 077
+          keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keys"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$keys/AuthKey_${ASC_KEY_ID}.p8"
+          xcrun altool --upload-app -f "$IPA_PATH" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

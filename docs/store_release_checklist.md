@@ -3,35 +3,26 @@
 This checklist reflects the current TypeSync source tree. Update the privacy
 answers whenever an SDK or a data flow changes.
 
-## iOS / Codemagic
+## iOS / TestFlight
 
-The `ios-testflight` workflow imports the Codemagic variable group named
-`app_store_credentials`. That name is arbitrary: it is correct as long as the
-group contains these exact variables:
+GitHub Actions builds TypeSync on relevant pushes to `unstable`. For a manual
+build, open **Actions → TypeSync TestFlight → Run workflow** and select the branch.
+The workflow reads the marketing version from pubspec.yaml and checks Apple’s
+existing build numbers before signing. It uploads to TestFlight only.
 
-| Variable | Value |
-| --- | --- |
-| `REVENUECAT_APPLE_API_KEY` | The **Apple app-specific public SDK key** from RevenueCat (normally starts `appl_`). Enter only the key; do not include `--dart-define=`, quotes, or a newline. |
-| `APP_STORE_CONNECT_PRIVATE_KEY` | App Store Connect API private key used for publishing. |
-| `APP_STORE_CONNECT_KEY_IDENTIFIER` | App Store Connect API key ID. |
-| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect issuer ID. |
+Configure the repository secrets `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY`,
+`IOS_CERTIFICATE_PASSWORD`, `IOS_DISTRIBUTION_P12_BASE64`, and `IOS_PROFILE_BASE64`.
+Use the App Store profile for `de.khonager.typesync` with Associated Domains.
+Set `REVENUECAT_APPLE_API_KEY` to TypeSync’s Apple public SDK key. The Firebase
+plist and other Flutter assets are versioned in Git.
 
-Also confirm that the App Store Connect API key has the required access, the
-bundle ID is `de.khonager.typesync`, and the App Store app record ID is
-`6762024261`. The RevenueCat SDK key is embedded in a compiled client app, so
-it is an app-specific public key—not a RevenueCat secret API key.
+Flutter 3.27.3 supports the existing Quill editor. Its iOS runner uses the
+application-delegate lifecycle. Use Xcode 26.6 until the runner and Flutter
+plugins support UIScene. Apple requires SDK 27 for uploads starting April 2027.
 
-The TestFlight workflow now constructs the Flutter arguments as a Bash array.
-This prevents an incorrectly expanded build flag from being interpreted as a
-Flutter target file. If a build still reports `Target file
-"--dart-define=..." not found`, open the Codemagic variable and replace its
-value with the raw `appl_...` key; it means a build argument, quotation mark,
-or line break was saved as part of the value.
-
-The workflow is pinned to Flutter `3.27.3`. TypeSync currently relies on
-Flutter Quill `10.x`, whose editor API is not compatible with the newer
-`TextInputClient` contract in current Flutter stable. Keep the Flutter pin
-until the custom editor is deliberately migrated to Flutter Quill 11 or later.
+Verify processing and internal testing availability for the uploaded version and
+build in [TypeSync TestFlight](https://appstoreconnect.apple.com/apps/6762024261/testflight).
+External beta review and public release are separate decisions.
 
 Before uploading, configure the same products and entitlement IDs in App Store
 Connect, RevenueCat, and the app: `monthly`, `typesync_plus_monthly`, and

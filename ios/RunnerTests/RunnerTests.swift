@@ -2,11 +2,15 @@ import Flutter
 import UIKit
 import XCTest
 
-class RunnerTests: XCTestCase {
-
-  func testExample() {
-    // If you add code to the Runner application, consider adding tests here.
-    // See https://developer.apple.com/documentation/xctest for more information about using XCTest.
+final class RunnerTests: XCTestCase {
+  @MainActor
+  func testFirstFlutterFrame() throws {
+    let delegate = try XCTUnwrap(UIApplication.shared.delegate as? FlutterAppDelegate)
+    let controller = try XCTUnwrap(delegate.window?.rootViewController as? FlutterViewController)
+    let firstFrame = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in controller.isDisplayingFlutterUI },
+      object: nil
+    )
+    wait(for: [firstFrame], timeout: 60)
   }
-
 }
