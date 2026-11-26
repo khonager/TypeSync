@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: typesync-testflight
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   release:
